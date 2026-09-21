@@ -1,0 +1,4 @@
+# The homeserver the acceptance tests start themselves, pinned so that a run is
+# reproducible. It is installed into the project-local environment under
+# build/acceptance/synapse/venv, with a throwaway database per run.
+matrix-synapse==1.161.0

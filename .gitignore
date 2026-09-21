@@ -1,2 +1,4 @@
 .swarmforge/
 .worktrees/
+build/
+tmp/
