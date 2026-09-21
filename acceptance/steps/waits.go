@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+	"github.com/unclebob/forgelet-bridge/internal/bridge"
 )
 
 // caughtUp waits for the bridge to finish a tick with nothing left to do.
 func (w *World) caughtUp(ctx context.Context) error {
-	path := filepath.Join(w.stateDir, "status.json")
+	path := filepath.Join(w.stateDir, bridge.StatusName)
 	before, _ := readStatus(path)
 	for {
 		status, err := readStatus(path)
@@ -26,19 +27,16 @@ func (w *World) caughtUp(ctx context.Context) error {
 	}
 }
 
-type status struct {
-	Tick uint64 `json:"tick"`
-	Idle bool   `json:"idle"`
-}
-
-func readStatus(path string) (status, error) {
+// readStatus reads the progress the bridge reports, in the shape the bridge
+// writes it.
+func readStatus(path string) (bridge.Status, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return status{}, err
+		return bridge.Status{}, err
 	}
-	var parsed status
+	var parsed bridge.Status
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		return status{}, err
+		return bridge.Status{}, err
 	}
 	return parsed, nil
 }

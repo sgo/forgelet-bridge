@@ -180,3 +180,7 @@ func (b *Bridge) writeStatus(status Status) error {
 	}
 	return os.WriteFile(filepath.Join(b.statusDir, StatusName), append(data, '\n'), 0o644)
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:32:33+02:00","module_hash":"53a2201f7da06c13b95cfa9d9b5e76df7462cf1bb82a7c170ceeec9e37a035fd","functions":[{"id":"func/New","name":"New","line":65,"end_line":84,"hash":"f3657729186b52d630853c6fd6aa4164e98b6fde9fb4fa444db6c050cdad49a6"},{"id":"func/Bridge.State","name":"Bridge.State","line":87,"end_line":89,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":92,"end_line":111,"hash":"b8772f032b4a90a982599b8cabb97e5219cc7d6e4f681adba897b8427dd4f462"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":115,"end_line":151,"hash":"08dc22ad303541cd6c0d9c4011678d97acac4b20e75b749a74acc4cf9ea896a1"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":153,"end_line":158,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":161,"end_line":171,"hash":"506f097a3daf97bea3e2e32cf7db5ff88bc6bd556a181d7dc6d47400b0bc6374"},{"id":"func/Bridge.writeStatus","name":"Bridge.writeStatus","line":173,"end_line":182,"hash":"79a205547a958b3a5f9d1cc48f96e9549e6f42304bed9bf643585c7433bfa3dd"}]}
+// mutate4go-manifest-end

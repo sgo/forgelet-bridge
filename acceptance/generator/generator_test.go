@@ -164,3 +164,69 @@ func TestGenerateRejectsUnknownIR(t *testing.T) {
 		t.Fatal("Generate accepted a missing IR file")
 	}
 }
+
+func TestGenerateRejectsAFeatureWithoutAName(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nameless.json")
+	if err := os.WriteFile(path, []byte(`{"name": "  ", "scenarios": []}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Generate(Request{IRPath: path, OutputDir: filepath.Join(root, "generated"), ProjectRoot: root}); err == nil {
+		t.Fatal("Generate accepted a feature without a name")
+	}
+}
+
+func TestGenerateNamesTheFeatureFileWhenTheRequestDoesNot(t *testing.T) {
+	root := t.TempDir()
+	irPath := writeIR(t, root, "chat-channel-relay.json")
+
+	metadata, err := Generate(Request{IRPath: irPath, OutputDir: filepath.Join(root, "generated"), ProjectRoot: root})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if metadata.FeaturePath != "features/chat-channel-relay.feature" {
+		t.Errorf("feature path = %q, want the feature next to the IR", metadata.FeaturePath)
+	}
+}
+
+func TestTestNameCapitalisesEveryWordOfAFeatureName(t *testing.T) {
+	assertCases(t, "testName", testName, map[string]string{
+		"Chat Channel Relay": "TestChatChannelRelay",
+		"chat channel relay": "TestChatChannelRelay",
+		"Order 2 for API v2": "TestOrder2ForAPIV2",
+		"0a z9 AZ":           "Test0aZ9AZ",
+	})
+}
+
+func TestLowerFirstLowercasesOnlyTheFirstLetter(t *testing.T) {
+	assertCases(t, "lowerFirst", lowerFirst, map[string]string{
+		"Chat Channel Relay": "chat Channel Relay",
+		"chat":               "chat",
+		"1st Relay":          "1st Relay",
+		"":                   "",
+	})
+}
+
+func TestProjectRelativeKeepsPathsOutsideTheProjectAbsolute(t *testing.T) {
+	root := filepath.Join("/forges", "forge-a")
+	assertCases(t, "projectRelative", func(path string) string { return projectRelative(root, path) }, map[string]string{
+		filepath.Join(root, "ir.json"): "ir.json",
+		"/elsewhere/ir.json":           "/elsewhere/ir.json",
+	})
+	if got := projectRelative("", "/elsewhere/ir.json"); got != "/elsewhere/ir.json" {
+		t.Errorf("projectRelative without a project root = %q, want the path unchanged", got)
+	}
+}
+
+// assertCases fails for every case whose computed name differs from the one the
+// table gives.
+func assertCases(t *testing.T, name string, compute func(string) string, cases map[string]string) {
+	t.Helper()
+	for input, want := range cases {
+		if got := compute(input); got != want {
+			t.Errorf("%s(%q) = %q, want %q", name, input, got, want)
+		}
+	}
+}

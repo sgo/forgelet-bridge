@@ -49,20 +49,21 @@ type foundRequest struct {
 	id    string
 }
 
+// findRequest is the chat request reading body that some configured forge is
+// still waiting for an answer to. The dashboard queue answers which request
+// that is; this only asks every configured forge in turn.
 func findRequest(w *World, body string) (foundRequest, bool, error) {
 	for _, root := range w.configured {
 		store := w.dashboards[filepath.Base(root)]
 		if store == nil {
 			continue
 		}
-		requests, err := store.Requests()
+		request, found, err := store.RequestForBody(body)
 		if err != nil {
 			return foundRequest{}, false, err
 		}
-		for _, request := range requests {
-			if request.Body == body {
-				return foundRequest{store: store, id: request.ID}, true, nil
-			}
+		if found {
+			return foundRequest{store: store, id: request.ID}, true, nil
 		}
 	}
 	return foundRequest{}, false, nil

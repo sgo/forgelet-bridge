@@ -35,7 +35,7 @@ func configuredForges(_ context.Context, world any, captures []string) error {
 	ctx, cancel := stepContext()
 	defer cancel()
 	for _, name := range forgeNames(captures[1]) {
-		if err := w.configureForge(ctx, name); err != nil {
+		if err := w.configureForge(name); err != nil {
 			return err
 		}
 	}

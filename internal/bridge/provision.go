@@ -32,3 +32,7 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 	b.log.Info("provisioned forge", "root", root, "space", room.SpaceID, "room", room.RoomID)
 	return room, nil
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:21:32+02:00","module_hash":"b626fe1027778c3335a2f4b45c7be3f8e44b0b935e92256ae211265331fcb83f","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":13,"end_line":34,"hash":"9eeb180eb4443fdc97190c3094c33263463e4f1ec8f7f37d1ea8070d5ec00782"}]}
+// mutate4go-manifest-end

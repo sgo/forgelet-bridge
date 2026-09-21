@@ -161,31 +161,118 @@ func TestCreateRequestIDsAreUnique(t *testing.T) {
 	}
 }
 
-func TestRequestForBodyAnswersWithTheNewestMatch(t *testing.T) {
+func TestRequestForBodyAnswersWithTheNewestPendingMatch(t *testing.T) {
 	store := fixedStore(t)
 	writeRequest(t, store.root, pendingDir, "req-1", "id: req-1\nstatus: pending\n\nis the build green?\n")
-	writeRequest(t, store.root, doneDir, "req-2", "id: req-2\nstatus: done\nresponse: yes\n\nis the build green?\n")
-	writeRequest(t, store.root, pendingDir, "req-3", "id: req-3\nstatus: pending\n\nsomething else\n")
+	writeRequest(t, store.root, doneDir, "req-2", "id: req-2\nstatus: done\nresponse: yes\n\nplease retry the invoice card\n")
+	writeRequest(t, store.root, pendingDir, "req-3", "id: req-3\nstatus: pending\n\nis the build green?\n")
 
 	request, found, err := store.RequestForBody("is the build green?")
 	if err != nil {
 		t.Fatalf("RequestForBody: %v", err)
 	}
-	if !found || request.ID != "req-2" || !request.Done() {
-		t.Errorf("request = %+v, %v, want the newest match with its answer", request, found)
+	if !found || request.ID != "req-3" || request.Done() {
+		t.Errorf("request = %+v, %v, want the newest request still waiting for an answer", request, found)
 	}
 }
 
-func TestRequestForBodyNotFound(t *testing.T) {
+func TestRequestForBodySkipsAnsweredRequestsAndMissingText(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, doneDir, "req-1", "id: req-1\nstatus: done\nresponse: retried\n\nplease retry the invoice card\n")
+	writeRequest(t, store.root, pendingDir, "req-2", "id: req-2\nstatus: pending\n\nis the build green?\n")
+
+	for _, text := range []string{"please retry the invoice card", "something else"} {
+		request, found, err := store.RequestForBody(text)
+		if err != nil {
+			t.Fatalf("RequestForBody(%q): %v", text, err)
+		}
+		if found {
+			t.Errorf("RequestForBody(%q) = %+v, want no open request", text, request)
+		}
+	}
+}
+
+func TestRenderAndParseKeepEveryField(t *testing.T) {
+	request := Request{
+		ID:        "req-1",
+		Status:    StatusPending,
+		Role:      "lieutenant",
+		Body:      "is the build green?",
+		Response:  "yes, the build is green",
+		CreatedAt: "2026-09-21T20:04:32.588996Z",
+		UpdatedAt: "2026-09-21T20:05:32.588996Z",
+	}
+
+	if got := Parse(render(request)); got != request {
+		t.Errorf("round trip = %+v, want %+v", got, request)
+	}
+}
+
+func TestRequestsIgnoreEntriesThatAreNotRequestFiles(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "req-1", "id: req-1\nstatus: pending\n\nis the build green?\n")
+	if err := os.MkdirAll(filepath.Join(store.dir(pendingDir), "notes.request"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.dir(pendingDir), "notes.txt"), []byte("not a request\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	requests := requestsOf(t, store)
+	if len(requests) != 1 || requests[0].ID != "req-1" {
+		t.Errorf("requests = %+v, want only the request file", requests)
+	}
+}
+
+func TestRequestsReadTheIDTheRequestFileCarries(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "req-file", "id: req-header\nstatus: pending\n\nis the build green?\n")
+
+	requests := requestsOf(t, store)
+	if len(requests) != 1 || requests[0].ID != "req-header" {
+		t.Errorf("requests = %+v, want the id the request file carries", requests)
+	}
+}
+
+func TestRequestsKeepFileOrderForRequestsThatShareAnID(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "a", "id: req-1\nstatus: pending\n\nfirst\n")
+	writeRequest(t, store.root, pendingDir, "b", "id: req-1\nstatus: pending\n\nsecond\n")
+
+	requests := requestsOf(t, store)
+	if len(requests) != 2 || requests[0].Body != "first" || requests[1].Body != "second" {
+		t.Errorf("requests = %+v, want the stable file order kept", requests)
+	}
+}
+
+func TestRequestForBodyAnswersASingleOpenRequest(t *testing.T) {
 	store := fixedStore(t)
 	writeRequest(t, store.root, pendingDir, "req-1", "id: req-1\nstatus: pending\n\nis the build green?\n")
 
-	request, found, err := store.RequestForBody("something else")
+	request, found, err := store.RequestForBody("is the build green?")
 	if err != nil {
 		t.Fatalf("RequestForBody: %v", err)
 	}
+	if !found || request.ID != "req-1" {
+		t.Errorf("request = %+v, %v, want the one open request", request, found)
+	}
+}
+
+func TestRequestForBodyReportsAQueueItCannotRead(t *testing.T) {
+	store := New(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(store.dir(pendingDir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.dir(pendingDir), []byte("not a queue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	request, found, err := store.RequestForBody("is the build green?")
+	if err == nil {
+		t.Fatal("RequestForBody read a queue that is not a queue")
+	}
 	if found {
-		t.Errorf("request = %+v, want no match", request)
+		t.Errorf("request = %+v, want no match from a queue that could not be read", request)
 	}
 }
 
@@ -198,4 +285,14 @@ func writeRequest(t *testing.T, root, kind, id, body string) {
 	if err := os.WriteFile(filepath.Join(dir, id+fileSuffix), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// requestsOf reads the queue a test has just written to.
+func requestsOf(t *testing.T, store *Store) []Request {
+	t.Helper()
+	requests, err := store.Requests()
+	if err != nil {
+		t.Fatalf("Requests: %v", err)
+	}
+	return requests
 }

@@ -47,3 +47,7 @@ func (b *Bridge) createForgeRequest(store ForgeStore, root string, action relay.
 	b.state.Relay.Threads[requestID] = action.SourceEventID
 	return nil
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:21:13+02:00","module_hash":"60cfc865bbce16cd05a046b7ecd302bbee89793fa91f4d762abe93ef5dee02d8","functions":[{"id":"func/Bridge.postRequestMessage","name":"Bridge.postRequestMessage","line":12,"end_line":19,"hash":"052960d9985c540dd7d3746816bf408c5f752037dc511a9155800b4966cbe57c"},{"id":"func/Bridge.postRequestReply","name":"Bridge.postRequestReply","line":23,"end_line":37,"hash":"b1e6e90a779873656c907eb073609f031afeb3aa4e428cd801b9c9c2047e4769"},{"id":"func/Bridge.createForgeRequest","name":"Bridge.createForgeRequest","line":41,"end_line":49,"hash":"bed62b85346e54e9e7aee203de39ba9b69f1198151461ac2429c2386c3ee30e1"}]}
+// mutate4go-manifest-end

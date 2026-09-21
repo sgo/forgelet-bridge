@@ -68,23 +68,77 @@ func TestExecuteExpandsExampleValues(t *testing.T) {
 }
 
 func TestExecuteFailsOnMissingExampleValue(t *testing.T) {
-	registry := testRegistry(&recorder{})
-	scenario := Scenario{Steps: []Step{{Text: "the forge holds <chat_requests> chat requests"}}}
-
-	err := registry.Execute(context.Background(), &recorder{}, Feature{}, scenario, map[string]string{})
-	if err == nil || !strings.Contains(err.Error(), "<chat_requests>") {
+	err := executeFailure(t, "the forge holds <chat_requests> chat requests")
+	if !strings.Contains(err.Error(), "<chat_requests>") {
 		t.Fatalf("error = %v, want a missing example value", err)
 	}
 }
 
-func TestExecuteFailsOnUnsupportedStep(t *testing.T) {
-	registry := testRegistry(&recorder{})
-	scenario := Scenario{Steps: []Step{{Text: "the operator does something unknown"}}}
+func TestExpandFillsAPlaceholderAtTheStartOfTheStep(t *testing.T) {
+	got, err := Expand("<message> arrives", map[string]string{"message": "is the build green?"})
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if got != "is the build green? arrives" {
+		t.Errorf("Expand = %q, want the placeholder at the start filled", got)
+	}
+}
 
-	err := registry.Execute(context.Background(), &recorder{}, Feature{}, scenario, map[string]string{})
-	if err == nil || !strings.Contains(err.Error(), "unsupported step") {
+func TestExpandRejectsAPlaceholderWithoutAName(t *testing.T) {
+	if _, err := Expand("the <> request", map[string]string{}); err == nil {
+		t.Fatal("Expand accepted a placeholder without a name")
+	}
+}
+
+func TestRunRunsAScenarioWithoutExamplesOnce(t *testing.T) {
+	executions := 0
+	registry := NewRegistry(func() any { return &recorder{} })
+	registry.OnClose(func(any) {})
+	if err := registry.Step(`^the bridge is started$`, func(context.Context, any, []string) error {
+		executions++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	feature := Feature{Scenarios: []Scenario{{Name: "Chat Channel Relay 1", Steps: []Step{{Text: "the bridge is started"}}}}}
+
+	registry.Run(t, feature)
+
+	if executions != 1 {
+		t.Errorf("executions = %d, want a scenario without an example table to run once", executions)
+	}
+}
+
+func TestExampleNameNumbersTheRowsFromOne(t *testing.T) {
+	cases := map[int]string{
+		0: "Chat Channel Relay 1/example_1",
+		2: "Chat Channel Relay 1/example_3",
+	}
+	for index, want := range cases {
+		if got := exampleName("Chat Channel Relay 1", index); got != want {
+			t.Errorf("exampleName(_, %d) = %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestExecuteFailsOnUnsupportedStep(t *testing.T) {
+	err := executeFailure(t, "the operator does something unknown")
+	if !strings.Contains(err.Error(), "unsupported step") {
 		t.Fatalf("error = %v, want an unsupported step", err)
 	}
+}
+
+// executeFailure is the error one step of a scenario ends an execution with.
+func executeFailure(t *testing.T, text string) error {
+	t.Helper()
+	registry := testRegistry(&recorder{})
+	scenario := Scenario{Steps: []Step{{Text: text}}}
+
+	err := registry.Execute(context.Background(), &recorder{}, Feature{}, scenario, map[string]string{})
+	if err == nil {
+		t.Fatalf("Execute(%q) succeeded, want it to fail", text)
+	}
+	return err
 }
 
 func TestExecuteReportsHandlerFailure(t *testing.T) {

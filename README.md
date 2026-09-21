@@ -83,6 +83,20 @@ make property          # ./scripts/property.sh
 make test && make property && make acceptance   # everything, in order
 ```
 
+## Mutation manifests
+
+Both mutation tools keep the state that makes their next run differential, and
+that state travels with the code:
+
+- the language mutation tool embeds its per-function manifest in the source file
+  it mutates, between `// mutate4go-manifest-begin` and
+  `// mutate4go-manifest-end`;
+- the Gherkin mutator keeps its per-scenario manifest in a comment block at the
+  top of the feature file.
+
+Each tool writes and updates its own manifest. Commit them with the code; do not
+hand-edit them.
+
 ## Layout
 
 - `cmd/forgelet-bridge` — the bridge process.

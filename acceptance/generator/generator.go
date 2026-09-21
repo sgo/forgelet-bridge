@@ -185,7 +185,7 @@ func testName(featureName string) string {
 	upperNext := true
 	for _, char := range featureName {
 		switch {
-		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9':
+		case nameRune(char):
 			if upperNext {
 				builder.WriteString(strings.ToUpper(string(char)))
 				upperNext = false
@@ -197,6 +197,12 @@ func testName(featureName string) string {
 		}
 	}
 	return builder.String()
+}
+
+// nameRune reports whether a feature name's rune belongs in a test name: a
+// name is made of letters and digits, and every other rune starts a new word.
+func nameRune(char rune) bool {
+	return char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9'
 }
 
 func stem(path string) string {
@@ -213,3 +219,7 @@ func projectRelative(root, path string) string {
 	}
 	return relative
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:31:59+02:00","module_hash":"cce342c46c919e59371c8ce4666036c18735ed6c2e63b89ce31a18668359005b","functions":[{"id":"func/Generate","name":"Generate","line":41,"end_line":71,"hash":"9be67e33809f63461fd3ff826e5188a7b9fbf374146ca1876947ebf88eae8549"},{"id":"func/writeEntryPoint","name":"writeEntryPoint","line":75,"end_line":84,"hash":"6d7bcb142675b553fe8d5142bb905774d652ce348c9cd48a729ef274c5299280"},{"id":"func/metadataFor","name":"metadataFor","line":88,"end_line":101,"hash":"6440ac6aaeac384ebaa8fe8b869cd770a0c6da30c02169274d348fbdf9816532"},{"id":"func/writeMetadata","name":"writeMetadata","line":104,"end_line":111,"hash":"56d60571e240b009d97e7c06d3ed053565824708661c6f77e23534ac5478e980"},{"id":"func/MetadataName","name":"MetadataName","line":115,"end_line":119,"hash":"5189133d310ae23d5b49943576c0ffa35bf122d0e4535cecb52b3711004431a4"},{"id":"func/implementationHash","name":"implementationHash","line":122,"end_line":136,"hash":"175c655f26745da4b573ef02f88b3094941b4b7eddce78bd835fef45c77e78c8"},{"id":"func/entryPoint","name":"entryPoint","line":138,"end_line":172,"hash":"6a68be2460b3c0bb435b96a606797583abab248ca1c38c500f46936910b5e17b"},{"id":"func/lowerFirst","name":"lowerFirst","line":174,"end_line":179,"hash":"0a33cb4bcb27c5dee92a6edf2aaadd69893fbce791b007ff184288ce86fa89a2"},{"id":"func/testName","name":"testName","line":182,"end_line":200,"hash":"f437495d852586413b3635b7a5c3042c05351160ee0d7e8f815b8817703c8708"},{"id":"func/nameRune","name":"nameRune","line":204,"end_line":206,"hash":"287b81e9ffaa066b2cf2c23c7449bc3e7ef929cdbf7b2e29372943240ef5b09f"},{"id":"func/stem","name":"stem","line":208,"end_line":210,"hash":"d952680d14511918784550b7e08758999b0a5fcc8f4be6637a55ff0d613f7c29"},{"id":"func/projectRelative","name":"projectRelative","line":212,"end_line":221,"hash":"dac4132855d909cc4ad07704482c201b89dca7c790d05cae9fbe1ad8cdfbc596"}]}
+// mutate4go-manifest-end

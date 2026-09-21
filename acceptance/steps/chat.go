@@ -99,33 +99,27 @@ func (w *World) chatMessageAnchor(ctx context.Context, body string) (string, err
 
 func operatorSendsMessage(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	ctx, cancel := stepContext()
-	defer cancel()
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	roomID, err := w.chatRoom(ctx, captures[2])
-	if err != nil {
-		return err
-	}
-	_, err = operator.Send(ctx, roomID, captures[1])
-	return err
+	return oneUserSends(w, w.operatorID, captures[2], captures[1])
 }
 
 func userSendsMessage(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
+	return oneUserSends(w, captures[1], captures[3], captures[2])
+}
+
+// oneUserSends has one Matrix user send a message into a chat room.
+func oneUserSends(w *World, userID, roomName, body string) error {
 	ctx, cancel := stepContext()
 	defer cancel()
-	user, err := w.user(ctx, captures[1])
+	user, err := w.user(ctx, userID)
 	if err != nil {
 		return err
 	}
-	roomID, err := w.chatRoom(ctx, captures[3])
+	roomID, err := w.chatRoom(ctx, roomName)
 	if err != nil {
 		return err
 	}
-	_, err = user.Send(ctx, roomID, captures[2])
+	_, err = user.Send(ctx, roomID, body)
 	return err
 }
 

@@ -80,3 +80,7 @@ func (s *State) Save(path string) error {
 	}
 	return os.Rename(temp, path)
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:19:55+02:00","module_hash":"0a5b70ee38a902ebd6a679f425b6a6c754dde6c2f3b9f8cd44a628f48f4380b3","functions":[{"id":"func/Load","name":"Load","line":27,"end_line":44,"hash":"3a51707dde5154917e8a5a53035d24ce3fcac7ffb26af5a85ffe35c0b9c58f46"},{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":47,"end_line":52,"hash":"d9f9c1a00570037d86f9a039b80fa8df6656b5f789e1dad9d3d80e30917321a4"},{"id":"func/State.ForgeFor","name":"State.ForgeFor","line":55,"end_line":58,"hash":"480b7e18177b98cfa74efcda5b51705f834913c0b6b4cb32eace6a7162a3fe3e"},{"id":"func/State.RecordForge","name":"State.RecordForge","line":61,"end_line":64,"hash":"c9d5772df498ae9d642682e74a6eb07e8831c9fd60eedc9fa115861dfce8c70c"},{"id":"func/State.Save","name":"State.Save","line":68,"end_line":82,"hash":"699bd5003c86aa3da98352d99437c38ed3b5a654bc6aa755d90976d728ac240d"}]}
+// mutate4go-manifest-end

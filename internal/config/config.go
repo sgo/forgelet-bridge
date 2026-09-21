@@ -84,3 +84,7 @@ func (c Config) Validate() error {
 func ForgeName(root string) string {
 	return filepath.Base(strings.TrimRight(root, string(filepath.Separator)))
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:18:45+02:00","module_hash":"4a2f9010c1fcd4e816c21f6bea11172a9b36eb0e51694ce2ceb72af545ba0a2d","functions":[{"id":"func/Load","name":"Load","line":33,"end_line":48,"hash":"73c9c9ba411af51e69731b5d63bbac3936492121b264cc966bf69abf9dc94d30"},{"id":"func/Config.applyDefaults","name":"Config.applyDefaults","line":50,"end_line":55,"hash":"a4b127976fa75aa7b446477d71d9914e63c45d5e0f507753b561c8699ba06242"},{"id":"func/Config.Validate","name":"Config.Validate","line":58,"end_line":80,"hash":"ea426906b592ae4e753437040e3dfdcb37c216a8bb8f5d80bef8aae91466cd2d"},{"id":"func/ForgeName","name":"ForgeName","line":84,"end_line":86,"hash":"14d0ebe0183b97504e95ad0cbf9789c520db6c25982a1e7812746b7fbad670e9"}]}
+// mutate4go-manifest-end

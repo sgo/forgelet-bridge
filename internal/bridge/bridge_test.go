@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -97,9 +98,10 @@ func (r *fakeRooms) push(event relay.RoomEvent) {
 
 const operator = "@operator:example.org"
 
-func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, roots ...string) (*Bridge, config.Config) {
+// newTestConfig is the configuration a test bridge runs with.
+func newTestConfig(t *testing.T, roots ...string) config.Config {
 	t.Helper()
-	cfg := config.Config{
+	return config.Config{
 		HomeserverURL: "http://127.0.0.1:8008",
 		UserID:        "@bridge:example.org",
 		AccessToken:   "token",
@@ -107,11 +109,40 @@ func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore,
 		ForgeRoots:    roots,
 		StateDir:      t.TempDir(),
 	}
+}
+
+func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, roots ...string) (*Bridge, config.Config) {
+	t.Helper()
+	cfg := newTestConfig(t, roots...)
 	built, err := New(cfg, rooms, stores, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return built, cfg
+}
+
+func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, logger)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if built.log != logger {
+		t.Error("New replaced the logger it was given")
+	}
+}
+
+func TestNewFindsALoggerWithoutOne(t *testing.T) {
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if built.log == nil {
+		t.Error("New left the bridge without a logger")
+	}
 }
 
 func TestTickPostsForgeRequest(t *testing.T) {
@@ -328,6 +359,132 @@ func TestRunTicksOnceWithoutWaitingForTheInterval(t *testing.T) {
 	waitForSent(t, rooms)
 	cancel()
 	<-done
+}
+
+func TestRunDefaultsAnIntervalThatIsNotPositive(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, 0) }()
+
+	waitForSent(t, rooms)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Errorf("Run = %v, want an interval without a value to run", err)
+	}
+}
+
+func TestRunKeepsTickingAtTheIntervalItIsGiven(t *testing.T) {
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	// The shortest interval a ticker takes stands for "tick as fast as asked":
+	// an interval the bridge may not keep would be the one it replaces.
+	go func() { done <- built.Run(ctx, time.Nanosecond) }()
+
+	waitForTicks(t, filepath.Join(cfg.StateDir, StatusName), 3)
+	cancel()
+	<-done
+}
+
+func TestRunLogsTheFirstFailingTick(t *testing.T) {
+	logs := &logBuffer{}
+	built := newFailingBridge(t, logs)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, time.Hour) }()
+
+	waitForLogs(t, logs, "tick failed", 1)
+	cancel()
+	<-done
+}
+
+func TestRunLogsEveryFailingTick(t *testing.T) {
+	logs := &logBuffer{}
+	built := newFailingBridge(t, logs)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, time.Millisecond) }()
+
+	waitForLogs(t, logs, "tick failed", 2)
+	cancel()
+	<-done
+}
+
+// newFailingBridge builds a bridge whose forge is unreachable, so that every
+// tick it takes fails.
+func newFailingBridge(t *testing.T, logs *logBuffer) *Bridge {
+	t.Helper()
+	rooms := &fakeRooms{drainErr: errors.New("the homeserver is away")}
+	built, err := New(newTestConfig(t, "/forges/forge-a"), rooms,
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, slog.New(slog.NewTextHandler(logs, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return built
+}
+
+// logBuffer collects the log a bridge writes while a test drives it. The
+// bridge logs from its own goroutine, so the buffer guards itself.
+type logBuffer struct {
+	mu   sync.Mutex
+	text strings.Builder
+}
+
+func (b *logBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.text.Write(data)
+}
+
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.text.String()
+}
+
+// waitForTicks waits for the bridge to report at least count ticks.
+func waitForTicks(t *testing.T, path string, count uint64) {
+	t.Helper()
+	pollUntil(t, time.Second, fmt.Sprintf("the bridge never reported %d ticks", count), func() bool {
+		if data, err := os.ReadFile(path); err == nil {
+			var status Status
+			if err := json.Unmarshal(data, &status); err == nil {
+				return status.Tick >= count
+			}
+		}
+		return false
+	})
+}
+
+// waitForLogs waits for the bridge to log text at least count times.
+func waitForLogs(t *testing.T, logs *logBuffer, text string, count int) {
+	t.Helper()
+	pollUntil(t, 5*time.Second, fmt.Sprintf("the bridge logged %q fewer than %d times", text, count), func() bool {
+		return strings.Count(logs.String(), text) >= count
+	})
+}
+
+// pollUntil waits for check to hold, and reports describe when the window is up.
+func pollUntil(t *testing.T, window time.Duration, describe string, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for {
+		if check() {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(describe)
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // waitForSent waits for the bridge to post its first chat message.

@@ -69,3 +69,7 @@ func stores(cfg config.Config) map[string]bridge.ForgeStore {
 	}
 	return queues
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:18:32+02:00","module_hash":"62f93dab599792b55d7395e27014e148e6edcabda045a05375c7fc677964f36b","functions":[{"id":"func/main","name":"main","line":22,"end_line":35,"hash":"5066fd9e175ab9e6c5e67a472b92bb8efcc47a63d1edbc09eb0cb1f0ba67bfae"},{"id":"func/run","name":"run","line":37,"end_line":43,"hash":"6e71599705ecb1059bc12818e5e38148a22f6e81349cdf5f0cc1d40affe65b92"},{"id":"func/serve","name":"serve","line":47,"end_line":62,"hash":"f7638e66e2ee40dc9647f24c878555bb73961f3596816718e002499976984024"},{"id":"func/stores","name":"stores","line":65,"end_line":71,"hash":"2dfbfa985e246e245fc7c58c5061b59d98c56d25880917c593868c3751c5de55"}]}
+// mutate4go-manifest-end

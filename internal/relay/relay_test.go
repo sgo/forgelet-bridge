@@ -160,3 +160,19 @@ func TestEnsureMapsMakesStateWritable(t *testing.T) {
 		t.Errorf("threads = %+v, want the recorded anchor", state.Threads)
 	}
 }
+
+func TestEnsureMapsKeepsTheWorkAlreadyRecorded(t *testing.T) {
+	state := State{
+		Threads: map[string]string{"req-1": "$message"},
+		Replied: map[string]string{"req-1": "$reply"},
+		Relayed: map[string]string{"$operator-message": "req-1"},
+	}
+
+	state.EnsureMaps()
+
+	if state.Threads["req-1"] != "$message" ||
+		state.Replied["req-1"] != "$reply" ||
+		state.Relayed["$operator-message"] != "req-1" {
+		t.Errorf("state = %+v, want the recorded work kept: a restart must not forget it", state)
+	}
+}

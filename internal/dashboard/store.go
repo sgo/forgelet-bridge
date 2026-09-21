@@ -1,5 +1,6 @@
 // Package dashboard reads and writes one forge's dashboard chat-request
-// queue, the same files the SwarmForge dashboard uses.
+// queue, the same files the SwarmForge dashboard uses. The queue's mechanics
+// live here; the request file format lives in request.go.
 package dashboard
 
 import (
@@ -12,35 +13,12 @@ import (
 	"time"
 )
 
-// Statuses a dashboard request can carry.
 const (
-	StatusPending = "pending"
-	StatusDone    = "done"
+	requestsDir = ".swarmforge/dashboard/requests"
+	pendingDir  = "pending"
+	doneDir     = "done"
+	fileSuffix  = ".request"
 )
-
-const (
-	requestsDir  = ".swarmforge/dashboard/requests"
-	pendingDir   = "pending"
-	doneDir      = "done"
-	fileSuffix   = ".request"
-	bodyFallback = ""
-)
-
-// Request is one chat request in a forge's dashboard.
-type Request struct {
-	ID        string
-	Status    string
-	Role      string
-	Body      string
-	Response  string
-	CreatedAt string
-	UpdatedAt string
-}
-
-// Done reports whether the lieutenant has answered this request.
-func (r Request) Done() bool {
-	return r.Status == StatusDone
-}
 
 // Store is the file-backed dashboard request queue of one forge root.
 type Store struct {
@@ -73,7 +51,7 @@ func (s *Store) Requests() ([]Request, error) {
 	return requests, nil
 }
 
-// Pending returns only the unanswered requests.
+// Pending returns only the requests the lieutenant has not answered yet.
 func (s *Store) Pending() ([]Request, error) {
 	return s.readDir(pendingDir)
 }
@@ -125,15 +103,17 @@ func (s *Store) Answer(id, response string) error {
 	return os.Remove(src)
 }
 
-// RequestForBody answers with the newest request whose body matches text.
+// RequestForBody answers with the newest chat request reading text that the
+// lieutenant still has to answer. An answered request is not open work, so it
+// is not the answer to this question.
 func (s *Store) RequestForBody(text string) (Request, bool, error) {
-	requests, err := s.Requests()
+	pending, err := s.Pending()
 	if err != nil {
 		return Request{}, false, err
 	}
-	for i := len(requests) - 1; i >= 0; i-- {
-		if requests[i].Body == text {
-			return requests[i], true, nil
+	for i := len(pending) - 1; i >= 0; i-- {
+		if pending[i].Body == text {
+			return pending[i], true, nil
 		}
 	}
 	return Request{}, false, nil
@@ -171,6 +151,8 @@ func (s *Store) readDir(kind string) ([]Request, error) {
 	return requests, nil
 }
 
+// newID names a new request file: the moment it was queued, and a counter when
+// the same moment names a request that already exists.
 func (s *Store) newID() string {
 	for {
 		s.seq++
@@ -184,69 +166,6 @@ func (s *Store) newID() string {
 	}
 }
 
-// render writes a request in the dashboard's on-disk format.
-func render(r Request) string {
-	var b strings.Builder
-	b.WriteString("id: " + r.ID + "\n")
-	b.WriteString("status: " + r.Status + "\n")
-	if strings.TrimSpace(r.Role) != "" {
-		b.WriteString("role: " + r.Role + "\n")
-	}
-	b.WriteString("created_at: " + r.CreatedAt + "\n")
-	if r.UpdatedAt != "" {
-		b.WriteString("updated_at: " + r.UpdatedAt + "\n")
-	}
-	if r.Response != "" {
-		b.WriteString("response: " + strings.ReplaceAll(r.Response, "\n", `\n`) + "\n")
-	}
-	body := r.Body
-	if body == "" {
-		body = bodyFallback
-	}
-	b.WriteString("\n" + body)
-	if !strings.HasSuffix(body, "\n") {
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// Parse reads a request file: header lines, a blank line, then the body. It is
-// the way every reader of a dashboard request file, in this process or the
-// dashboard's own tools, gets at the request's fields.
-func Parse(text string) Request {
-	header, body, found := strings.Cut(text, "\n\n")
-	if !found {
-		header, body = text, ""
-	}
-
-	request := Request{}
-	// The same fields render writes, so the two stay in step.
-	fields := map[string]*string{
-		"id":         &request.ID,
-		"status":     &request.Status,
-		"role":       &request.Role,
-		"created_at": &request.CreatedAt,
-		"updated_at": &request.UpdatedAt,
-		"response":   &request.Response,
-	}
-	for _, line := range strings.Split(header, "\n") {
-		key, value, ok := strings.Cut(line, ": ")
-		if !ok {
-			continue
-		}
-		if field, known := fields[key]; known {
-			*field = strings.TrimSpace(value)
-		}
-	}
-	request.Response = strings.ReplaceAll(request.Response, `\n`, "\n")
-	request.Body = strings.TrimRight(body, "\n")
-	return request
-}
-
-func timestamp(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.999999999Z")
-}
-
-func compactTimestamp(t time.Time) string {
-	return t.UTC().Format("20060102T150405.000000000Z")
-}
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-21T23:27:31+02:00","module_hash":"2fbbae35cc897a19c01f97dc8612d229af196de9f86c71079dabedb69112f17e","functions":[{"id":"func/New","name":"New","line":31,"end_line":33,"hash":"dfc5d4ae80c4a49694b7d6b824c51a6415279d23ebba7a22172ea7455c83821c"},{"id":"func/Store.Root","name":"Store.Root","line":36,"end_line":38,"hash":"7f73a9a5e6d2aef8766d17d51b1ae034bbbace14b9e07921512147c967f9ae82"},{"id":"func/Store.Requests","name":"Store.Requests","line":42,"end_line":52,"hash":"f0dee75203751b9ef42bf014efb6ac367fa0a08ff4d15f559d855756093f4809"},{"id":"func/Store.Pending","name":"Store.Pending","line":55,"end_line":57,"hash":"15579a38c43b18395b257a2568a558794a911faa29cf8dfb899f4b8d4c17d2e0"},{"id":"func/Store.CreateRequest","name":"Store.CreateRequest","line":60,"end_line":80,"hash":"688514cea0e3e87270f3e3c9ef6dc54c845e25d190426f799a602314751249c9"},{"id":"func/Store.Answer","name":"Store.Answer","line":84,"end_line":104,"hash":"422d2b7bc960a49d2cb458380e9aa16e05fc224c977ad22af7ad75404565aaed"},{"id":"func/Store.RequestForBody","name":"Store.RequestForBody","line":109,"end_line":120,"hash":"7714ad755dd1a9fa343ef3ea2a21ff622fe1c3a42d5120213a85337be0bcf97a"},{"id":"func/Store.dir","name":"Store.dir","line":122,"end_line":124,"hash":"4a673b1069f098acb177a7c214e0e6209dfd4c50ec8aa39d24cfcb2feae984b3"},{"id":"func/Store.readDir","name":"Store.readDir","line":126,"end_line":152,"hash":"c572aa2a73faac0ad18d9cbe424956ea0340c3e26d44b62e2ff30cdfa20171d3"},{"id":"func/Store.newID","name":"Store.newID","line":156,"end_line":167,"hash":"3b5dad5f971c2dc61f0674404ff4ed0274cb1ccf5ba20b8eb1657464cee22020"}]}
+// mutate4go-manifest-end

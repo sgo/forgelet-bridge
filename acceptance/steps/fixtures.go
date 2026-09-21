@@ -47,13 +47,15 @@ func (w *World) forge(ctx context.Context, name string) (*dashboard.Store, error
 	return store, nil
 }
 
-// configureForge records the root the bridge is configured with.
-func (w *World) configureForge(ctx context.Context, name string) error {
-	if _, err := w.forge(ctx, name); err != nil {
-		return err
+// configureForge records the root the bridge is configured with. The forge has
+// to be one the scenario has already declared: a forge no fixture stands behind
+// would run the bridge against a forge that is not there.
+func (w *World) configureForge(name string) error {
+	store, ok := w.dashboards[name]
+	if !ok {
+		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
 	}
-	root := filepath.Join(w.workDir, name)
-	w.configured = appendUnique(w.configured, root)
+	w.configured = appendUnique(w.configured, store.Root())
 	return nil
 }
 

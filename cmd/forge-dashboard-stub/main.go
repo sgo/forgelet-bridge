@@ -10,12 +10,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
+
+// pollInterval is how often the stub asks the dashboard queue for new work.
+const pollInterval = 100 * time.Millisecond
 
 func main() {
 	root := flag.String("root", "", "forge root whose dashboard this stub is")
@@ -30,47 +31,51 @@ func main() {
 }
 
 func run(root string) error {
-	pendingDir := filepath.Join(root, ".swarmforge", "dashboard", "requests", "pending")
-	wakeLog := filepath.Join(root, ".swarmforge", "dashboard", "wake.log")
-	if err := os.MkdirAll(filepath.Dir(wakeLog), 0o755); err != nil {
+	watcher := &watcher{
+		queue:   dashboard.New(root),
+		wakeLog: filepath.Join(root, ".swarmforge", "dashboard", "wake.log"),
+		woken:   map[string]bool{},
+	}
+	if err := os.MkdirAll(filepath.Dir(watcher.wakeLog), 0o755); err != nil {
 		return err
 	}
 
-	seen := map[string]bool{}
 	for {
-		entries, err := os.ReadDir(pendingDir)
-		if err != nil && !os.IsNotExist(err) {
+		if err := watcher.wakeNewRequests(); err != nil {
+			// A queue that cannot be read this moment — the dashboard may be
+			// answering a request as this poll lists it — is read again on the
+			// next poll, the way the bridge keeps serving a failing tick.
+			log.Println("forge-dashboard-stub:", err)
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
+// watcher records one wake per chat request that lands in a forge's dashboard.
+type watcher struct {
+	queue   *dashboard.Store
+	wakeLog string
+	woken   map[string]bool
+}
+
+// wakeNewRequests records the wake the dashboard would give the lieutenant for
+// every chat request it holds and has not been woken for yet. The queue is the
+// dashboard module's answer to what the lieutenant still has to answer.
+func (w *watcher) wakeNewRequests() error {
+	pending, err := w.queue.Pending()
+	if err != nil {
+		return err
+	}
+	for _, request := range pending {
+		if w.woken[request.ID] {
+			continue
+		}
+		if err := recordWake(w.wakeLog, request.ID, request.Body); err != nil {
 			return err
 		}
-		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-		for _, entry := range entries {
-			if !newRequest(entry, seen) {
-				continue
-			}
-			seen[entry.Name()] = true
-			if err := recordRequest(wakeLog, pendingDir, entry.Name()); err != nil {
-				return err
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
+		w.woken[request.ID] = true
 	}
-}
-
-// newRequest reports whether a queue entry is a chat request the lieutenant has
-// not been woken for yet.
-func newRequest(entry os.DirEntry, seen map[string]bool) bool {
-	return !entry.IsDir() && !seen[entry.Name()] && strings.HasSuffix(entry.Name(), ".request")
-}
-
-// recordRequest reads one request file and records the wake it would give the
-// lieutenant. A file that cannot be read is skipped, the way the dashboard
-// ignores a request it cannot open.
-func recordRequest(wakeLog, pendingDir, name string) error {
-	request, err := os.ReadFile(filepath.Join(pendingDir, name))
-	if err != nil {
-		return nil
-	}
-	return recordWake(wakeLog, name, bodyOf(string(request)))
+	return nil
 }
 
 func recordWake(path, id, body string) error {
@@ -81,9 +86,4 @@ func recordWake(path, id, body string) error {
 	defer file.Close()
 	_, err = fmt.Fprintf(file, "%s\t%s\n", id, body)
 	return err
-}
-
-// bodyOf reads the request body the way the dashboard reads it.
-func bodyOf(request string) string {
-	return dashboard.Parse(request).Body
 }
