@@ -75,11 +75,12 @@ later runs reuse it.
 The invariants the bridge leans on — restart bookkeeping repeats nothing, the
 dashboard request file survives a round trip, a save loads back unchanged,
 example values expand, strangers never reach a forge — are property tests
-behind the `property` build tag, so they stay out of the unit coverage, CRAP,
-and mutation runs:
+written with the standard library's `testing/quick`, behind the `property`
+build tag so they stay out of the unit coverage, CRAP, and mutation runs:
 
 ```sh
 make property          # ./scripts/property.sh
+make test && make property && make acceptance   # everything, in order
 ```
 
 ## Layout

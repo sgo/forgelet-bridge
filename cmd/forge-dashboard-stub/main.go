@@ -44,20 +44,33 @@ func run(root string) error {
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 		for _, entry := range entries {
-			if entry.IsDir() || seen[entry.Name()] || !strings.HasSuffix(entry.Name(), ".request") {
+			if !newRequest(entry, seen) {
 				continue
 			}
 			seen[entry.Name()] = true
-			request, err := os.ReadFile(filepath.Join(pendingDir, entry.Name()))
-			if err != nil {
-				continue
-			}
-			if err := recordWake(wakeLog, entry.Name(), bodyOf(string(request))); err != nil {
+			if err := recordRequest(wakeLog, pendingDir, entry.Name()); err != nil {
 				return err
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// newRequest reports whether a queue entry is a chat request the lieutenant has
+// not been woken for yet.
+func newRequest(entry os.DirEntry, seen map[string]bool) bool {
+	return !entry.IsDir() && !seen[entry.Name()] && strings.HasSuffix(entry.Name(), ".request")
+}
+
+// recordRequest reads one request file and records the wake it would give the
+// lieutenant. A file that cannot be read is skipped, the way the dashboard
+// ignores a request it cannot open.
+func recordRequest(wakeLog, pendingDir, name string) error {
+	request, err := os.ReadFile(filepath.Join(pendingDir, name))
+	if err != nil {
+		return nil
+	}
+	return recordWake(wakeLog, name, bodyOf(string(request)))
 }
 
 func recordWake(path, id, body string) error {

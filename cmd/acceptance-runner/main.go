@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -62,11 +63,22 @@ type options struct {
 func main() {
 	parsed, err := parseOptions(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "acceptance-runner:", err)
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		os.Exit(usageExit(err))
 	}
 	os.Exit(run(parsed, os.Stdin, os.Stdout))
+}
+
+// usageExit prints the usage text for a command line the runner cannot use and
+// reports the exit status the process should end with. Asking for the usage
+// text is not a failure.
+func usageExit(err error) int {
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Fprint(os.Stdout, usage)
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "acceptance-runner:", err)
+	fmt.Fprint(os.Stderr, usage)
+	return 2
 }
 
 // parseOptions reads the runner's command line.

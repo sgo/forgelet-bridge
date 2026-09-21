@@ -39,7 +39,12 @@ func run(ctx context.Context, configPath string, interval time.Duration, log *sl
 	if err != nil {
 		return err
 	}
+	return serve(ctx, cfg, interval, log)
+}
 
+// serve connects to the homeserver and relays every configured forge until the
+// context ends.
+func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *slog.Logger) error {
 	client, err := matrix.Connect(ctx, cfg, log)
 	if err != nil {
 		return err

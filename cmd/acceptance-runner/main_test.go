@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
@@ -133,8 +134,18 @@ func TestGeneratedFeature(t *testing.T) {
 }
 
 func TestParseOptionsRejectsAnUnknownFlag(t *testing.T) {
-	if _, err := parseOptions([]string{"--nope"}); err == nil {
+	_, err := parseOptions([]string{"--nope"})
+	if err == nil {
 		t.Fatal("parseOptions accepted an unknown flag")
+	}
+	if code := usageExit(err); code != 2 {
+		t.Errorf("exit code = %d, want an unusable command line to report the usage error", code)
+	}
+}
+
+func TestUsageExitAsksAreNotFailures(t *testing.T) {
+	if code := usageExit(flag.ErrHelp); code != 0 {
+		t.Errorf("exit code = %d, want asking for the usage text to succeed", code)
 	}
 }
 

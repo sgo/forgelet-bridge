@@ -50,6 +50,75 @@ func TestPropertyPlanIgnoresStrangersMessages(t *testing.T) {
 	}
 }
 
+// TestPropertyPlanAsksForEachEligibleMessageOnce is the conservation rule: a
+// plan asks the forge to create a chat request for every operator message the
+// forge has not seen, and for nothing else.
+func TestPropertyPlanAsksForEachEligibleMessageOnce(t *testing.T) {
+	property := func(st State, events []RoomEvent) bool {
+		st = cloneState(st)
+
+		want := make(map[string]int)
+		for _, event := range events {
+			if operatorAsked(st, operator, event) {
+				want[event.EventID]++
+			}
+		}
+
+		got := make(map[string]int)
+		for _, action := range Plan(operator, st, nil, events) {
+			if action.Kind != CreateForgeRequest {
+				return false
+			}
+			got[action.SourceEventID]++
+		}
+
+		return reflect.DeepEqual(got, want)
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomState(rnd))
+			values[1] = reflect.ValueOf(randomEvents(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestPropertyPlanPostsARequestBeforeAnsweringIt is the ordering rule the
+// thread needs: an answer is threaded under the message the same plan posts, so
+// that message comes first. It holds for the states the bridge can reach: the
+// Matrix client drops an event without an id, so a relayed message always names
+// a non-empty event. (A state that broke that would make the plan ask for a
+// reply with no anchor, which the bridge refuses to carry out.)
+func TestPropertyPlanPostsARequestBeforeAnsweringIt(t *testing.T) {
+	property := func(st State, requests []Request) bool {
+		st = cloneState(st)
+		posted := make(map[string]bool)
+
+		for _, action := range Plan(operator, st, requests, nil) {
+			switch action.Kind {
+			case PostRequestMessage:
+				posted[action.RequestID] = true
+			case PostRequestReply:
+				if action.AnchorEventID == "" && !posted[action.RequestID] {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomState(rnd))
+			values[1] = reflect.ValueOf(randomRequests(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
 // carryOut records the effects a plan's actions have on the bridge's state and
 // on the forge, the way a tick does.
 func carryOut(st *State, requests *[]Request, actions []Action) {
@@ -91,14 +160,20 @@ func randomState(rnd *rand.Rand) State {
 	return State{
 		Threads: randomMap(rnd),
 		Replied: randomMap(rnd),
-		Relayed: randomMap(rnd),
+		// Only a message with an id is relayed: the client drops the rest.
+		Relayed: randomMapWithKeyTokens(rnd, []string{"$event-1", "$event-2", "req-2"}),
 	}
 }
 
 func randomMap(rnd *rand.Rand) map[string]string {
+	return randomMapWithKeyTokens(rnd, randomTokens)
+}
+
+// randomMapWithKeyTokens builds a lookup whose keys come from a set of tokens.
+func randomMapWithKeyTokens(rnd *rand.Rand, keyTokens []string) map[string]string {
 	entries := map[string]string{}
 	for count := rnd.Intn(4); count > 0; count-- {
-		entries[randomToken(rnd)] = randomToken(rnd)
+		entries[keyTokens[rnd.Intn(len(keyTokens))]] = randomToken(rnd)
 	}
 	if len(entries) == 0 {
 		return nil
@@ -138,9 +213,13 @@ func randomEvents(rnd *rand.Rand) []RoomEvent {
 	return events
 }
 
+// randomTokens are the ids and texts a state and a room can hold. It holds the
+// empty string because a request id the dashboard never wrote, or an anchor the
+// bridge never recorded, reads as empty.
+var randomTokens = []string{"", "req-1", "req-2", "$event-1", "$event-2", "text"}
+
 func randomToken(rnd *rand.Rand) string {
-	tokens := []string{"", "req-1", "req-2", "$event-1", "$event-2", "text"}
-	return tokens[rnd.Intn(len(tokens))]
+	return randomTokens[rnd.Intn(len(randomTokens))]
 }
 
 func randomText(rnd *rand.Rand) string {
