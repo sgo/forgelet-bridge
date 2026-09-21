@@ -161,3 +161,24 @@ func TestStepRejectsBadPattern(t *testing.T) {
 		t.Fatal("Step accepted an invalid pattern")
 	}
 }
+
+func TestMatchReturnsTheCapturesOfAKnownStep(t *testing.T) {
+	registry := testRegistry(&recorder{})
+
+	captures, err := registry.Match(`the operator sends the message "is the build green?" into chat room Chat`)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if strings.Join(captures[1:], "|") != "is the build green?|Chat" {
+		t.Errorf("captures = %v, want the message and the room", captures)
+	}
+}
+
+func TestMatchNamesAnUnsupportedStep(t *testing.T) {
+	registry := testRegistry(&recorder{})
+
+	_, err := registry.Match("the operator does something unknown")
+	if err == nil || !strings.Contains(err.Error(), "unsupported step") {
+		t.Fatalf("error = %v, want an unsupported step", err)
+	}
+}

@@ -161,6 +161,34 @@ func TestCreateRequestIDsAreUnique(t *testing.T) {
 	}
 }
 
+func TestRequestForBodyAnswersWithTheNewestMatch(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "req-1", "id: req-1\nstatus: pending\n\nis the build green?\n")
+	writeRequest(t, store.root, doneDir, "req-2", "id: req-2\nstatus: done\nresponse: yes\n\nis the build green?\n")
+	writeRequest(t, store.root, pendingDir, "req-3", "id: req-3\nstatus: pending\n\nsomething else\n")
+
+	request, found, err := store.RequestForBody("is the build green?")
+	if err != nil {
+		t.Fatalf("RequestForBody: %v", err)
+	}
+	if !found || request.ID != "req-2" || !request.Done() {
+		t.Errorf("request = %+v, %v, want the newest match with its answer", request, found)
+	}
+}
+
+func TestRequestForBodyNotFound(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "req-1", "id: req-1\nstatus: pending\n\nis the build green?\n")
+
+	request, found, err := store.RequestForBody("something else")
+	if err != nil {
+		t.Fatalf("RequestForBody: %v", err)
+	}
+	if found {
+		t.Errorf("request = %+v, want no match", request)
+	}
+}
+
 func writeRequest(t *testing.T, root, kind, id, body string) {
 	t.Helper()
 	dir := filepath.Join(root, filepath.FromSlash(requestsDir), kind)

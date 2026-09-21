@@ -1,13 +1,16 @@
 # The bridge builds with the pure-Go Olm implementation, so no libolm system
 # library is needed: every target passes -tags goolm.
 
-.PHONY: build test acceptance acceptance-mutation
+.PHONY: build test property acceptance acceptance-mutation
 
 build:
 	./scripts/build.sh
 
 test:
 	./scripts/test.sh
+
+property:
+	./scripts/property.sh
 
 acceptance:
 	./scripts/acceptance.sh

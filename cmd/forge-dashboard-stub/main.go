@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 func main() {
@@ -68,11 +70,7 @@ func recordWake(path, id, body string) error {
 	return err
 }
 
-// bodyOf reads the request body that follows the blank line.
+// bodyOf reads the request body the way the dashboard reads it.
 func bodyOf(request string) string {
-	_, body, found := strings.Cut(request, "\n\n")
-	if !found {
-		return ""
-	}
-	return strings.TrimRight(body, "\n")
+	return dashboard.Parse(request).Body
 }

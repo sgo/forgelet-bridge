@@ -5,80 +5,6 @@ import (
 	"fmt"
 )
 
-func fixturesRunning(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	for _, name := range forgeNames(captures[1]) {
-		if _, err := w.forge(context.Background(), name); err != nil {
-			return err
-		}
-		if err := w.startDashboard(name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func configuredForgeAndOperator(_ context.Context, world any, captures []string) error {
-	if err := configuredForges(context.Background(), world, []string{captures[0], captures[1]}); err != nil {
-		return err
-	}
-	return configuredOperator(context.Background(), world, []string{captures[0], captures[2]})
-}
-
-func configuredOperator(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	w.operatorID = captures[1]
-	return nil
-}
-
-func configuredForges(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	ctx, cancel := stepContext()
-	defer cancel()
-	for _, name := range forgeNames(captures[1]) {
-		if err := w.configureForge(ctx, name); err != nil {
-			return err
-		}
-	}
-	return w.configure(ctx)
-}
-
-func bridgeStarted(_ context.Context, world any, _ []string) error {
-	w := world.(*World)
-	ctx, cancel := stepContext()
-	defer cancel()
-	return w.startBridge(ctx)
-}
-
-func bridgeRestarted(_ context.Context, world any, _ []string) error {
-	w := world.(*World)
-	w.stopBridge()
-	ctx, cancel := stepContext()
-	defer cancel()
-	return w.startBridge(ctx)
-}
-
-func bridgeCaughtUp(_ context.Context, world any, _ []string) error {
-	w := world.(*World)
-	ctx, cancel := stepContext()
-	defer cancel()
-	return w.caughtUp(ctx)
-}
-
-func bridgeCreatedSpace(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	forgeName, roomName := captures[1], captures[2]
-	ctx, cancel := stepContext()
-	defer cancel()
-	if err := w.startBridge(ctx); err != nil {
-		return err
-	}
-	if _, err := w.waitForSpaceChild(ctx, forgeName, roomName); err != nil {
-		return err
-	}
-	return nil
-}
-
 func operatorSeesSpace(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
@@ -172,6 +98,8 @@ func spaceHoldsOneRoom(_ context.Context, world any, captures []string) error {
 	return expectChatRooms(world.(*World), captures[1], captures[2], true)
 }
 
+// expectChatRooms checks the chat rooms a forge space holds, waiting for the
+// room to show up first.
 func expectChatRooms(w *World, spaceName, roomName string, exactlyOne bool) error {
 	ctx, cancel := stepContext()
 	defer cancel()
@@ -185,15 +113,27 @@ func expectChatRooms(w *World, spaceName, roomName string, exactlyOne bool) erro
 	if len(spaces) == 0 {
 		return fmt.Errorf("the operator does not see a forge space named %s", spaceName)
 	}
-	operator, err := w.operator(ctx)
+	found, err := countChildren(ctx, w, spaces, roomName)
 	if err != nil {
 		return err
 	}
+	if exactlyOne && found != 1 {
+		return fmt.Errorf("the forge space %s holds %d chat rooms named %s, want exactly one", spaceName, found, roomName)
+	}
+	return nil
+}
+
+// countChildren counts the chat rooms named roomName across the given spaces.
+func countChildren(ctx context.Context, w *World, spaceIDs []string, roomName string) (int, error) {
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return 0, err
+	}
 	found := 0
-	for _, spaceID := range spaces {
+	for _, spaceID := range spaceIDs {
 		children, err := operator.SpaceChildren(ctx, spaceID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		for _, child := range children {
 			if name, err := operator.RoomName(ctx, child); err == nil && name == roomName {
@@ -201,10 +141,7 @@ func expectChatRooms(w *World, spaceName, roomName string, exactlyOne bool) erro
 			}
 		}
 	}
-	if exactlyOne && found != 1 {
-		return fmt.Errorf("the forge space %s holds %d chat rooms named %s, want exactly one", spaceName, found, roomName)
-	}
-	return nil
+	return found, nil
 }
 
 func chatRoomEncrypted(_ context.Context, world any, captures []string) error {

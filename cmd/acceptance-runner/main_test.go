@@ -1,10 +1,12 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClassifySeparatesKilledFromInfrastructure(t *testing.T) {
@@ -84,5 +86,65 @@ func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunNeedsAJobOrWorkerMode(t *testing.T) {
+	if code := run(options{}, strings.NewReader(""), io.Discard); code != 2 {
+		t.Errorf("exit code = %d, want the usage error", code)
+	}
+}
+
+func TestRunAnswersWorkerJobs(t *testing.T) {
+	input := strings.NewReader("{\"id\":\"m1\"}\n")
+	output := &strings.Builder{}
+
+	if code := run(options{worker: true}, input, output); code != 0 {
+		t.Fatalf("exit code = %d, want the worker to end cleanly", code)
+	}
+	if !strings.Contains(output.String(), `"outcome":"`+outcomeInfrastructureError+`"`) {
+		t.Errorf("response = %s, want the malformed job reported", output.String())
+	}
+}
+
+func TestRunReportsAFailedJob(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "go.mod"), "module failingprobe\n\ngo 1.24\n")
+	writeFile(t, filepath.Join(dir, "acceptance_test.go"), `package failingprobe
+
+import "testing"
+
+func TestGeneratedFeature(t *testing.T) {
+	t.Fatal("the generated feature failed")
+}
+`)
+	ir := filepath.Join(dir, "feature.json")
+	writeFile(t, ir, `{"name":"probe"}`)
+	output := &strings.Builder{}
+
+	code := run(options{featureJSON: ir, generatedDir: dir, workDir: dir, timeout: time.Minute}, strings.NewReader(""), output)
+
+	if code != 1 {
+		t.Errorf("exit code = %d, want a failed run to report failure", code)
+	}
+	if !strings.Contains(output.String(), "--- FAIL") {
+		t.Errorf("output = %q, want the test output", output.String())
+	}
+}
+
+func TestParseOptionsRejectsAnUnknownFlag(t *testing.T) {
+	if _, err := parseOptions([]string{"--nope"}); err == nil {
+		t.Fatal("parseOptions accepted an unknown flag")
+	}
+}
+
+func TestParseOptionsReadsTheOneShotJob(t *testing.T) {
+	parsed, err := parseOptions([]string{"--feature-json", "ir.json", "--generated-dir", "generated", "--work-dir", "work", "--timeout", "30s"})
+	if err != nil {
+		t.Fatalf("parseOptions: %v", err)
+	}
+	want := options{featureJSON: "ir.json", generatedDir: "generated", workDir: "work", timeout: 30 * time.Second}
+	if parsed != want {
+		t.Errorf("options = %+v, want %+v", parsed, want)
 	}
 }

@@ -55,37 +55,59 @@ func Generate(request Request) (Metadata, error) {
 		featurePath = filepath.Join("features", stem(request.IRPath)+".feature")
 	}
 
-	if err := os.MkdirAll(filepath.Join(request.OutputDir, "metadata"), 0o755); err != nil {
-		return Metadata{}, err
-	}
-	fileName := stem(request.IRPath) + "_acceptance_test.go"
-	filePath := filepath.Join(request.OutputDir, fileName)
-	if err := os.WriteFile(filePath, []byte(entryPoint(feature, featurePath, irPath)), 0o644); err != nil {
+	filePath, err := writeEntryPoint(request.OutputDir, feature, featurePath, irPath)
+	if err != nil {
 		return Metadata{}, err
 	}
 
-	generated := []string{projectRelative(request.ProjectRoot, filePath)}
+	metadata, err := metadataFor(request.ProjectRoot, featurePath, irPath, filePath)
+	if err != nil {
+		return Metadata{}, err
+	}
+	if err := writeMetadata(request.OutputDir, featurePath, metadata); err != nil {
+		return Metadata{}, err
+	}
+	return metadata, nil
+}
+
+// writeEntryPoint writes the generated acceptance test of one feature and
+// returns its path.
+func writeEntryPoint(outputDir string, feature runtime.Feature, featurePath, irPath string) (string, error) {
+	if err := os.MkdirAll(filepath.Join(outputDir, "metadata"), 0o755); err != nil {
+		return "", err
+	}
+	filePath := filepath.Join(outputDir, stem(irPath)+"_acceptance_test.go")
+	if err := os.WriteFile(filePath, []byte(entryPoint(feature, featurePath, irPath)), 0o644); err != nil {
+		return "", err
+	}
+	return filePath, nil
+}
+
+// metadataFor describes one generated feature: the entry point's hash and the
+// paths the acceptance mutator reads.
+func metadataFor(projectRoot, featurePath, irPath, filePath string) (Metadata, error) {
 	hash, err := implementationHash(filePath)
 	if err != nil {
 		return Metadata{}, err
 	}
-	metadata := Metadata{
+	return Metadata{
 		SchemaVersion:      MetadataSchemaVersion,
 		FeaturePath:        filepath.ToSlash(featurePath),
-		IRPath:             filepath.ToSlash(projectRelative(request.ProjectRoot, irPath)),
+		IRPath:             filepath.ToSlash(projectRelative(projectRoot, irPath)),
 		ImplementationHash: "sha256:" + hash,
 		HashScope:          "generated_files",
-		GeneratedFiles:     generated,
-	}
+		GeneratedFiles:     []string{projectRelative(projectRoot, filePath)},
+	}, nil
+}
+
+// writeMetadata writes the metadata file the acceptance mutator reads.
+func writeMetadata(outputDir, featurePath string, metadata Metadata) error {
 	data, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
-		return Metadata{}, err
+		return err
 	}
-	metadataPath := filepath.Join(request.OutputDir, "metadata", MetadataName(featurePath))
-	if err := os.WriteFile(metadataPath, append(data, '\n'), 0o644); err != nil {
-		return Metadata{}, err
-	}
-	return metadata, nil
+	metadataPath := filepath.Join(outputDir, "metadata", MetadataName(featurePath))
+	return os.WriteFile(metadataPath, append(data, '\n'), 0o644)
 }
 
 // MetadataName maps a feature path to its metadata file name: lowercased, with

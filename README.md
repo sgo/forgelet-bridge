@@ -70,6 +70,18 @@ the encrypted round trip is proven by decrypting what the bridge actually sent.
 The first run installs the pinned homeserver into the project-local environment;
 later runs reuse it.
 
+## Property tests
+
+The invariants the bridge leans on — restart bookkeeping repeats nothing, the
+dashboard request file survives a round trip, a save loads back unchanged,
+example values expand, strangers never reach a forge — are property tests
+behind the `property` build tag, so they stay out of the unit coverage, CRAP,
+and mutation runs:
+
+```sh
+make property          # ./scripts/property.sh
+```
+
 ## Layout
 
 - `cmd/forgelet-bridge` — the bridge process.

@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/relay"
@@ -49,10 +51,11 @@ type sentMessage struct {
 }
 
 type fakeRooms struct {
-	mu      sync.Mutex
-	ensured []string
-	sent    []sentMessage
-	events  []relay.RoomEvent
+	mu       sync.Mutex
+	ensured  []string
+	sent     []sentMessage
+	events   []relay.RoomEvent
+	drainErr error
 }
 
 func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, error) {
@@ -72,6 +75,9 @@ func (r *fakeRooms) SendText(_ context.Context, roomID, body, threadAnchor strin
 func (r *fakeRooms) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.drainErr != nil {
+		return nil, r.drainErr
+	}
 	events := r.events
 	r.events = nil
 	return events, nil
@@ -273,6 +279,69 @@ func TestTickFailsWithoutADashboardQueue(t *testing.T) {
 
 	if err := built.Tick(context.Background()); err == nil {
 		t.Fatal("Tick succeeded without a dashboard queue")
+	}
+}
+
+func TestRunKeepsRelayingUntilTheContextEnds(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, time.Millisecond) }()
+
+	waitForSent(t, rooms)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Errorf("Run = %v, want the cancelled context", err)
+	}
+}
+
+func TestRunSurvivesAFailingTick(t *testing.T) {
+	rooms := &fakeRooms{drainErr: errors.New("the homeserver is away")}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, time.Millisecond) }()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Errorf("Run = %v, want a failing tick to leave the bridge running", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, StatusName)); err == nil {
+		t.Error("a failed tick wrote a status")
+	}
+}
+
+func TestRunTicksOnceWithoutWaitingForTheInterval(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, time.Hour) }()
+
+	waitForSent(t, rooms)
+	cancel()
+	<-done
+}
+
+// waitForSent waits for the bridge to post its first chat message.
+func waitForSent(t *testing.T, rooms *fakeRooms) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if len(rooms.sentMessages()) > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the bridge never posted a chat message")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

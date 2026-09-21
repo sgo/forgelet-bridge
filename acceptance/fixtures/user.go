@@ -191,7 +191,7 @@ func (u *User) WaitForMessage(ctx context.Context, roomID, body string, timeout 
 		if time.Now().After(deadline) {
 			return Message{}, fmt.Errorf("%s never saw the message %q in %s", u.UserID, body, roomID)
 		}
-		if err := sleep(ctx, 100*time.Millisecond); err != nil {
+		if err := Sleep(ctx, 100*time.Millisecond); err != nil {
 			return Message{}, err
 		}
 	}
@@ -209,7 +209,7 @@ func (u *User) WaitForThreadReply(ctx context.Context, roomID, anchorEventID, bo
 		if time.Now().After(deadline) {
 			return Message{}, fmt.Errorf("%s never saw the thread reply %q under %s", u.UserID, body, anchorEventID)
 		}
-		if err := sleep(ctx, 100*time.Millisecond); err != nil {
+		if err := Sleep(ctx, 100*time.Millisecond); err != nil {
 			return Message{}, err
 		}
 	}
@@ -227,7 +227,7 @@ func (u *User) WaitForInvite(ctx context.Context, roomID string, timeout time.Du
 		if time.Now().After(deadline) {
 			return fmt.Errorf("%s was never invited to %s", u.UserID, roomID)
 		}
-		if err := sleep(ctx, 100*time.Millisecond); err != nil {
+		if err := Sleep(ctx, 100*time.Millisecond); err != nil {
 			return err
 		}
 	}
@@ -339,7 +339,7 @@ func (u *User) captureMembership(_ context.Context, evt *event.Event) {
 	switch content.Membership {
 	case event.MembershipInvite:
 		u.everInvited[evt.RoomID.String()] = true
-		if !contains(u.invites, evt.RoomID.String()) && !contains(u.joined, evt.RoomID.String()) {
+		if !Contains(u.invites, evt.RoomID.String()) && !Contains(u.joined, evt.RoomID.String()) {
 			u.invites = append(u.invites, evt.RoomID.String())
 		}
 		roomID := evt.RoomID
@@ -350,7 +350,7 @@ func (u *User) captureMembership(_ context.Context, evt *event.Event) {
 		}()
 	case event.MembershipJoin:
 		u.invites = remove(u.invites, evt.RoomID.String())
-		if !contains(u.joined, evt.RoomID.String()) {
+		if !Contains(u.joined, evt.RoomID.String()) {
 			u.joined = append(u.joined, evt.RoomID.String())
 		}
 	}
@@ -364,7 +364,7 @@ func (u *User) Rooms(ctx context.Context) ([]string, error) {
 	}
 	rooms := append([]string(nil), joined...)
 	for _, invited := range u.Invites() {
-		if !contains(rooms, invited) {
+		if !Contains(rooms, invited) {
 			rooms = append(rooms, invited)
 		}
 	}
@@ -391,7 +391,8 @@ func zerologFor(component string) zerolog.Logger {
 		Logger()
 }
 
-func sleep(ctx context.Context, d time.Duration) error {
+// Sleep waits for d, or for the context to end, whichever comes first.
+func Sleep(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
@@ -402,7 +403,8 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func contains(list []string, value string) bool {
+// Contains reports whether a list of room ids holds one room.
+func Contains(list []string, value string) bool {
 	for _, item := range list {
 		if item == value {
 			return true

@@ -46,11 +46,7 @@ func run(ctx context.Context, configPath string, interval time.Duration, log *sl
 	}
 	defer client.Close()
 
-	stores := make(map[string]bridge.ForgeStore, len(cfg.ForgeRoots))
-	for _, root := range cfg.ForgeRoots {
-		stores[root] = dashboard.Queue{Store: dashboard.New(root)}
-	}
-	relay, err := bridge.New(cfg, client, stores, log)
+	relay, err := bridge.New(cfg, client, stores(cfg), log)
 	if err != nil {
 		return err
 	}
@@ -58,4 +54,13 @@ func run(ctx context.Context, configPath string, interval time.Duration, log *sl
 		return fmt.Errorf("run bridge: %w", err)
 	}
 	return nil
+}
+
+// stores opens one dashboard chat-request queue per configured forge root.
+func stores(cfg config.Config) map[string]bridge.ForgeStore {
+	queues := make(map[string]bridge.ForgeStore, len(cfg.ForgeRoots))
+	for _, root := range cfg.ForgeRoots {
+		queues[root] = dashboard.Queue{Store: dashboard.New(root)}
+	}
+	return queues
 }

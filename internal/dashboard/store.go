@@ -109,7 +109,7 @@ func (s *Store) Answer(id, response string) error {
 	if err != nil {
 		return err
 	}
-	request := parse(string(data))
+	request := Parse(string(data))
 	request.Status = StatusDone
 	request.Response = strings.TrimSpace(response)
 	request.UpdatedAt = timestamp(s.now())
@@ -161,7 +161,7 @@ func (s *Store) readDir(kind string) ([]Request, error) {
 		if err != nil {
 			return nil, err
 		}
-		request := parse(string(data))
+		request := Parse(string(data))
 		if request.ID == "" {
 			request.ID = strings.TrimSuffix(entry.Name(), fileSuffix)
 		}
@@ -210,35 +210,36 @@ func render(r Request) string {
 	return b.String()
 }
 
-// parse reads a request file: header lines, a blank line, then the body.
-func parse(text string) Request {
+// Parse reads a request file: header lines, a blank line, then the body. It is
+// the way every reader of a dashboard request file, in this process or the
+// dashboard's own tools, gets at the request's fields.
+func Parse(text string) Request {
 	header, body, found := strings.Cut(text, "\n\n")
 	if !found {
 		header, body = text, ""
 	}
 
-	request := Request{Body: strings.TrimRight(body, "\n")}
+	request := Request{}
+	// The same fields render writes, so the two stay in step.
+	fields := map[string]*string{
+		"id":         &request.ID,
+		"status":     &request.Status,
+		"role":       &request.Role,
+		"created_at": &request.CreatedAt,
+		"updated_at": &request.UpdatedAt,
+		"response":   &request.Response,
+	}
 	for _, line := range strings.Split(header, "\n") {
 		key, value, ok := strings.Cut(line, ": ")
 		if !ok {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		switch key {
-		case "id":
-			request.ID = value
-		case "status":
-			request.Status = value
-		case "role":
-			request.Role = value
-		case "created_at":
-			request.CreatedAt = value
-		case "updated_at":
-			request.UpdatedAt = value
-		case "response":
-			request.Response = strings.ReplaceAll(value, `\n`, "\n")
+		if field, known := fields[key]; known {
+			*field = strings.TrimSpace(value)
 		}
 	}
+	request.Response = strings.ReplaceAll(request.Response, `\n`, "\n")
+	request.Body = strings.TrimRight(body, "\n")
 	return request
 }
 

@@ -81,14 +81,17 @@ func (s State) Anchor(requestID string) (string, bool) {
 // Plan works out the actions that catch the room up with the forge and the
 // forge up with the room. Messages from anyone but the operator are ignored.
 func Plan(operator string, st State, requests []Request, events []RoomEvent) []Action {
-	var actions []Action
+	actions := operatorRequests(operator, st, events)
+	return append(actions, forgeRequests(st, requests)...)
+}
 
-	origins := relayedOrigins(st)
+// operatorRequests plans the chat requests the operator's own messages ask
+// for: every message from the operator that has not been handed to the forge
+// yet becomes one.
+func operatorRequests(operator string, st State, events []RoomEvent) []Action {
+	var actions []Action
 	for _, event := range events {
-		if event.Sender != operator || strings.TrimSpace(event.Body) == "" {
-			continue
-		}
-		if _, relayed := st.Relayed[event.EventID]; relayed {
+		if !operatorAsked(st, operator, event) {
 			continue
 		}
 		actions = append(actions, Action{
@@ -97,7 +100,24 @@ func Plan(operator string, st State, requests []Request, events []RoomEvent) []A
 			SourceEventID: event.EventID,
 		})
 	}
+	return actions
+}
 
+// operatorAsked reports whether a room event is an operator message the forge
+// has not seen the request for yet.
+func operatorAsked(st State, operator string, event RoomEvent) bool {
+	if event.Sender != operator || strings.TrimSpace(event.Body) == "" {
+		return false
+	}
+	_, relayed := st.Relayed[event.EventID]
+	return !relayed
+}
+
+// forgeRequests plans the chat messages and thread replies the forge's
+// requests ask for.
+func forgeRequests(st State, requests []Request) []Action {
+	var actions []Action
+	origins := relayedOrigins(st)
 	for _, request := range requests {
 		if strings.TrimSpace(request.Body) == "" {
 			continue
@@ -125,7 +145,6 @@ func Plan(operator string, st State, requests []Request, events []RoomEvent) []A
 			AnchorEventID: anchor,
 		})
 	}
-
 	return actions
 }
 

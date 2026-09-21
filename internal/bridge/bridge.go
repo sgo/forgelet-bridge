@@ -151,64 +151,23 @@ func (b *Bridge) Tick(ctx context.Context) error {
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
-	switch action.Kind {
-	case relay.PostRequestMessage:
-		eventID, err := b.rooms.SendText(ctx, room.RoomID, action.Body, "")
-		if err != nil {
-			return fmt.Errorf("post chat message for %s: %w", action.RequestID, err)
-		}
-		b.state.Relay.Threads[action.RequestID] = eventID
-
-	case relay.PostRequestReply:
-		anchor := action.AnchorEventID
-		if anchor == "" {
-			anchor, _ = b.state.Relay.Anchor(action.RequestID)
-		}
-		if anchor == "" {
-			return fmt.Errorf("no chat message to thread the answer of %s under", action.RequestID)
-		}
-		eventID, err := b.rooms.SendText(ctx, room.RoomID, action.Body, anchor)
-		if err != nil {
-			return fmt.Errorf("post chat reply for %s: %w", action.RequestID, err)
-		}
-		b.state.Relay.Replied[action.RequestID] = eventID
-
-	case relay.CreateForgeRequest:
-		requestID, err := store.CreateRequest(action.Body)
-		if err != nil {
-			return fmt.Errorf("queue chat request for %s: %w", root, err)
-		}
-		b.state.Relay.Relayed[action.SourceEventID] = requestID
-		b.state.Relay.Threads[requestID] = action.SourceEventID
-
-	default:
-		return fmt.Errorf("unknown relay action %q", action.Kind)
+	if err := b.carryOut(ctx, root, store, room, action); err != nil {
+		return err
 	}
-
 	return b.state.Save(b.statePath)
 }
 
-func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
-	if room, ok := b.provisioned[root]; ok {
-		return room, nil
+// carryOut is the one piece of work an action asks for.
+func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
+	switch action.Kind {
+	case relay.PostRequestMessage:
+		return b.postRequestMessage(ctx, room, action)
+	case relay.PostRequestReply:
+		return b.postRequestReply(ctx, room, action)
+	case relay.CreateForgeRequest:
+		return b.createForgeRequest(store, root, action)
 	}
-	if forge, ok := b.state.ForgeFor(root); ok {
-		room := Room{SpaceID: forge.SpaceID, RoomID: forge.RoomID}
-		b.provisioned[root] = room
-		return room, nil
-	}
-
-	room, err := b.rooms.EnsureForge(ctx, config.ForgeName(root), b.cfg.Operator)
-	if err != nil {
-		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
-	}
-	b.state.RecordForge(root, state.Forge{SpaceID: room.SpaceID, RoomID: room.RoomID})
-	if err := b.state.Save(b.statePath); err != nil {
-		return Room{}, err
-	}
-	b.provisioned[root] = room
-	b.log.Info("provisioned forge", "root", root, "space", room.SpaceID, "room", room.RoomID)
-	return room, nil
+	return fmt.Errorf("unknown relay action %q", action.Kind)
 }
 
 func (b *Bridge) writeStatus(status Status) error {

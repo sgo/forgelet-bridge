@@ -22,6 +22,10 @@ const (
 	outcomeSuccess             = "test_success"
 	outcomeFailure             = "test_failure"
 	outcomeInfrastructureError = "infrastructure_error"
+
+	// defaultJobTimeout is how long one run may take when a job names no
+	// timeout of its own.
+	defaultJobTimeout = 10 * time.Minute
 )
 
 // job is one mutation the mutator asks the runner to evaluate.
@@ -42,37 +46,76 @@ type response struct {
 	Duration int64  `json:"duration"`
 }
 
-func main() {
-	worker := flag.Bool("worker", false, "stay hot and answer mutation jobs on stdin/stdout")
-	featureJSON := flag.String("feature-json", "", "JSON IR to run the generated tests against")
-	generatedDir := flag.String("generated-dir", "", "directory holding the generated acceptance tests")
-	workDir := flag.String("work-dir", "", "scratch directory for this run")
-	timeout := flag.Duration("timeout", 10*time.Minute, "how long one run may take")
-	flag.Parse()
+const usage = `usage: acceptance-runner --feature-json <ir> --generated-dir <dir> [--work-dir <dir>] [--timeout 10m]
+   or: acceptance-runner --worker
+`
 
-	if *worker {
-		if err := serveReader(os.Stdin, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, "acceptance-runner:", err)
-			os.Exit(1)
-		}
-		return
-	}
-	if *featureJSON == "" || *generatedDir == "" {
-		fmt.Fprintln(os.Stderr, "usage: acceptance-runner --feature-json <ir> --generated-dir <dir> [--work-dir <dir>] [--timeout 10m]")
-		fmt.Fprintln(os.Stderr, "   or: acceptance-runner --worker")
+// options are the runner's command-line options.
+type options struct {
+	worker       bool
+	featureJSON  string
+	generatedDir string
+	workDir      string
+	timeout      time.Duration
+}
+
+func main() {
+	parsed, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "acceptance-runner:", err)
+		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
+	}
+	os.Exit(run(parsed, os.Stdin, os.Stdout))
+}
+
+// parseOptions reads the runner's command line.
+func parseOptions(args []string) (options, error) {
+	flags := flag.NewFlagSet("acceptance-runner", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	worker := flags.Bool("worker", false, "stay hot and answer mutation jobs on stdin/stdout")
+	featureJSON := flags.String("feature-json", "", "JSON IR to run the generated tests against")
+	generatedDir := flags.String("generated-dir", "", "directory holding the generated acceptance tests")
+	workDir := flags.String("work-dir", "", "scratch directory for this run")
+	timeout := flags.Duration("timeout", defaultJobTimeout, "how long one run may take")
+	if err := flags.Parse(args); err != nil {
+		return options{}, err
+	}
+	return options{
+		worker:       *worker,
+		featureJSON:  *featureJSON,
+		generatedDir: *generatedDir,
+		workDir:      *workDir,
+		timeout:      *timeout,
+	}, nil
+}
+
+// run answers jobs in worker mode, or runs the one job the options name, and
+// returns the exit status of the run.
+func run(parsed options, in io.Reader, out io.Writer) int {
+	if parsed.worker {
+		if err := serveReader(in, out); err != nil {
+			fmt.Fprintln(os.Stderr, "acceptance-runner:", err)
+			return 1
+		}
+		return 0
+	}
+	if parsed.featureJSON == "" || parsed.generatedDir == "" {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
 	}
 	result := evaluate(job{
 		ID:           "run",
-		FeatureJSON:  *featureJSON,
-		GeneratedDir: *generatedDir,
-		WorkDir:      *workDir,
-		Timeout:      timeout.String(),
+		FeatureJSON:  parsed.featureJSON,
+		GeneratedDir: parsed.generatedDir,
+		WorkDir:      parsed.workDir,
+		Timeout:      parsed.timeout.String(),
 	})
-	fmt.Print(result.Output)
+	fmt.Fprint(out, result.Output)
 	if result.Outcome != outcomeSuccess {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // serveReader answers jobs until the input closes.
@@ -102,12 +145,7 @@ func serveReader(in io.Reader, out io.Writer) error {
 // evaluate runs one job and classifies the outcome.
 func evaluate(incoming job) response {
 	started := time.Now()
-	timeout := 10 * time.Minute
-	if incoming.Timeout != "" {
-		if parsed, err := time.ParseDuration(incoming.Timeout); err == nil && parsed > 0 {
-			timeout = parsed
-		}
-	}
+	timeout := jobTimeout(incoming)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -118,22 +156,7 @@ func evaluate(incoming job) response {
 		return result
 	}
 
-	// The mutator names its work files relative to the project, while the
-	// generated tests run inside the generated directory.
-	base := projectRoot(incoming.GeneratedDir)
-	featureJSON := absolute(base, incoming.FeatureJSON)
-	workDir := absolute(base, incoming.WorkDir)
-
-	cmd := exec.CommandContext(ctx, "go", "test", "-tags", "goolm", "-count=1", ".")
-	cmd.Dir = incoming.GeneratedDir
-	env := append(os.Environ(),
-		"FORGELET_ACCEPTANCE_IR="+featureJSON,
-	)
-	if workDir != "" {
-		env = append(env, "FORGELET_ACCEPTANCE_WORK_DIR="+filepath.Join(workDir, "acceptance-run"))
-	}
-	cmd.Env = env
-	output, err := cmd.CombinedOutput()
+	output, err := jobCommand(ctx, incoming).CombinedOutput()
 
 	result.Output = string(output)
 	result.Duration = time.Since(started).Nanoseconds()
@@ -145,6 +168,36 @@ func evaluate(incoming job) response {
 		result.Error = "timed out after " + timeout.String()
 	}
 	return result
+}
+
+// jobTimeout is how long one job may run: the job's own timeout when it names
+// a usable one, the default otherwise.
+func jobTimeout(incoming job) time.Duration {
+	if incoming.Timeout == "" {
+		return defaultJobTimeout
+	}
+	parsed, err := time.ParseDuration(incoming.Timeout)
+	if err != nil || parsed <= 0 {
+		return defaultJobTimeout
+	}
+	return parsed
+}
+
+// jobCommand builds the test command that runs one mutated IR against the
+// generated acceptance tests.
+func jobCommand(ctx context.Context, incoming job) *exec.Cmd {
+	// The mutator names its work files relative to the project, while the
+	// generated tests run inside the generated directory.
+	base := projectRoot(incoming.GeneratedDir)
+	workDir := absolute(base, incoming.WorkDir)
+
+	cmd := exec.CommandContext(ctx, "go", "test", "-tags", "goolm", "-count=1", ".")
+	cmd.Dir = incoming.GeneratedDir
+	cmd.Env = append(os.Environ(), "FORGELET_ACCEPTANCE_IR="+absolute(base, incoming.FeatureJSON))
+	if workDir != "" {
+		cmd.Env = append(cmd.Env, "FORGELET_ACCEPTANCE_WORK_DIR="+filepath.Join(workDir, "acceptance-run"))
+	}
+	return cmd
 }
 
 // absolute resolves a job path against the base directory.
