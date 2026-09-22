@@ -107,6 +107,33 @@ func (w *World) operator(ctx context.Context) (*fixtures.User, error) {
 	return w.user(ctx, w.operatorID)
 }
 
+// addUserToRoom brings a fixture client into a room the bridge only invited the
+// operator to, the way the operator would add a friend in Element. The room is
+// named in the failure the way the step that asked for it names it.
+func (w *World) addUserToRoom(ctx context.Context, userID, roomID, description string) error {
+	user, err := w.user(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if rooms, err := user.Rooms(ctx); err == nil && fixtures.Contains(rooms, roomID) {
+		return nil
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	if err := operator.Invite(ctx, roomID, userID); err != nil {
+		return err
+	}
+	return waitFor(ctx, fmt.Sprintf("%s never joined %s", userID, description), func() (bool, error) {
+		joined, err := user.JoinedRoomIDs(ctx)
+		if err != nil {
+			return false, err
+		}
+		return fixtures.Contains(joined, roomID), nil
+	})
+}
+
 // configure records the forge roots and operator the bridge is configured
 // with, and writes the bridge configuration file.
 func (w *World) configure(ctx context.Context) error {

@@ -109,26 +109,23 @@ func (c *Client) Close() error {
 
 // DrainEvents returns the chat messages seen since the last drain.
 func (c *Client) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
-	var drained []relay.RoomEvent
-	for {
-		select {
-		case event := <-c.events:
-			drained = append(drained, event)
-		default:
-			return drained, nil
-		}
-	}
+	return drain(c.events), nil
 }
 
 // DrainReactions returns the reactions seen since the last drain.
 func (c *Client) DrainReactions(_ context.Context) ([]relay.Reaction, error) {
-	var drained []relay.Reaction
+	return drain(c.reactions), nil
+}
+
+// drain takes everything a channel holds right now.
+func drain[T any](from chan T) []T {
+	var drained []T
 	for {
 		select {
-		case reaction := <-c.reactions:
-			drained = append(drained, reaction)
+		case item := <-from:
+			drained = append(drained, item)
 		default:
-			return drained, nil
+			return drained
 		}
 	}
 }

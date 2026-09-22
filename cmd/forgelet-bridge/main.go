@@ -66,20 +66,25 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 
 // stores opens one dashboard chat-request queue per configured forge.
 func stores(cfg config.Config) map[string]bridge.ForgeStore {
-	queues := make(map[string]bridge.ForgeStore, len(cfg.Forges))
-	for _, forge := range cfg.Forges {
-		queues[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
-	}
-	return queues
+	return byForge(cfg, func(root string) bridge.ForgeStore {
+		return dashboard.Queue{Store: dashboard.New(root)}
+	})
 }
 
 // approvals opens the approvals of every configured forge.
 func approvals(cfg config.Config) map[string]bridge.ApprovalStore {
-	queues := make(map[string]bridge.ApprovalStore, len(cfg.Forges))
+	return byForge(cfg, func(root string) bridge.ApprovalStore {
+		return approvalspkg.Queue{Store: approvalspkg.New(root)}
+	})
+}
+
+// byForge opens one adapter per configured forge, keyed by the forge's root.
+func byForge[T any](cfg config.Config, open func(root string) T) map[string]T {
+	opened := make(map[string]T, len(cfg.Forges))
 	for _, forge := range cfg.Forges {
-		queues[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
+		opened[forge.Root] = open(forge.Root)
 	}
-	return queues
+	return opened
 }
 
 // mutate4go-manifest-begin
