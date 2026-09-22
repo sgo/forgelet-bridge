@@ -1,12 +1,20 @@
 package dashboard
 
-import "github.com/unclebob/forgelet-bridge/internal/relay"
+import (
+	"context"
+
+	"github.com/unclebob/forgelet-bridge/internal/relay"
+)
 
 // Queue is the dashboard request queue seen as a relay forge store: the
 // bridge cares about the request text and the answer, not the dashboard's
 // bookkeeping.
 type Queue struct {
 	Store *Store
+	// Root and ConfiguredURL find the forge's dashboard, which is what takes a
+	// new request, so the wake it gives comes with it.
+	Root          string
+	ConfiguredURL string
 }
 
 // Requests returns the pending and answered requests in relay form.
@@ -26,9 +34,17 @@ func (q Queue) Requests() ([]relay.Request, error) {
 	return relayed, nil
 }
 
-// CreateRequest queues a chat request for the lieutenant.
-func (q Queue) CreateRequest(body string) (string, error) {
-	return q.Store.CreateRequest(body)
+// CreateRequest gives the chat request to the forge's dashboard the way a
+// client does: the dashboard queues it and wakes the lieutenant.
+func (q Queue) CreateRequest(ctx context.Context, body string) (string, error) {
+	url, err := URL(q.Root, q.ConfiguredURL)
+	if err != nil {
+		return "", err
+	}
+	if err := NewAPI(url).Chat(ctx, body); err != nil {
+		return "", err
+	}
+	return "", nil
 }
 
 // mutate4go-manifest-begin

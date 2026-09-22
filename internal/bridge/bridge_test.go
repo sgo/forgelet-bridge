@@ -30,7 +30,7 @@ func (s *fakeStore) Requests() ([]relay.Request, error) {
 	return append([]relay.Request(nil), s.requests...), nil
 }
 
-func (s *fakeStore) CreateRequest(body string) (string, error) {
+func (s *fakeStore) CreateRequest(_ context.Context, body string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.created = append(s.created, body)
@@ -606,5 +606,28 @@ func TestBackOffSlowsRetriesDownAndIsCapped(t *testing.T) {
 	}
 	if got := backOff(time.Millisecond, interval); got != interval {
 		t.Errorf("back off = %v, want it never below the interval %v", got, interval)
+	}
+}
+
+func TestPendingRequestsArePairedWithWhatTheForgeQueued(t *testing.T) {
+	store := &fakeStore{}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+	rooms.push(relay.RoomEvent{RoomID: "!room-forge-a", EventID: "$operator-message", Sender: operator, Body: "is the build green?"})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+
+	state := built.State().Relay
+	if len(state.Pending) != 0 {
+		t.Fatalf("pending = %+v, want the queue to have shown the request", state.Pending)
+	}
+	requestID := state.Relayed["$operator-message"]
+	if requestID == "" {
+		t.Fatal("the operator's message was never paired with its chat request")
+	}
+	if anchor, ok := state.Anchor(requestID); !ok || anchor != "$operator-message" {
+		t.Errorf("anchor = %q, %v, want the operator's own message", anchor, ok)
 	}
 }

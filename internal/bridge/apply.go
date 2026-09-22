@@ -36,16 +36,51 @@ func (b *Bridge) postRequestReply(ctx context.Context, room Room, action relay.A
 	return nil
 }
 
-// createForgeRequest hands the operator's message to the forge as a chat
-// request, threaded under the operator's own message.
-func (b *Bridge) createForgeRequest(store ForgeStore, root string, action relay.Action) error {
-	requestID, err := store.CreateRequest(action.Body)
-	if err != nil {
+// createForgeRequest hands the operator's message to the forge, which is what
+// wakes the lieutenant. The forge answers that it took the message, not which
+// request it became, so the pairing waits for the queue to show it.
+func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root string, action relay.Action) error {
+	if _, err := store.CreateRequest(ctx, action.Body); err != nil {
 		return fmt.Errorf("queue chat request for %s: %w", root, err)
 	}
-	b.state.Relay.Relayed[action.SourceEventID] = requestID
-	b.state.Relay.Threads[requestID] = action.SourceEventID
+	b.state.Relay.EnsureMaps()
+	b.state.Relay.Pending[action.SourceEventID] = action.Body
 	return nil
+}
+
+// pairPendingRequests pairs each message the forge has taken with the request
+// it became, so the answer can be threaded under the operator's own message.
+func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
+	b.state.Relay.EnsureMaps()
+	if len(b.state.Relay.Pending) == 0 {
+		return 0, nil
+	}
+	requests, err := store.Requests()
+	if err != nil {
+		return 0, fmt.Errorf("read the queue back: %w", err)
+	}
+	taken := map[string]bool{}
+	for _, requestID := range b.state.Relay.Relayed {
+		taken[requestID] = true
+	}
+	paired := 0
+	for eventID, body := range b.state.Relay.Pending {
+		for _, request := range requests {
+			if request.Body != body || taken[request.ID] {
+				continue
+			}
+			taken[request.ID] = true
+			b.state.Relay.Relayed[eventID] = request.ID
+			b.state.Relay.Threads[request.ID] = eventID
+			delete(b.state.Relay.Pending, eventID)
+			paired++
+			break
+		}
+	}
+	if paired == 0 {
+		return 0, nil
+	}
+	return paired, b.state.Save(b.statePath)
 }
 
 // mutate4go-manifest-begin

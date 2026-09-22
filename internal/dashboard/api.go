@@ -115,6 +115,13 @@ type ApprovalRequest struct {
 	Artifacts []string `json:"artifacts"`
 }
 
+// Chat asks the dashboard to take a chat message the way its clients give it:
+// the dashboard queues the request and wakes the lieutenant, which is why the
+// bridge must not write the queue itself.
+func (a *API) Chat(ctx context.Context, text string) error {
+	return a.call(ctx, http.MethodPost, "/api/chat", map[string]string{"text": text}, nil)
+}
+
 // Approvals reads the approvals the dashboard is showing.
 func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 	var state State
