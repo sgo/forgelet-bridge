@@ -20,6 +20,9 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 			ApprovalsRoomID: forge.ApprovalsRoomID,
 			ActivityRoomID:  forge.ActivityRoomID,
 		}
+		if err := b.rooms.RefreshForge(ctx, room, b.cfg.ForgeName(root), b.cfg.Operator); err != nil {
+			return Room{}, fmt.Errorf("apply the forge's name to %s: %w", root, err)
+		}
 		b.provisioned[root] = room
 		return room, nil
 	}

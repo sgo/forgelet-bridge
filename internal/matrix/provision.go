@@ -76,6 +76,52 @@ func (c *Client) ensureRoom(ctx context.Context, spaceID, operator, forgeName, r
 	return roomID, nil
 }
 
+// RefreshForge applies the forge's name, and the operator's membership, to the
+// rooms the bridge already has: a restart leaves a forge named the way its
+// configuration says it is, whether those rooms are new or already there.
+func (c *Client) RefreshForge(ctx context.Context, room bridge.Room, forgeName, operator string) error {
+	if err := c.ensureRoomNamed(ctx, room.SpaceID, forgeName); err != nil {
+		return err
+	}
+	if err := c.ensureInvited(ctx, room.SpaceID, operator); err != nil {
+		return err
+	}
+	for roomID, name := range map[string]string{
+		room.RoomID:          config.RoomName,
+		room.ApprovalsRoomID: config.ApprovalsRoomName,
+		room.ActivityRoomID:  config.ActivityRoomName,
+	} {
+		if roomID == "" {
+			continue
+		}
+		if err := c.ensureRoomNamed(ctx, roomID, name); err != nil {
+			return err
+		}
+		if err := c.ensureInvited(ctx, roomID, operator); err != nil {
+			return err
+		}
+		if err := c.ensureDisplayName(ctx, roomID, forgeName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureRoomNamed applies a room's name when it is not what it should be.
+func (c *Client) ensureRoomNamed(ctx context.Context, roomID, name string) error {
+	current, err := c.roomName(ctx, id.RoomID(roomID))
+	if err != nil {
+		return err
+	}
+	if current == name {
+		return nil
+	}
+	if _, err := c.cli.SendStateEvent(ctx, id.RoomID(roomID), event.StateRoomName, "", &event.RoomNameEventContent{Name: name}); err != nil {
+		return fmt.Errorf("name room %s %q: %w", roomID, name, err)
+	}
+	return nil
+}
+
 // ensureDisplayName makes the bridge post in a room under the forge's name, so
 // the operator can tell one forge's messages from another's on their phone.
 func (c *Client) ensureDisplayName(ctx context.Context, roomID, displayName string) error {
