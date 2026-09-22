@@ -72,8 +72,18 @@ type ApprovalAction struct {
 // was resolved. Only the operator's own approval reaction, or a reply of theirs
 // in the approval's thread, decides anything.
 func PlanApprovals(operator string, st State, pending []Approval, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
-	var actions []ApprovalAction
+	byMessage, byKey := approvalsByMessage(st, pending)
 
+	actions := approvedByReaction(operator, st, byMessage, reactions)
+	actions = append(actions, sentBackByReply(operator, st, byMessage, replies)...)
+	actions = append(actions, unpostedApprovals(st, pending)...)
+	return append(actions, resolutionsToReport(st, byKey)...)
+}
+
+// approvalsByMessage indexes the approvals two ways: by the message the room
+// holds for them, and by their key, so a lookup can answer both "which
+// approval is this event about" and "is this approval still pending".
+func approvalsByMessage(st State, pending []Approval) (map[string]Approval, map[string]Approval) {
 	byMessage := map[string]Approval{}
 	byKey := map[string]Approval{}
 	for _, approval := range pending {
@@ -82,7 +92,12 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 			byMessage[messageID] = approval
 		}
 	}
+	return byMessage, byKey
+}
 
+// approvedByReaction plans the approvals the operator approved by reacting.
+func approvedByReaction(operator string, st State, byMessage map[string]Approval, reactions []Reaction) []ApprovalAction {
+	var actions []ApprovalAction
 	for _, reaction := range reactions {
 		if reaction.Sender != operator || reaction.Key != ApproveReaction {
 			continue
@@ -98,7 +113,13 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 			Resolution: ResolutionApproved,
 		})
 	}
+	return actions
+}
 
+// sentBackByReply plans the approvals the operator sent back with feedback in
+// the approval's thread.
+func sentBackByReply(operator string, st State, byMessage map[string]Approval, replies []RoomEvent) []ApprovalAction {
+	var actions []ApprovalAction
 	for _, reply := range replies {
 		if reply.Sender != operator || strings.TrimSpace(reply.Body) == "" || reply.ThreadRoot == "" {
 			continue
@@ -115,15 +136,28 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 			Feedback:   reply.Body,
 		})
 	}
+	return actions
+}
 
+// unpostedApprovals plans the messages for the approvals the room has not seen
+// yet.
+func unpostedApprovals(st State, pending []Approval) []ApprovalAction {
+	var actions []ApprovalAction
 	for _, approval := range pending {
 		if st.Approvals[approval.Key].MessageID == "" {
 			actions = append(actions, ApprovalAction{Kind: PostApproval, Key: approval.Key, Approval: approval})
 		}
 	}
+	return actions
+}
 
+// resolutionsToReport plans the replies for the approvals that are no longer
+// pending - resolved on the desktop, or by the decision just carried back -
+// and have not been reported in their thread yet.
+func resolutionsToReport(st State, byKey map[string]Approval) []ApprovalAction {
+	var actions []ApprovalAction
 	for key, state := range st.Approvals {
-		if state.MessageID == "" || state.ReplyID != "" || byKey[key].Key != "" {
+		if !unreportedResolution(state, key, byKey) {
 			continue
 		}
 		resolution := state.Resolution
@@ -138,8 +172,18 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 			Text:       ApprovalsReply(resolution),
 		})
 	}
-
 	return actions
+}
+
+// unreportedResolution reports whether an approval the room has seen still
+// needs its resolution reported in its thread: it is no longer one the forge
+// waits for, and the thread has not been told yet.
+func unreportedResolution(state ApprovalState, key string, byKey map[string]Approval) bool {
+	if state.MessageID == "" || state.ReplyID != "" {
+		return false
+	}
+	_, stillPending := byKey[key]
+	return !stillPending
 }
 
 // ApprovalsReply is the text the bridge reports a resolution with.

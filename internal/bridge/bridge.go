@@ -142,48 +142,14 @@ const maxBackOff = 30 * time.Second
 // Tick carries out one round of work: catch the rooms up with the forges and
 // the forges up with the rooms.
 func (b *Bridge) Tick(ctx context.Context) error {
-	events, err := b.rooms.DrainEvents(ctx)
+	seen, err := b.drainRooms(ctx)
 	if err != nil {
-		return fmt.Errorf("read chat room events: %w", err)
-	}
-	byRoom := map[string][]relay.RoomEvent{}
-	for _, event := range events {
-		byRoom[event.RoomID] = append(byRoom[event.RoomID], event)
-	}
-	reactions, err := b.rooms.DrainReactions(ctx)
-	if err != nil {
-		return fmt.Errorf("read approvals room reactions: %w", err)
-	}
-	reactionsByRoom := map[string][]relay.Reaction{}
-	for _, reaction := range reactions {
-		reactionsByRoom[reaction.RoomID] = append(reactionsByRoom[reaction.RoomID], reaction)
+		return err
 	}
 
 	carriedOut := 0
 	for _, forge := range b.cfg.Forges {
-		root := forge.Root
-		room, err := b.roomFor(ctx, root)
-		if err != nil {
-			return err
-		}
-		store, ok := b.stores[root]
-		if !ok {
-			return fmt.Errorf("no dashboard queue configured for forge root %s", root)
-		}
-		requests, err := store.Requests()
-		if err != nil {
-			return fmt.Errorf("read dashboard requests for %s: %w", root, err)
-		}
-
-		actions := relay.Plan(b.cfg.Operator, b.state.Relay, requests, byRoom[room.RoomID])
-		for _, action := range actions {
-			if err := b.apply(ctx, root, store, room, action); err != nil {
-				return err
-			}
-			carriedOut++
-		}
-
-		done, err := b.carryOutApprovals(ctx, root, room, byRoom[room.ApprovalsRoomID], reactionsByRoom[room.ApprovalsRoomID])
+		done, err := b.tickForge(ctx, forge.Root, seen)
 		if err != nil {
 			return err
 		}
@@ -203,6 +169,65 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		DeviceID:          b.device.ID,
 		DeviceFingerprint: b.device.Fingerprint,
 	})
+}
+
+// roomEvents is what the Matrix side has said since the last tick, grouped by
+// the room it was said in.
+type roomEvents struct {
+	messages  map[string][]relay.RoomEvent
+	reactions map[string][]relay.Reaction
+}
+
+// drainRooms reads what the rooms have seen since the last tick.
+func (b *Bridge) drainRooms(ctx context.Context) (roomEvents, error) {
+	messages, err := b.rooms.DrainEvents(ctx)
+	if err != nil {
+		return roomEvents{}, fmt.Errorf("read chat room events: %w", err)
+	}
+	reactions, err := b.rooms.DrainReactions(ctx)
+	if err != nil {
+		return roomEvents{}, fmt.Errorf("read approvals room reactions: %w", err)
+	}
+
+	seen := roomEvents{messages: map[string][]relay.RoomEvent{}, reactions: map[string][]relay.Reaction{}}
+	for _, message := range messages {
+		seen.messages[message.RoomID] = append(seen.messages[message.RoomID], message)
+	}
+	for _, reaction := range reactions {
+		seen.reactions[reaction.RoomID] = append(seen.reactions[reaction.RoomID], reaction)
+	}
+	return seen, nil
+}
+
+// tickForge catches one forge's rooms up with the forge and the forge up with
+// its rooms, and reports how much work it carried out.
+func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (int, error) {
+	room, err := b.roomFor(ctx, root)
+	if err != nil {
+		return 0, err
+	}
+	store, ok := b.stores[root]
+	if !ok {
+		return 0, fmt.Errorf("no dashboard queue configured for forge root %s", root)
+	}
+	requests, err := store.Requests()
+	if err != nil {
+		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
+	}
+
+	carriedOut := 0
+	for _, action := range relay.Plan(b.cfg.Operator, b.state.Relay, requests, seen.messages[room.RoomID]) {
+		if err := b.apply(ctx, root, store, room, action); err != nil {
+			return 0, err
+		}
+		carriedOut++
+	}
+
+	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
+	if err != nil {
+		return 0, err
+	}
+	return carriedOut + approvals, nil
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {

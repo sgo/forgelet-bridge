@@ -115,6 +115,38 @@ func TestPendingIgnoresProjectsThatAreNotOpen(t *testing.T) {
 	}
 }
 
+func TestPendingForIgnoresWhatIsNotAHandoff(t *testing.T) {
+	store := newStore(t, "forgelet-bridge")
+	seed(t, store, "forgelet-bridge", "approval-1", pending)
+	dir := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "handoffs", "pending_approval")
+	if err := os.Mkdir(filepath.Join(dir, "a-directory.handoff"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not a handoff"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pendingApprovals, err := store.PendingFor("forgelet-bridge")
+	if err != nil {
+		t.Fatalf("PendingFor: %v", err)
+	}
+	if len(pendingApprovals) != 1 || pendingApprovals[0].ID != "approval-1" {
+		t.Errorf("pending = %+v, want only the handoff", pendingApprovals)
+	}
+}
+
+func TestPendingForAProjectWithoutApprovals(t *testing.T) {
+	store := newStore(t)
+
+	pendingApprovals, err := store.PendingFor("forgelet-bridge")
+	if err != nil {
+		t.Fatalf("PendingFor: %v", err)
+	}
+	if len(pendingApprovals) != 0 {
+		t.Errorf("pending = %+v, want none", pendingApprovals)
+	}
+}
+
 func TestApproveMovesTheHandoffToTheOutboxApproved(t *testing.T) {
 	store := newStore(t, "forgelet-bridge")
 	source := seed(t, store, "forgelet-bridge", "approval-1", pending)

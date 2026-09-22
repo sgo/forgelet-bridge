@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// megolmAlgorithm is the encryption the bridge's rooms carry.
+const megolmAlgorithm = "m.megolm.v1.aes-sha2"
+
 func operatorSeesSpace(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
@@ -152,6 +155,12 @@ func chatRoomEncrypted(_ context.Context, world any, captures []string) error {
 	if err != nil {
 		return err
 	}
+	return w.encryptedRoom(ctx, roomID, "chat room "+captures[1])
+}
+
+// encryptedRoom checks a room the bridge created carries Matrix's encryption.
+// The room is named in the failure the way the step that asked for it names it.
+func (w *World) encryptedRoom(ctx context.Context, roomID, description string) error {
 	operator, err := w.operator(ctx)
 	if err != nil {
 		return err
@@ -160,8 +169,8 @@ func chatRoomEncrypted(_ context.Context, world any, captures []string) error {
 	if err != nil {
 		return err
 	}
-	if algorithm != "m.megolm.v1.aes-sha2" {
-		return fmt.Errorf("chat room %s is not encrypted: %q", captures[1], algorithm)
+	if algorithm != megolmAlgorithm {
+		return fmt.Errorf("%s is not encrypted: %q", description, algorithm)
 	}
 	return nil
 }
