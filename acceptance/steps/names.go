@@ -10,7 +10,14 @@ import (
 // it by.
 func namedForge(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	return w.nameForge(captures[1], captures[2])
+	if err := w.nameForge(captures[1], captures[2]); err != nil {
+		return err
+	}
+	// The configuration a start reads is the one on disk, so a name the
+	// operator gives a forge has to be written there.
+	ctx, cancel := stepContext()
+	defer cancel()
+	return w.configure(ctx)
 }
 
 // noForgeSpace checks that no forge space carries a name: the name of the

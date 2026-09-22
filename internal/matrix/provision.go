@@ -14,9 +14,9 @@ import (
 )
 
 // EnsureForge finds or creates the forge's space and the rooms inside it: the
-// chat channel and the approvals room. Encryption is on from room creation,
-// the operator is invited to all of them, and the bridge posts under the
-// forge's own name.
+// chat channel, the approvals room and the activity room. Encryption is on
+// from room creation, the operator is invited to all of them, and the bridge
+// posts under the forge's own name.
 func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (bridge.Room, error) {
 	spaceID, err := c.findSpace(ctx, forgeName)
 	if err != nil {
@@ -67,13 +67,63 @@ func (c *Client) ensureRoom(ctx context.Context, spaceID, operator, forgeName, r
 		}
 		c.log.Info("created forge room", "forge", forgeName, "room", roomName, "id", roomID)
 	}
-	if err := c.ensureInvited(ctx, roomID, operator); err != nil {
-		return "", err
-	}
-	if err := c.ensureDisplayName(ctx, roomID, forgeName); err != nil {
+	if err := c.applyRoom(ctx, roomID, roomName, forgeName, operator); err != nil {
 		return "", err
 	}
 	return roomID, nil
+}
+
+// RefreshForge applies the forge's name, and the operator's membership, to the
+// rooms the bridge already has: a restart leaves a forge named the way its
+// configuration says it is, whether those rooms are new or already there.
+func (c *Client) RefreshForge(ctx context.Context, room bridge.Room, forgeName, operator string) error {
+	if err := c.ensureRoomNamed(ctx, room.SpaceID, forgeName); err != nil {
+		return err
+	}
+	if err := c.ensureInvited(ctx, room.SpaceID, operator); err != nil {
+		return err
+	}
+	for _, named := range []struct{ id, name string }{
+		{room.RoomID, config.RoomName},
+		{room.ApprovalsRoomID, config.ApprovalsRoomName},
+		{room.ActivityRoomID, config.ActivityRoomName},
+	} {
+		if named.id == "" {
+			continue
+		}
+		if err := c.applyRoom(ctx, named.id, named.name, forgeName, operator); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyRoom brings a room the bridge already has in step with the forge: the
+// name the room carries, the operator's membership, and the name the bridge
+// posts under there.
+func (c *Client) applyRoom(ctx context.Context, roomID, roomName, forgeName, operator string) error {
+	if err := c.ensureRoomNamed(ctx, roomID, roomName); err != nil {
+		return err
+	}
+	if err := c.ensureInvited(ctx, roomID, operator); err != nil {
+		return err
+	}
+	return c.ensureDisplayName(ctx, roomID, forgeName)
+}
+
+// ensureRoomNamed applies a room's name when it is not what it should be.
+func (c *Client) ensureRoomNamed(ctx context.Context, roomID, name string) error {
+	current, err := c.roomName(ctx, id.RoomID(roomID))
+	if err != nil {
+		return err
+	}
+	if current == name {
+		return nil
+	}
+	if _, err := c.cli.SendStateEvent(ctx, id.RoomID(roomID), event.StateRoomName, "", &event.RoomNameEventContent{Name: name}); err != nil {
+		return fmt.Errorf("name room %s %q: %w", roomID, name, err)
+	}
+	return nil
 }
 
 // ensureDisplayName makes the bridge post in a room under the forge's name, so

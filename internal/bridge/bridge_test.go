@@ -56,6 +56,7 @@ type fakeRooms struct {
 	ensured   []string
 	sent      []sentMessage
 	events    []relay.RoomEvent
+	refreshed []refresh
 	reactions []relay.Reaction
 	drainErr  error
 }
@@ -70,6 +71,19 @@ func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, e
 		ApprovalsRoomID: "!approvals-" + forgeName,
 		ActivityRoomID:  "!activity-" + forgeName,
 	}, nil
+}
+
+func (r *fakeRooms) RefreshForge(_ context.Context, room Room, forgeName, operator string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.refreshed = append(r.refreshed, refresh{room: room, forgeName: forgeName, operator: operator})
+	return nil
+}
+
+type refresh struct {
+	room      Room
+	forgeName string
+	operator  string
 }
 
 func (r *fakeRooms) SendText(_ context.Context, roomID, body, threadAnchor string) (string, error) {
@@ -88,6 +102,12 @@ func (r *fakeRooms) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
 	events := r.events
 	r.events = nil
 	return events, nil
+}
+
+func (r *fakeRooms) refreshes() []refresh {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]refresh(nil), r.refreshed...)
 }
 
 func (r *fakeRooms) sentMessages() []sentMessage {
@@ -659,5 +679,46 @@ func TestTickDoesNotHandTheSameMessageOverTwiceWhilePairingWaits(t *testing.T) {
 
 	if got := len(store.createdBodies()); got != 1 {
 		t.Errorf("the forge was given the message %d times, want it handed over exactly once", got)
+	}
+}
+
+func TestRestartAppliesTheForgesNameToRoomsItAlreadyHas(t *testing.T) {
+	store := &fakeStore{}
+	rooms := &fakeRooms{}
+	cfg := newTestConfig(t, "/forges/forge-a")
+
+	first, err := New(cfg, rooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := first.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	if got := rooms.refreshes(); len(got) != 0 {
+		t.Fatalf("refreshes = %+v, want none while the rooms are new", got)
+	}
+
+	restartedCfg := cfg
+	restartedCfg.Forges = []config.Forge{{Root: "/forges/forge-a", Name: "Forgelet"}}
+	restartedRooms := &fakeRooms{}
+	restarted, err := New(restartedCfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+	if err != nil {
+		t.Fatalf("New after restart: %v", err)
+	}
+	if err := restarted.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	refreshes := restartedRooms.refreshes()
+	if len(refreshes) != 1 {
+		t.Fatalf("refreshes = %+v, want the forge's rooms re-named on the restart", refreshes)
+	}
+	if refreshes[0].forgeName != "Forgelet" {
+		t.Errorf("forge name = %q, want the name the configuration gives it", refreshes[0].forgeName)
+	}
+	if refreshes[0].room.RoomID != "!room-forge-a" || refreshes[0].room.SpaceID != "!space-forge-a" {
+		t.Errorf("room = %+v, want the rooms the bridge already had", refreshes[0].room)
 	}
 }

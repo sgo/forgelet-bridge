@@ -51,6 +51,10 @@ type Room struct {
 // the operator has sent.
 type Rooms interface {
 	EnsureForge(ctx context.Context, forgeName, operator string) (Room, error)
+	// RefreshForge applies the forge's current name and the operator's
+	// membership to rooms the bridge already has. What the configuration says
+	// about a forge is true on every start, not only when the rooms are new.
+	RefreshForge(ctx context.Context, room Room, forgeName, operator string) error
 	SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error)
 	DrainEvents(ctx context.Context) ([]relay.RoomEvent, error)
 	DrainReactions(ctx context.Context) ([]relay.Reaction, error)
