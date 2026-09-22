@@ -26,13 +26,13 @@ type sentBack struct {
 	feedback string
 }
 
-func (f *fakeApprovals) Pending() ([]relay.Approval, error) {
+func (f *fakeApprovals) Pending(_ context.Context) ([]relay.Approval, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]relay.Approval(nil), f.pending...), nil
 }
 
-func (f *fakeApprovals) Approve(project, id string) error {
+func (f *fakeApprovals) Approve(_ context.Context, project, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.errors[project+"/"+id]; err != nil {
@@ -44,7 +44,7 @@ func (f *fakeApprovals) Approve(project, id string) error {
 	return nil
 }
 
-func (f *fakeApprovals) SendBack(project, id, feedback string) error {
+func (f *fakeApprovals) SendBack(_ context.Context, project, id, feedback string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := project + "/" + id
