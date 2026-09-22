@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=49cd018613496e567bf49ddc8bb56856ed35fa19196ad94745e4c91a607c7dcc
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-22T10:37:18.666472Z","feature_name":"Chat Channel Relay","feature_path":"features/chat-channel-relay.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:c48a064ec589656a4f26833b1484e1d04821b72eb5e41c6ea684b41ca4a52311","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-22T13:00:56.930476Z","feature_name":"Chat Channel Relay","feature_path":"features/chat-channel-relay.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:c48a064ec589656a4f26833b1484e1d04821b72eb5e41c6ea684b41ca4a52311","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Chat Channel Relay

@@ -14,7 +14,8 @@ import (
 )
 
 // EnsureForge finds or creates the forge's space and the chat room inside it.
-// Encryption is on from room creation, and the operator is invited to both.
+// Encryption is on from room creation, the operator is invited to both, and
+// the bridge posts in the chat room under the forge's own name.
 func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (bridge.Room, error) {
 	spaceID, err := c.findSpace(ctx, forgeName)
 	if err != nil {
@@ -45,7 +46,34 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 	if err := c.ensureInvited(ctx, roomID, operator); err != nil {
 		return bridge.Room{}, err
 	}
+	if err := c.ensureDisplayName(ctx, roomID, forgeName); err != nil {
+		return bridge.Room{}, err
+	}
 	return bridge.Room{SpaceID: spaceID, RoomID: roomID}, nil
+}
+
+// ensureDisplayName makes the bridge post in a room under the forge's name, so
+// the operator can tell one forge's messages from another's on their phone.
+func (c *Client) ensureDisplayName(ctx context.Context, roomID, displayName string) error {
+	member, err := c.membership(ctx, roomID, c.cli.UserID.String())
+	if err != nil {
+		return err
+	}
+	if member == event.MembershipJoin {
+		var current event.MemberEventContent
+		if err := c.cli.StateEvent(ctx, id.RoomID(roomID), event.StateMember, c.cli.UserID.String(), &current); err == nil &&
+			current.Displayname == displayName {
+			return nil
+		}
+	}
+	_, err = c.cli.SendStateEvent(ctx, id.RoomID(roomID), event.StateMember, c.cli.UserID.String(), &event.MemberEventContent{
+		Membership:  event.MembershipJoin,
+		Displayname: displayName,
+	})
+	if err != nil {
+		return fmt.Errorf("name the bridge %s in %s: %w", displayName, roomID, err)
+	}
+	return nil
 }
 
 func (c *Client) findSpace(ctx context.Context, forgeName string) (string, error) {

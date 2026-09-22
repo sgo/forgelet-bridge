@@ -28,14 +28,21 @@ operator's phone shows can be checked against it.
   "user_id": "@forgelet-bridge:example.org",
   "password": "…",
   "operator": "@operator:example.org",
-  "forge_roots": ["/srv/forges/forge-a"],
+  "forges": [
+    {"root": "/srv/forges/sgo", "name": "Saibill"},
+    {"root": "/srv/forges/forgelet", "name": "Forgelet"}
+  ],
   "state_dir": "build/forgelet-bridge-state"
 }
 ```
 
-`forge_roots` is a list even though one forge is enough for now, so a second
-forge is configuration rather than a redesign. The bridge keeps its Matrix
-state and its restart bookkeeping under `state_dir`.
+`forges` is a list even though one forge is enough for now, so a second forge
+is configuration rather than a redesign. Each forge carries the name the
+operator knows it by: that name is the forge's Matrix space, and the bridge
+posts in the forge's chat room under that same name, so a phone can tell the
+forges apart. A forge with no configured name falls back to the name of its
+folder. The bridge keeps its Matrix state and its restart bookkeeping under
+`state_dir`.
 
 Run it with:
 

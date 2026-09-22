@@ -25,6 +25,18 @@ func dashboardHoldsRequest(_ context.Context, world any, captures []string) erro
 	return err
 }
 
+// namedDashboardHoldsRequest seeds a chat request in one named forge's
+// dashboard, for scenarios that serve more than one forge.
+func namedDashboardHoldsRequest(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	store, err := w.declaredForge(captures[1])
+	if err != nil {
+		return err
+	}
+	_, err = store.CreateRequest(captures[2])
+	return err
+}
+
 func lieutenantAnswers(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()

@@ -22,7 +22,10 @@ func TestLoadAcceptsForgeRootList(t *testing.T) {
 		"user_id": "@bridge:example.org",
 		"password": "secret",
 		"operator": "@operator:example.org",
-		"forge_roots": ["/forges/forge-a", "/forges/forge-b"],
+		"forges": [
+			{"root": "/forges/forge-a", "name": "Forgelet"},
+			{"root": "/forges/forge-b"}
+		],
 		"state_dir": "/state"
 	}`)
 
@@ -33,8 +36,14 @@ func TestLoadAcceptsForgeRootList(t *testing.T) {
 	if cfg.HomeserverURL != "http://127.0.0.1:8008" {
 		t.Errorf("homeserver URL = %q, want trailing slash trimmed", cfg.HomeserverURL)
 	}
-	if len(cfg.ForgeRoots) != 2 {
-		t.Errorf("forge roots = %v, want two", cfg.ForgeRoots)
+	if len(cfg.Forges) != 2 {
+		t.Fatalf("forges = %v, want two", cfg.Forges)
+	}
+	if cfg.Forges[0].DisplayName() != "Forgelet" {
+		t.Errorf("first forge name = %q, want the configured name", cfg.Forges[0].DisplayName())
+	}
+	if cfg.Forges[1].DisplayName() != "forge-b" {
+		t.Errorf("second forge name = %q, want the folder name", cfg.Forges[1].DisplayName())
 	}
 	if cfg.StateDir != "/state" {
 		t.Errorf("state dir = %q, want /state", cfg.StateDir)
@@ -47,7 +56,7 @@ func TestLoadDefaultsStateDir(t *testing.T) {
 		"user_id": "@bridge:example.org",
 		"access_token": "token",
 		"operator": "@operator:example.org",
-		"forge_roots": ["/forges/forge-a"]
+		"forges": [{"root": "/forges/forge-a"}]
 	}`)
 
 	cfg, err := Load(path)
@@ -81,12 +90,16 @@ func TestLoadRejectsBadConfigurations(t *testing.T) {
 			want: "access_token or password",
 		},
 		"no forge roots": {
-			body: `{"homeserver_url":"http://hs","user_id":"@b:example.org","password":"p","operator":"@o:example.org","forge_roots":[]}`,
-			want: "at least one forge root",
+			body: `{"homeserver_url":"http://hs","user_id":"@b:example.org","password":"p","operator":"@o:example.org","forges":[]}`,
+			want: "at least one forge",
 		},
 		"blank forge root": {
-			body: `{"homeserver_url":"http://hs","user_id":"@b:example.org","password":"p","operator":"@o:example.org","forge_roots":["  "]}`,
+			body: `{"homeserver_url":"http://hs","user_id":"@b:example.org","password":"p","operator":"@o:example.org","forges":[{"root":"  "}]}`,
 			want: "must not be blank",
+		},
+		"same root twice": {
+			body: `{"homeserver_url":"http://hs","user_id":"@b:example.org","password":"p","operator":"@o:example.org","forges":[{"root":"/a"},{"root":"/a"}]}`,
+			want: "configured twice",
 		},
 	}
 
@@ -103,15 +116,42 @@ func TestLoadRejectsBadConfigurations(t *testing.T) {
 	}
 }
 
-func TestForgeNameUsesDirectoryBaseName(t *testing.T) {
+func TestForgeDisplayName(t *testing.T) {
+	cases := map[string]struct {
+		forge Forge
+		want  string
+	}{
+		"configured name wins":        {Forge{Root: "/forges/sgo", Name: "Saibill"}, "Saibill"},
+		"padded name is trimmed":      {Forge{Root: "/forges/sgo", Name: "  Saibill  "}, "Saibill"},
+		"folder name is the fallback": {Forge{Root: "/forges/forge-a"}, "forge-a"},
+		"trailing separator":          {Forge{Root: "/forges/forge-a/"}, "forge-a"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := tc.forge.DisplayName(); got != tc.want {
+				t.Errorf("DisplayName() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestForgeNameNamesEachRoot(t *testing.T) {
+	cfg := Config{Forges: []Forge{
+		{Root: "/forges/sgo", Name: "Saibill"},
+		{Root: "/forges/forgelet"},
+	}}
+
 	cases := map[string]string{
-		"/forges/forge-a":  "forge-a",
-		"/forges/forge-a/": "forge-a",
-		"forge-b":          "forge-b",
+		"/forges/sgo":          "Saibill",  // the name the operator gave it
+		"/forges/forgelet":     "forgelet", // this forge's own folder name
+		"/forges/something/":   "something",
+		"/forges/never-listed": "never-listed",
 	}
 	for root, want := range cases {
-		if got := ForgeName(root); got != want {
-			t.Errorf("ForgeName(%q) = %q, want %q", root, got, want)
-		}
+		t.Run(root, func(t *testing.T) {
+			if got := cfg.ForgeName(root); got != want {
+				t.Errorf("ForgeName(%q) = %q, want %q", root, got, want)
+			}
+		})
 	}
 }

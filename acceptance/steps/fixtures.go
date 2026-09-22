@@ -47,15 +47,38 @@ func (w *World) forge(ctx context.Context, name string) (*dashboard.Store, error
 	return store, nil
 }
 
-// configureForge records the root the bridge is configured with. The forge has
-// to be one the scenario has already declared: a forge no fixture stands behind
-// would run the bridge against a forge that is not there.
-func (w *World) configureForge(name string) error {
+// declaredForge is the dashboard queue of a fixture forge the scenario has
+// already declared. A forge no fixture stands behind would run the bridge
+// against a forge that is not there, so every step that names a forge asks
+// this one question.
+func (w *World) declaredForge(name string) (*dashboard.Store, error) {
 	store, ok := w.dashboards[name]
 	if !ok {
-		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+		return nil, fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+	}
+	return store, nil
+}
+
+// configureForge records the root the bridge is configured with.
+func (w *World) configureForge(name string) error {
+	store, err := w.declaredForge(name)
+	if err != nil {
+		return err
 	}
 	w.configured = appendUnique(w.configured, store.Root())
+	return nil
+}
+
+// nameForge records the name the operator knows a fixture forge by. The name
+// has nothing to do with the folder the forge lives in.
+func (w *World) nameForge(name, displayName string) error {
+	if err := w.configureForge(name); err != nil {
+		return err
+	}
+	if w.forgeNames == nil {
+		w.forgeNames = map[string]string{}
+	}
+	w.forgeNames[filepath.Join(w.workDir, name)] = displayName
 	return nil
 }
 
@@ -96,12 +119,20 @@ func (w *World) configure(ctx context.Context) error {
 	}
 	configPath := filepath.Join(w.workDir, "bridge.json")
 	stateDir := filepath.Join(w.workDir, "bridge-state")
+	forges := make([]map[string]string, 0, len(w.configured))
+	for _, root := range w.configured {
+		forge := map[string]string{"root": root}
+		if name := w.forgeNames[root]; name != "" {
+			forge["name"] = name
+		}
+		forges = append(forges, forge)
+	}
 	body, err := json.MarshalIndent(map[string]any{
 		"homeserver_url": synapse.URL,
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,
-		"forge_roots":    w.configured,
+		"forges":         forges,
 		"state_dir":      stateDir,
 	}, "", "  ")
 	if err != nil {

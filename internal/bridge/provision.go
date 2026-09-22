@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
@@ -20,7 +19,7 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 		return room, nil
 	}
 
-	room, err := b.rooms.EnsureForge(ctx, config.ForgeName(root), b.cfg.Operator)
+	room, err := b.rooms.EnsureForge(ctx, b.cfg.ForgeName(root), b.cfg.Operator)
 	if err != nil {
 		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
 	}
@@ -34,5 +33,5 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-21T23:21:32+02:00","module_hash":"b626fe1027778c3335a2f4b45c7be3f8e44b0b935e92256ae211265331fcb83f","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":13,"end_line":34,"hash":"9eeb180eb4443fdc97190c3094c33263463e4f1ec8f7f37d1ea8070d5ec00782"}]}
+// {"version":1,"tested_at":"2026-09-22T15:00:06+02:00","module_hash":"3a0bb420c394505184216b421c1af7e958948051a1822f792a9e8dc69a767665","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":12,"end_line":33,"hash":"2a13a0da44f33d9ab190cc0325ed9ac02108922a17cda4b657d5878d94bfd754"}]}
 // mutate4go-manifest-end

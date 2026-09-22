@@ -101,12 +101,16 @@ const operator = "@operator:example.org"
 // newTestConfig is the configuration a test bridge runs with.
 func newTestConfig(t *testing.T, roots ...string) config.Config {
 	t.Helper()
+	forges := make([]config.Forge, 0, len(roots))
+	for _, root := range roots {
+		forges = append(forges, config.Forge{Root: root})
+	}
 	return config.Config{
 		HomeserverURL: "http://127.0.0.1:8008",
 		UserID:        "@bridge:example.org",
 		AccessToken:   "token",
 		Operator:      operator,
-		ForgeRoots:    roots,
+		Forges:        forges,
 		StateDir:      t.TempDir(),
 	}
 }
