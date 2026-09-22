@@ -134,3 +134,24 @@ func TestForgeDisplayName(t *testing.T) {
 		})
 	}
 }
+
+func TestForgeNameNamesEachRoot(t *testing.T) {
+	cfg := Config{Forges: []Forge{
+		{Root: "/forges/sgo", Name: "Saibill"},
+		{Root: "/forges/forgelet"},
+	}}
+
+	cases := map[string]string{
+		"/forges/sgo":          "Saibill",  // the name the operator gave it
+		"/forges/forgelet":     "forgelet", // this forge's own folder name
+		"/forges/something/":   "something",
+		"/forges/never-listed": "never-listed",
+	}
+	for root, want := range cases {
+		t.Run(root, func(t *testing.T) {
+			if got := cfg.ForgeName(root); got != want {
+				t.Errorf("ForgeName(%q) = %q, want %q", root, got, want)
+			}
+		})
+	}
+}

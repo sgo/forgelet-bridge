@@ -26,10 +26,15 @@ type Forge struct {
 // DisplayName is the name the forge shows up under: the configured name, or
 // the name of its folder when the configuration does not name it.
 func (f Forge) DisplayName() string {
-	if strings.TrimSpace(f.Name) != "" {
-		return strings.TrimSpace(f.Name)
+	if name := strings.TrimSpace(f.Name); name != "" {
+		return name
 	}
-	return filepath.Base(strings.TrimRight(f.Root, string(filepath.Separator)))
+	return folderName(f.Root)
+}
+
+// folderName is the name of the folder a forge root lives in.
+func folderName(root string) string {
+	return filepath.Base(strings.TrimRight(root, string(filepath.Separator)))
 }
 
 // Config describes one bridge process: the homeserver it talks to, the one
@@ -43,6 +48,18 @@ type Config struct {
 	Operator      string  `json:"operator"`
 	Forges        []Forge `json:"forges"`
 	StateDir      string  `json:"state_dir,omitempty"`
+}
+
+// ForgeName is the name the operator knows a forge root by: the name this
+// configuration gives that root, or the name of its folder when the
+// configuration does not name it.
+func (c Config) ForgeName(root string) string {
+	for _, forge := range c.Forges {
+		if forge.Root == root {
+			return forge.DisplayName()
+		}
+	}
+	return folderName(root)
 }
 
 // Load reads, defaults, and validates a configuration file.
@@ -84,6 +101,12 @@ func (c Config) Validate() error {
 	if c.AccessToken == "" && c.Password == "" {
 		return errors.New("either access_token or password is required")
 	}
+	return c.validateForges()
+}
+
+// validateForges reports the first reason the configured forges cannot be
+// served: every forge needs its own root, and no root may be blank.
+func (c Config) validateForges() error {
 	if len(c.Forges) == 0 {
 		return errors.New("at least one forge is required")
 	}
