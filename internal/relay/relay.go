@@ -34,6 +34,9 @@ type State struct {
 	Replied map[string]string `json:"replied,omitempty"`
 	// Relayed maps an operator message to the dashboard request it became.
 	Relayed map[string]string `json:"relayed,omitempty"`
+	// Pending maps an operator message the forge has taken to its text, until
+	// the request the forge queued for it can be paired with it.
+	Pending map[string]string `json:"pending,omitempty"`
 	// Approvals maps an approval to what the bridge has done about it.
 	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
 	// Activity maps a card to the last thing the bridge said about it.
@@ -76,6 +79,9 @@ func (s *State) EnsureMaps() {
 	}
 	if s.Relayed == nil {
 		s.Relayed = map[string]string{}
+	}
+	if s.Pending == nil {
+		s.Pending = map[string]string{}
 	}
 	if s.Approvals == nil {
 		s.Approvals = map[string]ApprovalState{}
@@ -122,8 +128,11 @@ func operatorAsked(st State, operator string, event RoomEvent) bool {
 	if event.Sender != operator || strings.TrimSpace(event.Body) == "" {
 		return false
 	}
-	_, relayed := st.Relayed[event.EventID]
-	return !relayed
+	if _, relayed := st.Relayed[event.EventID]; relayed {
+		return false
+	}
+	_, pending := st.Pending[event.EventID]
+	return !pending
 }
 
 // forgeRequests plans the chat messages and thread replies the forge's

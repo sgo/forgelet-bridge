@@ -19,7 +19,10 @@ import (
 // ForgeStore is the forge side of one root: its dashboard chat-request queue.
 type ForgeStore interface {
 	Requests() ([]relay.Request, error)
-	CreateRequest(body string) (string, error)
+	// CreateRequest hands a chat request to the forge, which is what wakes the
+	// lieutenant. The forge answers that it took the message, not which
+	// request it became.
+	CreateRequest(ctx context.Context, body string) (string, error)
 }
 
 // ApprovalStore is the forge side of one root's approvals: the handoffs its
@@ -211,6 +214,12 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		carriedOut++
 	}
 
+	paired, err := b.pairPendingRequests(store)
+	if err != nil {
+		return 0, err
+	}
+	carriedOut += paired
+
 	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
 	if err != nil {
 		return 0, err
@@ -238,7 +247,7 @@ func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, ro
 	case relay.PostRequestReply:
 		return b.postRequestReply(ctx, room, action)
 	case relay.CreateForgeRequest:
-		return b.createForgeRequest(store, root, action)
+		return b.createForgeRequest(ctx, store, root, action)
 	}
 	return fmt.Errorf("unknown relay action %q", action.Kind)
 }

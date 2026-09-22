@@ -70,31 +70,22 @@ func closeLog(log *os.File) {
 	}
 }
 
-// startDashboard runs the forge's dashboard stub.
+// startDashboard runs the forge's own dashboard, with the tmux stub the
+// dashboard itself provides, so what the suite exercises is the dashboard's
+// handling rather than a stand-in's.
 func (w *World) startDashboard(name string) error {
-	if _, ok := w.stubs[name]; ok {
+	if _, ok := w.running[name]; ok {
 		return nil
 	}
 	store, err := w.forge(context.Background(), name)
 	if err != nil {
 		return err
 	}
-	binary, err := buildHelper("forge-dashboard-stub", "./cmd/forge-dashboard-stub")
+	dashboard, err := fixtures.StartDashboard(context.Background(), store.Root())
 	if err != nil {
 		return err
 	}
-	logFile, err := os.Create(filepath.Join(w.workDir, name+"-dashboard.log"))
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(binary, "--root", store.Root())
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	running, err := start(cmd, logFile)
-	if err != nil {
-		return err
-	}
-	w.stubs[name] = running
+	w.running[name] = dashboard
 	return w.waitForDashboardURL(store.Root())
 }
 

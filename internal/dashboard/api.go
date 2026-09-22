@@ -47,11 +47,21 @@ func dashboardAddress(raw string) string {
 type API struct {
 	baseURL string
 	client  *http.Client
+	// root is the forge the dashboard serves, for the handoffs its state does
+	// not spell out.
+	root string
 }
 
 // NewAPI builds a client for a dashboard at a base URL.
 func NewAPI(baseURL string) *API {
 	return &API{baseURL: strings.TrimRight(baseURL, "/"), client: http.DefaultClient}
+}
+
+// NewForgeAPI builds a client for the dashboard of a forge root.
+func NewForgeAPI(root, baseURL string) *API {
+	api := NewAPI(baseURL)
+	api.root = root
+	return api
 }
 
 // Approvals is one forge's approvals, reached through its dashboard: the
@@ -95,7 +105,7 @@ func (a Approvals) client() (*API, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewAPI(url), nil
+	return NewForgeAPI(a.Root, url), nil
 }
 
 // State is what the dashboard reports about its forge.
@@ -115,6 +125,13 @@ type ApprovalRequest struct {
 	Artifacts []string `json:"artifacts"`
 }
 
+// Chat asks the dashboard to take a chat message the way its clients give it:
+// the dashboard queues the request and wakes the lieutenant, which is why the
+// bridge must not write the queue itself.
+func (a *API) Chat(ctx context.Context, text string) error {
+	return a.call(ctx, http.MethodPost, "/api/chat", map[string]string{"text": text}, nil)
+}
+
 // Approvals reads the approvals the dashboard is showing.
 func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 	var state State
@@ -123,14 +140,26 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 	}
 	approvals := make([]relay.Approval, 0, len(state.Approvals))
 	for _, request := range state.Approvals {
-		approvals = append(approvals, relay.Approval{
+		approval := relay.Approval{
 			Key:       request.Project + "/" + request.ID,
 			Project:   request.Project,
 			ID:        request.ID,
 			Card:      request.Card,
 			Gate:      request.gate(),
 			Artifacts: request.Artifacts,
-		})
+		}
+		// The dashboard names the gate its own way and keeps only the
+		// documents it can comment on; the handoff says who handed the work
+		// over and what changed, which is what the operator decides with.
+		if details, err := readHandoff(a.root, request.Project, request.ID); err == nil {
+			if details.from != "" && details.to != "" {
+				approval.Gate = details.from + " → " + details.to
+			}
+			if len(details.artifacts) > 0 {
+				approval.Artifacts = details.artifacts
+			}
+		}
+		approvals = append(approvals, approval)
 	}
 	return approvals, nil
 }

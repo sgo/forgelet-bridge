@@ -1,6 +1,10 @@
 package dashboard
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -26,18 +30,31 @@ func TestQueuePresentsRequestsInRelayForm(t *testing.T) {
 	}
 }
 
-func TestQueueCreateRequestQueuesForTheLieutenant(t *testing.T) {
+func TestQueueCreateRequestAsksTheForgeToTakeIt(t *testing.T) {
 	store := fixedStore(t)
+	var path, text string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		path = request.URL.Path
+		body := map[string]string{}
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		text = body["text"]
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
 
-	if _, err := (Queue{Store: store}).CreateRequest("please retry the invoice card"); err != nil {
+	queue := Queue{Store: store, Root: store.Root(), ConfiguredURL: server.URL}
+	if _, err := queue.CreateRequest(context.Background(), "please retry the invoice card"); err != nil {
 		t.Fatalf("CreateRequest: %v", err)
 	}
 
+	if path != "/api/chat" || text != "please retry the invoice card" {
+		t.Errorf("the forge was asked %s %q, want the chat request at /api/chat", path, text)
+	}
 	pending, err := store.Pending()
 	if err != nil {
 		t.Fatalf("Pending: %v", err)
 	}
-	if len(pending) != 1 || pending[0].Body != "please retry the invoice card" {
-		t.Errorf("pending = %+v, want the queued chat request", pending)
+	if len(pending) != 0 {
+		t.Errorf("pending = %+v, want the bridge not to write the queue itself", pending)
 	}
 }

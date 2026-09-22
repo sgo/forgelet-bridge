@@ -23,6 +23,9 @@ func register(registry *runtime.Registry) error {
 		{`^the bridge is started$`, bridgeStarted},
 		{`^the bridge is stopped and started again$`, bridgeRestarted},
 		{`^the bridge has caught up with the forge$`, bridgeCaughtUp},
+		{`^the acceptance suite remembers the worktree it runs from$`, rememberLane},
+		{`^the worktree the acceptance suite runs from still holds its head, its branches and its changes$`, laneHeld},
+		{`^the fixture forge holds the snapshot it took of the card (\S+)$`, fixtureHoldsSnapshot},
 		{`^the bridge has published its Matrix device to the operator$`, bridgePublishedDevice},
 		{`^the operator sees the same bridge Matrix device$`, operatorSeesSameDevice},
 		{`^the bridge has created the forge space (.+?) and its chat room (.+)$`, bridgeCreatedSpace},
@@ -46,6 +49,8 @@ func register(registry *runtime.Registry) error {
 
 		{`^the forge's dashboard already holds the chat request "(.+)"$`, dashboardHoldsRequest},
 		{`^the forge (\S+)'s dashboard already holds the chat request "(.+)"$`, namedDashboardHoldsRequest},
+		{`^the forge's dashboard takes the chat request "(.+)" the way its clients give it$`, dashboardTakesRequestStep},
+		{`^the forge's dashboard typed the chat request reading "(.+)" into the lieutenant's pane$`, dashboardWoke},
 		{`^the forge's dashboard already holds the pending approval for the card (\S+) (.+)$`, pendingApproval},
 		{`^the approval message for the card (\S+) names the project (\S+), the gate "(.+)", and the changed files (\S+) and (\S+)$`, approvalMessageNames},
 		{`^the operator taps ✅ on the approval message for the card (\S+)$`, approvalTapped},
