@@ -29,11 +29,11 @@ func dashboardHoldsRequest(_ context.Context, world any, captures []string) erro
 // dashboard, for scenarios that serve more than one forge.
 func namedDashboardHoldsRequest(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	store, ok := w.dashboards[captures[1]]
-	if !ok {
-		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", captures[1])
+	store, err := w.declaredForge(captures[1])
+	if err != nil {
+		return err
 	}
-	_, err := store.CreateRequest(captures[2])
+	_, err = store.CreateRequest(captures[2])
 	return err
 }
 

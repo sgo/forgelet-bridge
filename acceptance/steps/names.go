@@ -20,6 +20,13 @@ func noForgeSpace(_ context.Context, world any, captures []string) error {
 	ctx, cancel := stepContext()
 	defer cancel()
 
+	// The folder has to be one of the fixtures the scenario declared. Asking
+	// about the folder of a forge that is not there would pass for the wrong
+	// reason: a name no fixture uses is trivially absent.
+	if _, err := w.declaredForge(captures[1]); err != nil {
+		return err
+	}
+
 	// The bridge has usually shown its spaces by now; wait for one so that an
 	// empty list is not mistaken for a clean one.
 	if err := waitFor(ctx, "the operator never saw a forge space", func() (bool, error) {
