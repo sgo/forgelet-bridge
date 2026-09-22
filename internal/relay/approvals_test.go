@@ -108,6 +108,14 @@ func TestPlanApprovalsIgnoresAMessageThatIsNotInTheApprovalsThread(t *testing.T)
 	}
 }
 
+func TestPlanApprovalsIgnoresABlankReplyInTheApprovalsThread(t *testing.T) {
+	replies := []RoomEvent{{EventID: "$blank", Sender: operator, Body: "   ", ThreadRoot: "$approval-message"}}
+
+	if actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies); len(actions) != 0 {
+		t.Errorf("actions = %+v, want a blank reply to decide nothing", actions)
+	}
+}
+
 func TestPlanApprovalsDecidesOnlyOnce(t *testing.T) {
 	state := posted()
 	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{

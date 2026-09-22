@@ -43,5 +43,5 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T15:00:06+02:00","module_hash":"3a0bb420c394505184216b421c1af7e958948051a1822f792a9e8dc69a767665","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":12,"end_line":33,"hash":"2a13a0da44f33d9ab190cc0325ed9ac02108922a17cda4b657d5878d94bfd754"}]}
+// {"version":1,"tested_at":"2026-09-22T15:45:29+02:00","module_hash":"0972754a1860ce0a9e4bcbc805c5e693842a3aaa6d5cc7dd145b58c04272893b","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":12,"end_line":37,"hash":"b9fe2be422c50208b9c71533f33085c2b0de2c9f411db1f939ec75cea6261999"}]}
 // mutate4go-manifest-end

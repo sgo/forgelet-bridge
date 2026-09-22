@@ -68,8 +68,14 @@ func TestForgeForRejectsHalfRecordedForge(t *testing.T) {
 	saved := &State{}
 	saved.EnsureMaps()
 	saved.Forges["/forges/forge-a"] = Forge{SpaceID: "!space"}
+	// A state file written before the bridge knew about the approvals room: it
+	// is a forge the bridge has to provision again, not one it can serve.
+	saved.Forges["/forges/forge-b"] = Forge{SpaceID: "!space", RoomID: "!room"}
 
 	if _, ok := saved.ForgeFor("/forges/forge-a"); ok {
 		t.Error("a forge without a chat room was reported as known")
+	}
+	if _, ok := saved.ForgeFor("/forges/forge-b"); ok {
+		t.Error("a forge without an approvals room was reported as known")
 	}
 }
