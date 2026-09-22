@@ -52,6 +52,8 @@ func register(registry *runtime.Registry) error {
 		{`^the forge's dashboard takes the chat request "(.+)" the way its clients give it$`, dashboardTakesRequestStep},
 		{`^the forge's dashboard typed the chat request reading "(.+)" into the lieutenant's pane$`, dashboardWoke},
 		{`^the forge's dashboard already holds the pending approval for the card (\S+) (.+)$`, pendingApproval},
+		{`^the forge's dashboard already holds a pending approval for the card (\S+) it cannot send back$`, pendingApprovalThatCannotBeSentBack},
+		{`^the forge repairs the approval for the card (\S+)$`, forgeRepairsApproval},
 		{`^the approval message for the card (\S+) names the project (\S+), the gate "(.+)", and the changed files (\S+) and (\S+)$`, approvalMessageNames},
 		{`^the operator taps ✅ on the approval message for the card (\S+)$`, approvalTapped},
 		{`^(the operator|\S+) reacts (\S+) to the approval message for the card (\S+)$`, someoneReacts},

@@ -18,6 +18,11 @@ type Status struct {
 	Idle              bool   `json:"idle"`
 	DeviceID          string `json:"device_id,omitempty"`
 	DeviceFingerprint string `json:"device_fingerprint,omitempty"`
+	// Pending is how many actions the forge has not carried out yet, and
+	// LastError is the most recent refusal: a bridge that is stuck says so
+	// instead of looking quiet.
+	Pending   int    `json:"pending,omitempty"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 // Device is the Matrix device the bridge is using.

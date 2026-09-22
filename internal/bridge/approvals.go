@@ -38,13 +38,21 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 		return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
 	}
 
-	actions := relay.PlanApprovals(b.cfg.Operator, b.state.Relay, pending, reactions, replies)
-	for _, action := range actions {
-		if err := b.applyApproval(ctx, store, room, action); err != nil {
-			return 0, err
-		}
+	waiting := b.pendingApprovalsFor(root)
+	for _, action := range relay.PlanApprovals(b.cfg.Operator, b.state.Relay, pending, reactions, replies) {
+		waiting.keep(action)
 	}
-	return len(actions), nil
+
+	carriedOut := 0
+	for _, action := range waiting.list() {
+		if err := b.applyApproval(ctx, store, room, action); err != nil {
+			b.reportApprovalFailure(ctx, room, waiting, action, err)
+			continue
+		}
+		waiting.done(action)
+		carriedOut++
+	}
+	return carriedOut, nil
 }
 
 func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {

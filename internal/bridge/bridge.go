@@ -74,6 +74,10 @@ type Bridge struct {
 	tick        uint64
 	provisioned map[string]Room
 	device      Device
+	// Work the forge refused, kept so it is tried again rather than lost.
+	pending          map[string]*pendingChat
+	pendingApprovals map[string]*pendingApprovals
+	lastError        error
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -88,16 +92,18 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		return nil, fmt.Errorf("load bridge state: %w", err)
 	}
 	return &Bridge{
-		cfg:         cfg,
-		rooms:       rooms,
-		stores:      stores,
-		approvals:   approvals,
-		boards:      boards,
-		statePath:   statePath,
-		statusDir:   cfg.StateDir,
-		state:       loaded,
-		log:         log,
-		provisioned: map[string]Room{},
+		cfg:              cfg,
+		rooms:            rooms,
+		stores:           stores,
+		approvals:        approvals,
+		boards:           boards,
+		statePath:        statePath,
+		statusDir:        cfg.StateDir,
+		state:            loaded,
+		log:              log,
+		provisioned:      map[string]Room{},
+		pending:          map[string]*pendingChat{},
+		pendingApprovals: map[string]*pendingApprovals{},
 	}, nil
 }
 
@@ -158,12 +164,40 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	}
 
 	b.tick++
-	return b.writeStatus(Status{
+	status := Status{
 		Tick:              b.tick,
-		Idle:              carriedOut == 0,
+		Idle:              carriedOut == 0 && b.pendingCount() == 0,
 		DeviceID:          b.device.ID,
 		DeviceFingerprint: b.device.Fingerprint,
-	})
+		Pending:           b.pendingCount(),
+	}
+	if b.lastError != nil {
+		status.LastError = b.lastError.Error()
+	}
+	return b.writeStatus(status)
+}
+
+// pendingFor is the work one forge still owes the rooms.
+func (b *Bridge) pendingFor(root string) *pendingChat {
+	if _, ok := b.pending[root]; !ok {
+		b.pending[root] = newPendingChat()
+	}
+	return b.pending[root]
+}
+
+// pendingApprovalsFor is the approvals work one forge still owes the rooms.
+func (b *Bridge) pendingApprovalsFor(key string) *pendingApprovals {
+	if _, ok := b.pendingApprovals[key]; !ok {
+		b.pendingApprovals[key] = newPendingApprovals()
+	}
+	return b.pendingApprovals[key]
+}
+
+// refuse records an action the forge would not carry out, so the tick can carry
+// on and the action can be tried again.
+func (b *Bridge) refuse(err error, root string) {
+	b.lastError = err
+	b.log.Error("the forge refused an action", "root", root, "error", err)
 }
 
 // roomEvents is what the Matrix side has said since the last tick, grouped by
@@ -210,30 +244,51 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
 	}
 
-	carriedOut := 0
+	carriedOut := b.carryOutChat(ctx, root, store, room, seen, requests)
+
+	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += approvals
+	}
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += activity
+	}
+	return carriedOut, nil
+}
+
+// carryOutChat carries out the chat work one forge owes the room and reports
+// how much of it was carried out. An action the forge refuses is kept and tried
+// again, while the rest of the work still goes ahead.
+func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore, room Room, seen roomEvents, requests []relay.Request) int {
+	pending := b.pendingFor(root)
 	for _, action := range relay.Plan(b.cfg.Operator, b.state.Relay, requests, seen.messages[room.RoomID]) {
+		pending.keep(action)
+	}
+
+	carriedOut := 0
+	for _, action := range pending.list() {
 		if err := b.apply(ctx, root, store, room, action); err != nil {
-			return 0, err
+			// One action the forge refuses is reported and tried again; the
+			// rest of the tick still goes ahead.
+			b.refuse(err, root)
+			continue
 		}
+		pending.done(action)
 		carriedOut++
 	}
 
 	paired, err := b.pairPendingRequests(store)
 	if err != nil {
-		return 0, err
+		b.refuse(err, root)
+		return carriedOut
 	}
-	carriedOut += paired
-
-	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
-	if err != nil {
-		return 0, err
-	}
-
-	activity, err := b.carryOutActivity(ctx, root, room)
-	if err != nil {
-		return 0, err
-	}
-	return carriedOut + approvals + activity, nil
+	return carriedOut + paired
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
