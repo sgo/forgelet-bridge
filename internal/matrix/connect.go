@@ -32,6 +32,7 @@ type Client struct {
 	cli        *mautrix.Client
 	helper     *cryptohelper.CryptoHelper
 	events     chan relay.RoomEvent
+	reactions  chan relay.Reaction
 	log        *slog.Logger
 	serverName string
 }
@@ -55,6 +56,7 @@ func Connect(ctx context.Context, cfg config.Config, log *slog.Logger) (*Client,
 	client := &Client{
 		cli:        cli,
 		events:     make(chan relay.RoomEvent, eventBuffer),
+		reactions:  make(chan relay.Reaction, eventBuffer),
 		log:        log,
 		serverName: serverName(cfg.UserID),
 	}
@@ -63,6 +65,7 @@ func Connect(ctx context.Context, cfg config.Config, log *slog.Logger) (*Client,
 		return nil, fmt.Errorf("unexpected syncer %T", cli.Syncer)
 	}
 	syncer.OnEventType(event.EventMessage, client.captureMessage)
+	syncer.OnEventType(event.EventReaction, client.captureReaction)
 
 	helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey(cfg.UserID), filepath.Join(cfg.StateDir, "crypto.db"))
 	if err != nil {
@@ -106,13 +109,23 @@ func (c *Client) Close() error {
 
 // DrainEvents returns the chat messages seen since the last drain.
 func (c *Client) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
-	var drained []relay.RoomEvent
+	return drain(c.events), nil
+}
+
+// DrainReactions returns the reactions seen since the last drain.
+func (c *Client) DrainReactions(_ context.Context) ([]relay.Reaction, error) {
+	return drain(c.reactions), nil
+}
+
+// drain takes everything a channel holds right now.
+func drain[T any](from chan T) []T {
+	var drained []T
 	for {
 		select {
-		case event := <-c.events:
-			drained = append(drained, event)
+		case item := <-from:
+			drained = append(drained, item)
 		default:
-			return drained, nil
+			return drained
 		}
 	}
 }
@@ -164,10 +177,34 @@ func (c *Client) captureMessage(_ context.Context, evt *event.Event) {
 		Sender:  evt.Sender.String(),
 		Body:    content.Body,
 	}
+	if rel := content.RelatesTo; rel != nil && rel.Type == event.RelThread {
+		seen.ThreadRoot = rel.EventID.String()
+	}
 	select {
 	case c.events <- seen:
 	default:
 		c.log.Error("chat message buffer is full, dropping message", "event", seen.EventID)
+	}
+}
+
+// captureReaction records a reaction and the event it annotates, so the bridge
+// can tell an approval tap apart from any other reaction.
+func (c *Client) captureReaction(_ context.Context, evt *event.Event) {
+	content := evt.Content.AsReaction()
+	if content == nil || content.RelatesTo.EventID == "" {
+		return
+	}
+	seen := relay.Reaction{
+		RoomID:        evt.RoomID.String(),
+		EventID:       evt.ID.String(),
+		Sender:        evt.Sender.String(),
+		TargetEventID: content.RelatesTo.EventID.String(),
+		Key:           content.RelatesTo.Key,
+	}
+	select {
+	case c.reactions <- seen:
+	default:
+		c.log.Error("reaction buffer is full, dropping reaction", "event", seen.EventID)
 	}
 }
 

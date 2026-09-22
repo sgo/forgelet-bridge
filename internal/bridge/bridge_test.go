@@ -52,18 +52,23 @@ type sentMessage struct {
 }
 
 type fakeRooms struct {
-	mu       sync.Mutex
-	ensured  []string
-	sent     []sentMessage
-	events   []relay.RoomEvent
-	drainErr error
+	mu        sync.Mutex
+	ensured   []string
+	sent      []sentMessage
+	events    []relay.RoomEvent
+	reactions []relay.Reaction
+	drainErr  error
 }
 
 func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ensured = append(r.ensured, forgeName)
-	return Room{SpaceID: "!space-" + forgeName, RoomID: "!room-" + forgeName}, nil
+	return Room{
+		SpaceID:         "!space-" + forgeName,
+		RoomID:          "!room-" + forgeName,
+		ApprovalsRoomID: "!approvals-" + forgeName,
+	}, nil
 }
 
 func (r *fakeRooms) SendText(_ context.Context, roomID, body, threadAnchor string) (string, error) {
@@ -96,6 +101,20 @@ func (r *fakeRooms) push(event relay.RoomEvent) {
 	r.events = append(r.events, event)
 }
 
+func (r *fakeRooms) DrainReactions(_ context.Context) ([]relay.Reaction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	reactions := r.reactions
+	r.reactions = nil
+	return reactions, nil
+}
+
+func (r *fakeRooms) pushReaction(reaction relay.Reaction) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reactions = append(r.reactions, reaction)
+}
+
 const operator = "@operator:example.org"
 
 // newTestConfig is the configuration a test bridge runs with.
@@ -117,8 +136,17 @@ func newTestConfig(t *testing.T, roots ...string) config.Config {
 
 func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, roots ...string) (*Bridge, config.Config) {
 	t.Helper()
+	approvalStores := map[string]ApprovalStore{}
+	for _, root := range roots {
+		approvalStores[root] = &fakeApprovals{}
+	}
+	return newTestBridgeWithApprovals(t, rooms, stores, approvalStores, roots...)
+}
+
+func newTestBridgeWithApprovals(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, approvalStores map[string]ApprovalStore, roots ...string) (*Bridge, config.Config) {
+	t.Helper()
 	cfg := newTestConfig(t, roots...)
-	built, err := New(cfg, rooms, stores, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	built, err := New(cfg, rooms, stores, approvalStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -128,7 +156,7 @@ func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore,
 func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, logger)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, logger)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -139,7 +167,7 @@ func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 }
 
 func TestNewFindsALoggerWithoutOne(t *testing.T) {
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, nil)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -243,7 +271,7 @@ func TestTickRepeatsNothingWhenRestarted(t *testing.T) {
 	}
 
 	restartedRooms := &fakeRooms{}
-	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, nil)
+	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}}, nil)
 	if err != nil {
 		t.Fatalf("New after restart: %v", err)
 	}
@@ -396,6 +424,28 @@ func TestRunDefaultsAnIntervalThatIsNotPositive(t *testing.T) {
 	}
 }
 
+func TestRunWaitsBetweenTicksWithoutAnInterval(t *testing.T) {
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, 0) }()
+
+	// An interval without a value means "tick once a second": a bridge told to
+	// wait must not turn into a loop that never waits.
+	statusPath := filepath.Join(cfg.StateDir, StatusName)
+	waitForTicks(t, statusPath, 1)
+	time.Sleep(50 * time.Millisecond)
+	status := readStatus(t, statusPath)
+	cancel()
+	<-done
+
+	if status.Tick > 3 {
+		t.Errorf("tick = %d, want the bridge to wait between ticks", status.Tick)
+	}
+}
+
 func TestRunKeepsTickingAtTheIntervalItIsGiven(t *testing.T) {
 	rooms := &fakeRooms{}
 	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
@@ -411,30 +461,28 @@ func TestRunKeepsTickingAtTheIntervalItIsGiven(t *testing.T) {
 	<-done
 }
 
-func TestRunLogsTheFirstFailingTick(t *testing.T) {
-	logs := &logBuffer{}
-	built := newFailingBridge(t, logs)
+func TestRunLogsAFailingTick(t *testing.T) {
+	cases := map[string]struct {
+		interval time.Duration
+		want     int
+	}{
+		"the first tick":   {interval: time.Hour, want: 1},
+		"every tick after": {interval: time.Millisecond, want: 2},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			logs := &logBuffer{}
+			built := newFailingBridge(t, logs)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- built.Run(ctx, time.Hour) }()
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- built.Run(ctx, tc.interval) }()
 
-	waitForLogs(t, logs, "tick failed", 1)
-	cancel()
-	<-done
-}
-
-func TestRunLogsEveryFailingTick(t *testing.T) {
-	logs := &logBuffer{}
-	built := newFailingBridge(t, logs)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- built.Run(ctx, time.Millisecond) }()
-
-	waitForLogs(t, logs, "tick failed", 2)
-	cancel()
-	<-done
+			waitForLogs(t, logs, "tick failed", tc.want)
+			cancel()
+			<-done
+		})
+	}
 }
 
 // newFailingBridge builds a bridge whose forge is unreachable, so that every
@@ -443,7 +491,8 @@ func newFailingBridge(t *testing.T, logs *logBuffer) *Bridge {
 	t.Helper()
 	rooms := &fakeRooms{drainErr: errors.New("the homeserver is away")}
 	built, err := New(newTestConfig(t, "/forges/forge-a"), rooms,
-		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, slog.New(slog.NewTextHandler(logs, nil)))
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -532,4 +581,18 @@ func readStatus(t *testing.T, path string) Status {
 		t.Fatalf("parse status: %v", err)
 	}
 	return status
+}
+
+func TestBackOffSlowsRetriesDownAndIsCapped(t *testing.T) {
+	interval := time.Second
+	wait := backOff(interval, interval)
+	if wait != 2*time.Second {
+		t.Errorf("first back off = %v, want twice the interval", wait)
+	}
+	if got := backOff(time.Minute, interval); got != maxBackOff {
+		t.Errorf("back off = %v, want it capped at %v", got, maxBackOff)
+	}
+	if got := backOff(time.Millisecond, interval); got != interval {
+		t.Errorf("back off = %v, want it never below the interval %v", got, interval)
+	}
 }

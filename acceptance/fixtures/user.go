@@ -155,6 +155,51 @@ func (u *User) Send(ctx context.Context, roomID, body string) (string, error) {
 	return resp.EventID.String(), nil
 }
 
+// React adds a reaction to an event, the way a phone does when the operator
+// taps it.
+func (u *User) React(ctx context.Context, roomID, targetEventID, key string) error {
+	content := &event.ReactionEventContent{
+		RelatesTo: event.RelatesTo{
+			Type:    event.RelAnnotation,
+			EventID: id.EventID(targetEventID),
+			Key:     key,
+		},
+	}
+	_, err := u.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventReaction, content)
+	return err
+}
+
+// SendInThread posts an encrypted reply in a message's thread.
+func (u *User) SendInThread(ctx context.Context, roomID, body, threadRoot string) (string, error) {
+	content := &event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    body,
+		RelatesTo: &event.RelatesTo{
+			Type:    event.RelThread,
+			EventID: id.EventID(threadRoot),
+		},
+	}
+	encrypted, err := u.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)
+	if err != nil {
+		return "", err
+	}
+	resp, err := u.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventEncrypted, encrypted)
+	if err != nil {
+		return "", err
+	}
+	u.mu.Lock()
+	u.messages = append(u.messages, Message{
+		RoomID:     roomID,
+		EventID:    resp.EventID.String(),
+		Sender:     u.UserID,
+		Body:       body,
+		ThreadRoot: threadRoot,
+		Encrypted:  true,
+	})
+	u.mu.Unlock()
+	return resp.EventID.String(), nil
+}
+
 // JoinedRoomIDs lists the rooms this user is in.
 func (u *User) JoinedRoomIDs(ctx context.Context) ([]string, error) {
 	resp, err := u.cli.JoinedRooms(ctx)

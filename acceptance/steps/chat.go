@@ -127,35 +127,11 @@ func userJoinedChatRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-	userID := captures[1]
 	roomID, err := w.chatRoom(ctx, captures[2])
 	if err != nil {
 		return err
 	}
-	user, err := w.user(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if rooms, err := user.Rooms(ctx); err == nil && fixtures.Contains(rooms, roomID) {
-		return nil
-	}
-
-	// The bridge only invites the operator, so the operator has to add anyone
-	// else, the way they would add a friend in Element.
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	if err := operator.Invite(ctx, roomID, userID); err != nil {
-		return err
-	}
-	return waitFor(ctx, fmt.Sprintf("%s never joined %s", userID, captures[2]), func() (bool, error) {
-		joined, err := user.JoinedRoomIDs(ctx)
-		if err != nil {
-			return false, err
-		}
-		return fixtures.Contains(joined, roomID), nil
-	})
+	return w.addUserToRoom(ctx, captures[1], roomID, captures[2])
 }
 
 func roomHoldsOneChatMessage(_ context.Context, world any, captures []string) error {
