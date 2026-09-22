@@ -47,13 +47,23 @@ func (w *World) forge(ctx context.Context, name string) (*dashboard.Store, error
 	return store, nil
 }
 
-// configureForge records the root the bridge is configured with. The forge has
-// to be one the scenario has already declared: a forge no fixture stands behind
-// would run the bridge against a forge that is not there.
-func (w *World) configureForge(name string) error {
+// declaredForge is the dashboard queue of a fixture forge the scenario has
+// already declared. A forge no fixture stands behind would run the bridge
+// against a forge that is not there, so every step that names a forge asks
+// this one question.
+func (w *World) declaredForge(name string) (*dashboard.Store, error) {
 	store, ok := w.dashboards[name]
 	if !ok {
-		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+		return nil, fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+	}
+	return store, nil
+}
+
+// configureForge records the root the bridge is configured with.
+func (w *World) configureForge(name string) error {
+	store, err := w.declaredForge(name)
+	if err != nil {
+		return err
 	}
 	w.configured = appendUnique(w.configured, store.Root())
 	return nil
