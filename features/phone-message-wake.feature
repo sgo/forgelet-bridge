@@ -21,17 +21,16 @@ Feature: Phone Message Wake
   # Phone Message Wake 1: a message from the phone reaches the lieutenant with its wake
   Scenario: Phone Message Wake 1: a message from the phone reaches the lieutenant with its wake
     When the operator sends the message "is the build green?" into chat room Chat
-    Then the forge holds a chat request reading "is the build green?"
-    And the forge's dashboard typed the chat request reading "is the build green?" into the lieutenant's pane
+    Then the forge holds the chat request "is the build green?" the dashboard took and typed into the lieutenant's pane
 
   # Phone Message Wake 2: a request the dashboard takes itself is woken the same way
   Scenario: Phone Message Wake 2: a request the dashboard takes itself is woken the same way
     When the forge's dashboard takes the chat request "please look at the invoice card" the way its clients give it
-    Then the forge's dashboard typed the chat request reading "please look at the invoice card" into the lieutenant's pane
+    Then the forge holds the chat request "please look at the invoice card" the dashboard took and typed into the lieutenant's pane
 
   # Phone Message Wake 3: the answer to a message from the phone comes back to the room
   Scenario: Phone Message Wake 3: the answer to a message from the phone comes back to the room
     When the operator sends the message "is the build green?" into chat room Chat
-    And the forge's dashboard typed the chat request reading "is the build green?" into the lieutenant's pane
+    And the forge holds the chat request "is the build green?" the dashboard took and typed into the lieutenant's pane
     When the lieutenant answers the chat request "is the build green?" with "yes, the build is green"
     Then the operator decrypts the thread reply "yes, the build is green" to the chat message "is the build green?"

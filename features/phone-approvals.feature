@@ -36,7 +36,7 @@ Feature: Phone Approvals
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator taps ✅ on the approval message for the card phone-approvals
-    Then the forge recorded the approval for the card phone-approvals as approved
+    Then the forge's dashboard recorded the approval for the card phone-approvals as approved
     And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals
 
   # Phone Approvals 3: the operator sends the approval back by replying in its thread
@@ -44,7 +44,7 @@ Feature: Phone Approvals
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator replies "the timesheet total is still wrong" in the approval message's thread for the card phone-approvals
-    Then the forge recorded the approval for the card phone-approvals as sent back with "the timesheet total is still wrong"
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with "the timesheet total is still wrong"
     And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
 
   # Phone Approvals 4: only the operator's ✅ reaction acts on the approval
@@ -56,7 +56,7 @@ Feature: Phone Approvals
     And the operator sends the message "when is this due?" into the approvals room
     Then the approval for the card phone-approvals is still pending in the forge
     And the forge holds 0 chat requests
-    And the forge was never asked to delete or tear down
+    And the forge's dashboard was never asked to delete or tear down
 
     Examples:
       | reactor               | reaction |
@@ -70,5 +70,5 @@ Feature: Phone Approvals
     When the operator approves the approval for the card phone-approvals from the desktop
     Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
     When the operator taps ✅ on the approval message for the card phone-approvals
-    Then the forge recorded exactly one resolution for the card phone-approvals
+    Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
     And the approval message's thread holds exactly one reply
