@@ -68,24 +68,10 @@ func StartDashboard(ctx context.Context, root string) (*Dashboard, error) {
 
 // Stop shuts the dashboard down.
 func (d *Dashboard) Stop() {
-	if d == nil || d.cmd == nil || d.cmd.Process == nil {
+	if d == nil {
 		return
 	}
-	_ = d.cmd.Process.Signal(os.Interrupt)
-	done := make(chan struct{})
-	go func() {
-		_ = d.cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(15 * time.Second):
-		_ = d.cmd.Process.Kill()
-		<-done
-	}
-	if d.log != nil {
-		d.log.Close()
-	}
+	stopProcess(d.cmd, d.log, 15*time.Second)
 }
 
 // Typed is what the dashboard typed into the lieutenant's pane.
@@ -236,4 +222,17 @@ func (d *Dashboard) FixtureSnapshots(card string) ([]string, error) {
 		}
 	}
 	return branches, nil
+}
+
+// FixtureHead is the commit the fixture's own repository is on, which is the
+// commit a fixture handoff can name: the fixture's git world ends at the
+// fixture, so a hash from anywhere else means nothing to it. A root that is
+// not a repository has no commit to name.
+func FixtureHead(root string) string {
+	cmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

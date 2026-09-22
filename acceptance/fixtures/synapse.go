@@ -75,24 +75,10 @@ func StartSynapse(ctx context.Context, dir string) (*Synapse, error) {
 
 // Stop shuts the homeserver down.
 func (s *Synapse) Stop() {
-	if s == nil || s.cmd == nil || s.cmd.Process == nil {
+	if s == nil {
 		return
 	}
-	_ = s.cmd.Process.Signal(os.Interrupt)
-	done := make(chan struct{})
-	go func() {
-		_ = s.cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(20 * time.Second):
-		_ = s.cmd.Process.Kill()
-		<-done
-	}
-	if s.log != nil {
-		s.log.Close()
-	}
+	stopProcess(s.cmd, s.log, 20*time.Second)
 }
 
 func (s *Synapse) waitUntilReady(ctx context.Context) error {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
@@ -65,7 +66,7 @@ func pendingApproval(_ context.Context, world any, captures []string) error {
 		"type: git_handoff",
 		"task_id: " + approvalTaskID(card),
 		"task: " + card,
-		"commit: " + fixtureHead(root),
+		"commit: " + fixtures.FixtureHead(root),
 		"artifacts: internal/bridge/bridge.go, internal/relay/relay.go",
 	}
 	if withRoles {
