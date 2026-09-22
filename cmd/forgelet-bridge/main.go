@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	approvalspkg "github.com/unclebob/forgelet-bridge/internal/approvals"
 	"github.com/unclebob/forgelet-bridge/internal/board"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 	"github.com/unclebob/forgelet-bridge/internal/config"
@@ -75,8 +74,10 @@ type adapters struct {
 	boards    map[string]bridge.BoardStore
 }
 
-// openAdapters opens the dashboard queue, the approvals and the boards of every
-// configured forge, keyed by the forge's root.
+// openAdapters opens the chat queue, the approvals and the boards of every
+// configured forge, keyed by the forge's root. The approvals are the forge's
+// dashboard's own API, at the address the configuration gives that forge or,
+// when it gives none, the one the dashboard announces in the forge.
 func openAdapters(cfg config.Config) adapters {
 	opened := adapters{
 		chat:      make(map[string]bridge.ForgeStore, len(cfg.Forges)),
@@ -85,7 +86,7 @@ func openAdapters(cfg config.Config) adapters {
 	}
 	for _, forge := range cfg.Forges {
 		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
-		opened.approvals[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
+		opened.approvals[forge.Root] = dashboard.Approvals{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root)}
 	}
 	return opened

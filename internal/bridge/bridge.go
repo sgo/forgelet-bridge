@@ -25,9 +25,9 @@ type ForgeStore interface {
 // ApprovalStore is the forge side of one root's approvals: the handoffs its
 // projects are waiting for.
 type ApprovalStore interface {
-	Pending() ([]relay.Approval, error)
-	Approve(project, id string) error
-	SendBack(project, id, feedback string) error
+	Pending(ctx context.Context) ([]relay.Approval, error)
+	Approve(ctx context.Context, project, id string) error
+	SendBack(ctx context.Context, project, id, feedback string) error
 }
 
 // BoardStore is the forge side of one root's boards: the cards its projects

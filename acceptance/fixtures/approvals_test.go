@@ -1,4 +1,4 @@
-package approvals
+package fixtures
 
 import (
 	"encoding/json"
@@ -24,7 +24,7 @@ artifacts: internal/bridge/bridge.go, internal/relay/relay.go
 Re-read your role and constitution.
 `
 
-func newStore(t *testing.T, projects ...string) *Store {
+func newApprovalStore(t *testing.T, projects ...string) *approvalStore {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
@@ -40,10 +40,10 @@ func newStore(t *testing.T, projects ...string) *Store {
 	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "open-projects"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return New(root)
+	return NewApprovals(root)
 }
 
-func seed(t *testing.T, store *Store, project, id, content string) string {
+func seed(t *testing.T, store *approvalStore, project, id, content string) string {
 	t.Helper()
 	path := filepath.Join(store.root, "projects", project, ".swarmforge", "handoffs", "pending_approval", id+".handoff")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -56,7 +56,7 @@ func seed(t *testing.T, store *Store, project, id, content string) string {
 }
 
 func TestPendingReadsTheProjectsApprovals(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "20260922T124152671989Z-phone-approvals", pending)
 
 	pending, err := store.Pending()
@@ -76,8 +76,11 @@ func TestPendingReadsTheProjectsApprovals(t *testing.T) {
 	if approval.Card != "phone-approvals" {
 		t.Errorf("card = %q", approval.Card)
 	}
-	if approval.Gate != "coder → refactorer" {
-		t.Errorf("gate = %q, want the handover roles", approval.Gate)
+	if approval.From != "coder" || approval.To != "refactorer" {
+		t.Errorf("roles = %q → %q, want the handover roles the handoff reports", approval.From, approval.To)
+	}
+	if approval.Gate != "spec → refactorer" {
+		t.Errorf("gate = %q, want the gate as the dashboard reports it", approval.Gate)
 	}
 	if len(approval.Artifacts) != 2 || approval.Artifacts[0] != "internal/bridge/bridge.go" {
 		t.Errorf("artifacts = %v", approval.Artifacts)
@@ -85,7 +88,7 @@ func TestPendingReadsTheProjectsApprovals(t *testing.T) {
 }
 
 func TestPendingFallsBackToTheSpecRoleWhenNoRolesAreReported(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1", `to: refactorer
 task: phone-approvals
 artifacts: internal/bridge/bridge.go
@@ -97,13 +100,13 @@ body
 	if err != nil {
 		t.Fatalf("Pending: %v", err)
 	}
-	if pending[0].Gate != "spec → refactorer" {
-		t.Errorf("gate = %q, want the reported gate", pending[0].Gate)
+	if pending[0].Gate != "spec → refactorer" || pending[0].From != "" {
+		t.Errorf("approval = %+v, want the reported gate and no roles", pending[0])
 	}
 }
 
 func TestPendingIgnoresProjectsThatAreNotOpen(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "closed-project", "approval-1", pending)
 
 	pending, err := store.Pending()
@@ -116,7 +119,7 @@ func TestPendingIgnoresProjectsThatAreNotOpen(t *testing.T) {
 }
 
 func TestPendingForIgnoresWhatIsNotAHandoff(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1", pending)
 	dir := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "handoffs", "pending_approval")
 	if err := os.Mkdir(filepath.Join(dir, "a-directory.handoff"), 0o755); err != nil {
@@ -136,7 +139,7 @@ func TestPendingForIgnoresWhatIsNotAHandoff(t *testing.T) {
 }
 
 func TestPendingForAProjectWithoutApprovals(t *testing.T) {
-	store := newStore(t)
+	store := newApprovalStore(t)
 
 	pendingApprovals, err := store.PendingFor("forgelet-bridge")
 	if err != nil {
@@ -148,7 +151,7 @@ func TestPendingForAProjectWithoutApprovals(t *testing.T) {
 }
 
 func TestApproveMovesTheHandoffToTheOutboxApproved(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	source := seed(t, store, "forgelet-bridge", "approval-1", pending)
 	reviews := filepath.Join(filepath.Dir(source), "approval-1.reviews.json")
 	if err := os.WriteFile(reviews, []byte(`{"/x":"note"}`), 0o644); err != nil {
@@ -187,14 +190,14 @@ func TestApproveMovesTheHandoffToTheOutboxApproved(t *testing.T) {
 }
 
 func TestApproveRejectsAnUnknownApproval(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	if err := store.Approve("forgelet-bridge", "approval-1"); err == nil {
 		t.Fatal("Approve accepted an unknown approval")
 	}
 }
 
 func TestSendBackRecordsTheFeedbackAndStopsTheApprovalBeingPending(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1", pending)
 	at := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return at }
@@ -230,7 +233,7 @@ func TestSendBackRecordsTheFeedbackAndStopsTheApprovalBeingPending(t *testing.T)
 }
 
 func TestSendBackAppendsToExistingHistory(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1", pending)
 	historyPath := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "rejected-tasks",
 		"20260922T124152671989Z-phone-approvals", "reviews.json")
@@ -275,7 +278,7 @@ func TestApprovedNamesAHandoffWithoutABody(t *testing.T) {
 }
 
 func TestPendingKeepsTheOrderTheFilesComeBackIn(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "b-approval", pending)
 	seed(t, store, "forgelet-bridge", "a-approval", pending)
 
@@ -294,7 +297,7 @@ func TestPendingKeepsTheOrderTheFilesComeBackIn(t *testing.T) {
 }
 
 func TestSendBackDropsThePendingReviewNotes(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1", pending)
 	notes := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "handoffs",
 		"pending_approval", "approval-1"+reviewsSuffix)
@@ -322,7 +325,7 @@ func TestSendBackRecordsNothingWithoutFeedbackOrATaskID(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			store := newStore(t, "forgelet-bridge")
+			store := newApprovalStore(t, "forgelet-bridge")
 			seed(t, store, "forgelet-bridge", "approval-1", tc.content)
 
 			if err := store.SendBack("forgelet-bridge", "approval-1", tc.feedback); err != nil {
@@ -342,7 +345,7 @@ func TestSendBackRecordsNothingWithoutFeedbackOrATaskID(t *testing.T) {
 }
 
 func TestSendBackRecordsUnderTheCardWhenTheApprovalNamesNoArtifacts(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
+	store := newApprovalStore(t, "forgelet-bridge")
 	seed(t, store, "forgelet-bridge", "approval-1",
 		"id: approval-1\ntask_id: 20260922T124152671989Z-phone-approvals\ntask: phone-approvals\n\nbody\n")
 
