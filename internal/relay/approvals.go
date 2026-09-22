@@ -148,22 +148,12 @@ func textGestures(operator string, st State, pending []Approval, byMessage map[s
 		if message.Sender != operator || strings.TrimSpace(message.Body) == "" {
 			continue
 		}
-		if message.ThreadRoot != "" {
-			if approval, known := byMessage[message.ThreadRoot]; known {
-				if !undecided(st, approval.Key) {
-					continue
-				}
-				if affirmative(message.Body, approval) {
-					actions = append(actions, ApprovalAction{
-						Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionApproved,
-					})
-					continue
-				}
-				actions = append(actions, ApprovalAction{
-					Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionSentBack, Feedback: message.Body,
-				})
-				continue
+		if approval, replied := repliedApproval(byMessage, message); replied {
+			if !undecided(st, approval.Key) {
+				continue // already decided: a later reply in its thread says nothing
 			}
+			actions = append(actions, decisionFor(approval, message.Body))
+			continue
 		}
 		if key, approval, matched := approvalForText(pending, message.Body); matched && undecided(st, key) {
 			actions = append(actions, ApprovalAction{
@@ -174,6 +164,30 @@ func textGestures(operator string, st State, pending []Approval, byMessage map[s
 		actions = append(actions, ApprovalAction{Kind: AnswerGestures})
 	}
 	return actions
+}
+
+// repliedApproval is the approval a message replies under, when the room knows
+// that approval's message.
+func repliedApproval(byMessage map[string]Approval, message RoomEvent) (Approval, bool) {
+	if message.ThreadRoot == "" {
+		return Approval{}, false
+	}
+	approval, known := byMessage[message.ThreadRoot]
+	return approval, known
+}
+
+// decisionFor is what a reply in an approval's thread decides: the plain word
+// approves, and anything else is the send-back it always was, with the reply as
+// its feedback.
+func decisionFor(approval Approval, body string) ApprovalAction {
+	if affirmative(body, approval) {
+		return ApprovalAction{
+			Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionApproved,
+		}
+	}
+	return ApprovalAction{
+		Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionSentBack, Feedback: body,
+	}
 }
 
 // unansweredReactions plans the answer for a reaction the room cannot read: the
@@ -222,13 +236,6 @@ func approvalForText(pending []Approval, text string) (string, Approval, bool) {
 		return pending[0].Key, pending[0], true
 	}
 	return "", Approval{}, false
-}
-
-func approvalByText(pending []Approval, text string) (bool, string) {
-	if key, _, matched := approvalForText(pending, text); matched {
-		return true, key
-	}
-	return false, ""
 }
 
 // unpostedApprovals plans the messages for the approvals the room has not seen

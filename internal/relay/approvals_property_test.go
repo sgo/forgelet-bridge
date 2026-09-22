@@ -9,10 +9,12 @@ import (
 	"testing/quick"
 )
 
-// TestPropertyPlanApprovalsActsOnce is the promise the phone depends on: once
-// the bridge has carried out an approvals plan - the message is posted, the
-// decision is carried back to the forge, the thread reply is recorded - the
-// same events ask for nothing more, however often they are replayed.
+// TestPropertyPlanApprovalsDecidesOnce is the promise the phone depends on:
+// once the bridge has carried out an approvals plan - the message is posted,
+// the decision is carried back to the forge, the thread reply is recorded - the
+// same events decide nothing again, however often they are replayed. The room's
+// answer to a message it cannot read is not a decision and asks for nothing
+// durable, and the events themselves are drained once, so it cannot repeat.
 func TestPropertyPlanApprovalsActsOnce(t *testing.T) {
 	property := func(st State, pending []Approval, reactions []Reaction, replies []RoomEvent) bool {
 		st = cloneState(st)
@@ -21,7 +23,18 @@ func TestPropertyPlanApprovalsActsOnce(t *testing.T) {
 		actions := PlanApprovals(operator, st, pending, reactions, replies)
 		pending = carryOutApprovals(&st, pending, actions)
 
-		return len(PlanApprovals(operator, st, pending, reactions, replies)) == 0
+		decided := map[string]bool{}
+		for key, state := range st.Approvals {
+			if state.Resolution != "" {
+				decided[key] = true
+			}
+		}
+		for _, action := range PlanApprovals(operator, st, pending, reactions, replies) {
+			if action.Kind == ResolveApproval && decided[action.Key] {
+				return false
+			}
+		}
+		return true
 	}
 	if err := quick.Check(property, &quick.Config{
 		MaxCount: 300,
