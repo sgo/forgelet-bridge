@@ -27,6 +27,9 @@ const ActivityRoomName = "Activity"
 type Forge struct {
 	Root string `json:"root"`
 	Name string `json:"name,omitempty"`
+	// DashboardURL is the forge's dashboard, when the configuration gives it;
+	// otherwise the dashboard announces itself in the forge's state directory.
+	DashboardURL string `json:"dashboard_url,omitempty"`
 }
 
 // DisplayName is the name the forge shows up under: the configured name, or

@@ -1,6 +1,6 @@
 //go:build property
 
-package approvals
+package fixtures
 
 import (
 	"math/rand"

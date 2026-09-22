@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	approvalspkg "github.com/unclebob/forgelet-bridge/internal/approvals"
 	"github.com/unclebob/forgelet-bridge/internal/board"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 	"github.com/unclebob/forgelet-bridge/internal/config"
@@ -75,8 +74,19 @@ func stores(cfg config.Config) map[string]bridge.ForgeStore {
 // approvals opens the approvals of every configured forge.
 func approvals(cfg config.Config) map[string]bridge.ApprovalStore {
 	return byForge(cfg, func(root string) bridge.ApprovalStore {
-		return approvalspkg.Queue{Store: approvalspkg.New(root)}
+		return dashboard.Approvals{Root: root, ConfiguredURL: dashboardURL(cfg, root)}
 	})
+}
+
+// dashboardURL is the address the configuration gives a forge's dashboard, if
+// any; otherwise the dashboard announces itself in the forge's state directory.
+func dashboardURL(cfg config.Config, root string) string {
+	for _, forge := range cfg.Forges {
+		if forge.Root == root {
+			return forge.DashboardURL
+		}
+	}
+	return ""
 }
 
 // byForge opens one adapter per configured forge, keyed by the forge's root.

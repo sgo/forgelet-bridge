@@ -33,7 +33,7 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 	if !ok {
 		return 0, fmt.Errorf("no approvals configured for forge root %s", root)
 	}
-	pending, err := store.Pending()
+	pending, err := store.Pending(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
 	}
@@ -60,7 +60,7 @@ func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Ro
 		})
 
 	case relay.ResolveApproval:
-		if err := b.resolveApproval(store, action); err != nil {
+		if err := b.resolveApproval(ctx, store, action); err != nil {
 			return err
 		}
 		b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
@@ -85,15 +85,15 @@ func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Ro
 	return b.state.Save(b.statePath)
 }
 
-func (b *Bridge) resolveApproval(store ApprovalStore, action relay.ApprovalAction) error {
+func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, action relay.ApprovalAction) error {
 	approval := action.Approval
 	switch action.Resolution {
 	case relay.ResolutionApproved:
-		if err := store.Approve(approval.Project, approval.ID); err != nil {
+		if err := store.Approve(ctx, approval.Project, approval.ID); err != nil {
 			return fmt.Errorf("approve %s: %w", action.Key, err)
 		}
 	case relay.ResolutionSentBack:
-		if err := store.SendBack(approval.Project, approval.ID, action.Feedback); err != nil {
+		if err := store.SendBack(ctx, approval.Project, approval.ID, action.Feedback); err != nil {
 			return fmt.Errorf("send back %s: %w", action.Key, err)
 		}
 	default:
