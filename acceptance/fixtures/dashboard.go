@@ -3,12 +3,23 @@ package fixtures
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+)
+
+// The endpoints the bridge reaches a forge's dashboard on, as the dashboard
+// serves them.
+const (
+	statePath  = "/api/state"
+	approveDir = "/api/approvals/"
+	approveEnd = "/approve"
+	retryPath  = "/api/tasks/retry"
 )
 
 // DashboardCall is one request a forge's dashboard was asked to handle.
@@ -87,27 +98,30 @@ func (d *Dashboard) WasAsked(method, path, contains string) bool {
 }
 
 func (d *Dashboard) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	body := ""
-	if request.Body != nil {
-		data := make([]byte, 0, 4096)
-		buffer := make([]byte, 1024)
-		for {
-			read, err := request.Body.Read(buffer)
-			data = append(data, buffer[:read]...)
-			if err != nil {
-				break
-			}
-		}
-		body = string(data)
-	}
+	body := requestBody(request)
 	d.record(DashboardCall{Method: request.Method, Path: request.URL.Path, Body: body})
 
+	d.route(writer, request, body)
+}
+
+// requestBody reads a request's body: what could be read of it, empty when the
+// dashboard was asked nothing.
+func requestBody(request *http.Request) string {
+	if request.Body == nil {
+		return ""
+	}
+	data, _ := io.ReadAll(request.Body) // a body that ends early still counts
+	return string(data)
+}
+
+// route sends a request to the endpoint that handles it.
+func (d *Dashboard) route(writer http.ResponseWriter, request *http.Request, body string) {
 	switch {
-	case request.Method == http.MethodGet && request.URL.Path == "/api/state":
+	case request.Method == http.MethodGet && request.URL.Path == statePath:
 		d.state(writer)
-	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/api/approvals/") && strings.HasSuffix(request.URL.Path, "/approve"):
+	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, approveDir) && strings.HasSuffix(request.URL.Path, approveEnd):
 		d.approve(writer, request.URL.Path, body)
-	case request.Method == http.MethodPost && request.URL.Path == "/api/tasks/retry":
+	case request.Method == http.MethodPost && request.URL.Path == retryPath:
 		d.retry(writer, body)
 	default:
 		http.Error(writer, "Not found", http.StatusNotFound)
@@ -141,7 +155,7 @@ func (d *Dashboard) state(writer http.ResponseWriter) {
 
 // approve applies what approving means, exactly as the desktop dashboard does.
 func (d *Dashboard) approve(writer http.ResponseWriter, path, body string) {
-	id := strings.TrimSuffix(strings.TrimPrefix(path, "/api/approvals/"), "/approve")
+	id := strings.TrimSuffix(strings.TrimPrefix(path, approveDir), approveEnd)
 	project := projectOf(body)
 	if project == "" {
 		http.Error(writer, "Missing project", http.StatusBadRequest)
@@ -212,5 +226,9 @@ func fieldsOf(body string) map[string]string {
 }
 
 func unescapeID(id string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(id, "%2F", "/"), "%20", " ")
+	unescaped, err := url.PathUnescape(id)
+	if err != nil {
+		return id
+	}
+	return unescaped
 }

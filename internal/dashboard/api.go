@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,20 +19,27 @@ import (
 const URLFile = ".swarmforge/dashboard-url"
 
 // URL reads the address of the forge's dashboard, the way the dashboard
-// announces itself. An empty configured URL falls back to that file.
+// announces itself. An address the configuration does not give - or gives as
+// nothing the bridge could reach - falls back to that file.
 func URL(root, configured string) (string, error) {
-	if strings.TrimSpace(configured) != "" {
-		return strings.TrimRight(strings.TrimSpace(configured), "/"), nil
+	if address := dashboardAddress(configured); address != "" {
+		return address, nil
 	}
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(URLFile)))
 	if err != nil {
 		return "", fmt.Errorf("the forge's dashboard has not announced itself: %w", err)
 	}
-	url := strings.TrimRight(strings.TrimSpace(string(data)), "/")
-	if url == "" {
+	address := dashboardAddress(string(data))
+	if address == "" {
 		return "", fmt.Errorf("the forge's dashboard address is empty")
 	}
-	return url, nil
+	return address, nil
+}
+
+// dashboardAddress is an announced or configured address, without the
+// separators that would break the paths the bridge adds to it.
+func dashboardAddress(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
 }
 
 // API is a forge's dashboard, reached the way the dashboard itself is reached:
@@ -131,7 +139,7 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 // everything approving means.
 func (a *API) Approve(ctx context.Context, project, id string) error {
 	body := map[string]string{"id": id, "project": project}
-	return a.call(ctx, http.MethodPost, "/api/approvals/"+urlPathEscape(id)+"/approve", body, nil)
+	return a.call(ctx, http.MethodPost, "/api/approvals/"+url.PathEscape(id)+"/approve", body, nil)
 }
 
 // SendBack sends an approval back with feedback through the dashboard, so the
@@ -151,20 +159,9 @@ func (r ApprovalRequest) gate() string {
 }
 
 func (a *API) call(ctx context.Context, method, path string, body any, out any) error {
-	var reader io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(encoded)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, reader)
+	request, err := a.request(ctx, method, path, body)
 	if err != nil {
 		return err
-	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := a.client.Do(request)
 	if err != nil {
@@ -175,8 +172,8 @@ func (a *API) call(ctx context.Context, method, path string, body any, out any) 
 	if err != nil {
 		return err
 	}
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return fmt.Errorf("%s %s: %s: %s", method, path, response.Status, strings.TrimSpace(string(data)))
+	if err := responseError(method, path, response, data); err != nil {
+		return err
 	}
 	if out == nil {
 		return nil
@@ -184,7 +181,32 @@ func (a *API) call(ctx context.Context, method, path string, body any, out any) 
 	return json.Unmarshal(data, out)
 }
 
-// urlPathEscape escapes an approval id for a URL path.
-func urlPathEscape(id string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(id, "/", "%2F"), " ", "%20")
+// request builds one call to the dashboard, with its body encoded when it has
+// one.
+func (a *API) request(ctx context.Context, method, path string, body any) (*http.Request, error) {
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, reader)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	return request, nil
+}
+
+// responseError turns an answer the dashboard refused into an error naming the
+// call and what the dashboard said about it.
+func responseError(method, path string, response *http.Response, data []byte) error {
+	if response.StatusCode >= 200 && response.StatusCode <= 299 {
+		return nil
+	}
+	return fmt.Errorf("%s %s: %s: %s", method, path, response.Status, strings.TrimSpace(string(data)))
 }

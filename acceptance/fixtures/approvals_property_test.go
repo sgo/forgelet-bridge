@@ -11,10 +11,11 @@ import (
 	"testing/quick"
 )
 
-// TestPropertyParseNamesTheHandover checks what the operator reads on their
-// phone against the handoff it came from: the gate names who handed the work
-// to whom, the card names the card, and the changed files are the ones the
-// handoff lists.
+// TestPropertyParseNamesTheHandover checks what the dashboard double reports
+// about a handoff: who handed the work over and to whom, the card and its task
+// id, and the changed files the handoff lists. The gate the operator reads is
+// composed from those roles by the bridge's dashboard client, which pins that
+// in its own property.
 func TestPropertyParseNamesTheHandover(t *testing.T) {
 	property := func(role, to, card, taskID string, artifacts []string) bool {
 		handoff := strings.Join([]string{
@@ -31,17 +32,14 @@ func TestPropertyParseNamesTheHandover(t *testing.T) {
 
 		approval := parse(project, filepath.Join("/pending", "approval-1.handoff"), handoff)
 
-		from := role
-		if from == "" {
-			from = specRole
-		}
 		wantTaskID := taskID
 		if wantTaskID == "" {
 			wantTaskID = card
 		}
 		return approval.ID == "approval-1" &&
 			approval.Project == project &&
-			approval.Gate == from+" → "+to &&
+			approval.From == strings.TrimSpace(role) &&
+			approval.To == to &&
 			approval.Card == card &&
 			approval.TaskID == wantTaskID &&
 			reflect.DeepEqual(approval.Artifacts, artifacts)
