@@ -45,7 +45,6 @@ for feature in "${features[@]}"; do
 done
 
 go build -tags goolm -o build/acceptance/bin/acceptance-entrypoint-generator ./cmd/acceptance-entrypoint-generator
-go build -tags goolm -o build/acceptance/bin/forge-dashboard-stub ./cmd/forge-dashboard-stub
 go build -tags goolm -o build/acceptance/bin/forgelet-bridge ./cmd/forgelet-bridge
 
 for feature in "${features[@]}"; do

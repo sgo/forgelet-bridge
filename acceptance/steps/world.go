@@ -49,6 +49,7 @@ type World struct {
 	users      map[string]*fixtures.User
 	dashboards map[string]*dashboard.Store
 	stubs      map[string]*child
+	running    map[string]*fixtures.Dashboard
 	bridge     *child
 	binaryPath string
 	anchors    map[string]string
@@ -76,6 +77,7 @@ func newWorld() *World {
 		users:      map[string]*fixtures.User{},
 		dashboards: map[string]*dashboard.Store{},
 		stubs:      map[string]*child{},
+		running:    map[string]*fixtures.Dashboard{},
 		anchors:    map[string]string{},
 	}
 }
@@ -85,6 +87,9 @@ func (w *World) Close() {
 	w.stopBridge()
 	for _, running := range w.stubs {
 		running.stop()
+	}
+	for _, dashboard := range w.running {
+		dashboard.Stop()
 	}
 	for _, user := range w.users {
 		_ = user.Close()

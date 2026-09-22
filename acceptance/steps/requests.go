@@ -3,26 +3,14 @@ package steps
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 func dashboardHoldsRequest(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	root, err := singleForge(w)
-	if err != nil {
-		return err
-	}
-	store := w.dashboards[filepath.Base(root)]
-	if store == nil {
-		return fmt.Errorf("no fixture dashboard for %s", root)
-	}
-	_, err = store.CreateRequest(captures[1])
-	return err
+	return world.(*World).dashboardTakesRequest(captures[1])
 }
 
 // namedDashboardHoldsRequest seeds a chat request in one named forge's
@@ -33,8 +21,53 @@ func namedDashboardHoldsRequest(_ context.Context, world any, captures []string)
 	if err != nil {
 		return err
 	}
-	_, err = store.CreateRequest(captures[2])
-	return err
+	return askDashboard(w, filepath.Base(store.Root()), captures[2])
+}
+
+// dashboardTakesRequestStep gives the dashboard a chat request from the suite.
+func dashboardTakesRequestStep(_ context.Context, world any, captures []string) error {
+	return world.(*World).dashboardTakesRequest(captures[1])
+}
+
+// dashboardTakesRequest gives a chat request to the forge's dashboard the way
+// its clients do, which is what wakes the lieutenant.
+func (w *World) dashboardTakesRequest(text string) error {
+	root, err := singleForge(w)
+	if err != nil {
+		return err
+	}
+	return askDashboard(w, filepath.Base(root), text)
+}
+
+// askDashboard hands a chat request to one fixture forge's dashboard.
+func askDashboard(w *World, name, text string) error {
+	dashboard, ok := w.running[name]
+	if !ok {
+		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+	}
+	ctx, cancel := stepContext()
+	defer cancel()
+	return dashboard.Ask(ctx, text)
+}
+
+// dashboardWoke waits for the dashboard to have typed a chat request into the
+// lieutenant's pane.
+func dashboardWoke(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	root, err := singleForge(w)
+	if err != nil {
+		return err
+	}
+	dashboard, ok := w.running[filepath.Base(root)]
+	if !ok {
+		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", root)
+	}
+	text := captures[1]
+	return waitFor(ctx, fmt.Sprintf("the dashboard never typed the chat request %q into the lieutenant's pane", text), func() (bool, error) {
+		return dashboard.WokeWith(text)
+	})
 }
 
 func lieutenantAnswers(_ context.Context, world any, captures []string) error {
@@ -129,30 +162,7 @@ func forgeHoldsRequests(_ context.Context, world any, captures []string) error {
 }
 
 func lieutenantWoken(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	root, err := singleForge(w)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := stepContext()
-	defer cancel()
-	wakeLog := filepath.Join(root, ".swarmforge", "dashboard", "wake.log")
-	body := captures[1]
-	return waitFor(ctx, fmt.Sprintf("the lieutenant was never woken with %q", body), func() (bool, error) {
-		data, err := os.ReadFile(wakeLog)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			if _, recorded, found := strings.Cut(line, "\t"); found && recorded == body {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
+	return dashboardWoke(context.Background(), world, []string{"", captures[1]})
 }
 
 // countRequests counts the chat requests every configured forge holds, or the

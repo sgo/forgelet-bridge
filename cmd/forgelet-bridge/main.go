@@ -85,7 +85,7 @@ func openAdapters(cfg config.Config) adapters {
 		boards:    make(map[string]bridge.BoardStore, len(cfg.Forges)),
 	}
 	for _, forge := range cfg.Forges {
-		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
+		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root), Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.approvals[forge.Root] = dashboard.Approvals{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root)}
 	}
