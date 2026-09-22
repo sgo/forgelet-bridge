@@ -8,74 +8,73 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
 
-// pendingChat is the work one forge still owes the rooms: an action the forge
+// pendingWork is the work one forge still owes a room: an action the forge
 // refused is kept and tried again, so what a tick took from the rooms is not
 // lost when the work it planned then fails, and one refusal does not hold up
-// the rest of the tick.
-type pendingChat struct {
-	actions map[string]relay.Action
+// the rest of the tick. Actions are keyed by what makes them the same piece of
+// work, so a tick cannot ask the forge for the same thing twice.
+type pendingWork[T any] struct {
+	keyOf func(T) string
+	items map[string]T
 }
 
-func newPendingChat() *pendingChat {
-	return &pendingChat{actions: map[string]relay.Action{}}
+func newPendingWork[T any](keyOf func(T) string) *pendingWork[T] {
+	return &pendingWork[T]{keyOf: keyOf, items: map[string]T{}}
 }
 
-func (p *pendingChat) keep(action relay.Action) {
-	p.actions[chatActionKey(action)] = action
-}
+func (p *pendingWork[T]) keep(action T) { p.items[p.keyOf(action)] = action }
 
-func (p *pendingChat) done(action relay.Action) {
-	delete(p.actions, chatActionKey(action))
-}
+func (p *pendingWork[T]) done(action T) { delete(p.items, p.keyOf(action)) }
 
-func (p *pendingChat) list() []relay.Action {
-	keys := make([]string, 0, len(p.actions))
-	for key := range p.actions {
+func (p *pendingWork[T]) count() int { return len(p.items) }
+
+// list is the work waiting, in a stable order so the forge is asked for it the
+// same way on every tick.
+func (p *pendingWork[T]) list() []T {
+	keys := make([]string, 0, len(p.items))
+	for key := range p.items {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	kept := make([]relay.Action, 0, len(keys))
+	kept := make([]T, 0, len(keys))
 	for _, key := range keys {
-		kept = append(kept, p.actions[key])
+		kept = append(kept, p.items[key])
 	}
 	return kept
+}
+
+// pendingChat is the chat work one forge owes the room.
+type pendingChat = pendingWork[relay.Action]
+
+func newPendingChat() *pendingChat {
+	return newPendingWork[relay.Action](chatActionKey)
 }
 
 func chatActionKey(action relay.Action) string {
 	return fmt.Sprintf("%s/%s/%s", action.Kind, action.RequestID, action.SourceEventID)
 }
 
-// pendingApprovals is the same for the approvals room.
+// pendingApprovals is the same for the approvals room, and remembers which
+// refusals it has already reported.
 type pendingApprovals struct {
-	actions  map[string]relay.ApprovalAction
+	work     *pendingWork[relay.ApprovalAction]
 	reported map[string]bool
 }
 
 func newPendingApprovals() *pendingApprovals {
-	return &pendingApprovals{actions: map[string]relay.ApprovalAction{}, reported: map[string]bool{}}
+	return &pendingApprovals{work: newPendingWork[relay.ApprovalAction](approvalActionKey), reported: map[string]bool{}}
 }
 
-func (p *pendingApprovals) keep(action relay.ApprovalAction) {
-	p.actions[approvalActionKey(action)] = action
-}
+func (p *pendingApprovals) keep(action relay.ApprovalAction) { p.work.keep(action) }
+
+func (p *pendingApprovals) count() int { return p.work.count() }
 
 func (p *pendingApprovals) done(action relay.ApprovalAction) {
-	delete(p.actions, approvalActionKey(action))
+	p.work.done(action)
 	delete(p.reported, approvalActionKey(action))
 }
 
-func (p *pendingApprovals) list() []relay.ApprovalAction {
-	keys := make([]string, 0, len(p.actions))
-	for key := range p.actions {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	kept := make([]relay.ApprovalAction, 0, len(keys))
-	for _, key := range keys {
-		kept = append(kept, p.actions[key])
-	}
-	return kept
-}
+func (p *pendingApprovals) list() []relay.ApprovalAction { return p.work.list() }
 
 func approvalActionKey(action relay.ApprovalAction) string {
 	return fmt.Sprintf("%s/%s/%s", action.Kind, action.Key, action.Resolution)
@@ -85,10 +84,10 @@ func approvalActionKey(action relay.ApprovalAction) string {
 func (b *Bridge) pendingCount() int {
 	count := 0
 	for _, pending := range b.pending {
-		count += len(pending.actions)
+		count += pending.count()
 	}
 	for _, pending := range b.pendingApprovals {
-		count += len(pending.actions)
+		count += pending.count()
 	}
 	return count
 }
