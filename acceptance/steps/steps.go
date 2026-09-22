@@ -55,6 +55,8 @@ func register(registry *runtime.Registry) error {
 		{`^the approval message for the card (\S+) names the project (\S+), the gate "(.+)", and the changed files (\S+) and (\S+)$`, approvalMessageNames},
 		{`^the operator taps ✅ on the approval message for the card (\S+)$`, approvalTapped},
 		{`^(the operator|\S+) reacts (\S+) to the approval message for the card (\S+)$`, someoneReacts},
+		{`^the matrix client (\S+) reacts (\S+) to the approval message for the card (\S+)$`, someoneReacts},
+		{`^the bridge answers in the approvals room with the gestures it takes$`, gesturesAnswered},
 		{`^the operator replies "(.+)" in the approval message's thread for the card (\S+)$`, operatorRepliesToApproval},
 		{`^the operator sends the message "(.+)" into the approvals room$`, operatorTalksInApprovalsRoom},
 		{`^the forge's dashboard recorded the approval for the card (\S+) as approved$`, approvalApproved},

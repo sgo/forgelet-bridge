@@ -69,6 +69,9 @@ const (
 	ResolveApproval ApprovalKind = "resolve_approval"
 	// ReplyApproval reports in the approval's thread how it was resolved.
 	ReplyApproval ApprovalKind = "reply_approval"
+	// AnswerGestures tells the operator which gestures the room takes, when a
+	// message can be read as none of them.
+	AnswerGestures ApprovalKind = "answer_gestures"
 )
 
 // ApprovalAction is one piece of approvals work for the bridge to carry out.
@@ -91,7 +94,8 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 	byMessage, byKey := approvalsByMessage(st, pending)
 
 	actions := approvedByReaction(operator, st, byMessage, reactions)
-	actions = append(actions, sentBackByReply(operator, st, byMessage, replies)...)
+	actions = append(actions, textGestures(operator, st, pending, byMessage, replies)...)
+	actions = append(actions, unansweredReactions(operator, reactions)...)
 	actions = append(actions, unpostedApprovals(st, pending)...)
 	return append(actions, resolutionsToReport(st, byKey)...)
 }
@@ -132,27 +136,99 @@ func approvedByReaction(operator string, st State, byMessage map[string]Approval
 	return actions
 }
 
-// sentBackByReply plans the approvals the operator sent back with feedback in
-// the approval's thread.
-func sentBackByReply(operator string, st State, byMessage map[string]Approval, replies []RoomEvent) []ApprovalAction {
+// textGestures plans what the operator's text does in the approvals room. A
+// reply that only approves approves, the way the check mark does; a reply that
+// says more stays the send-back it always was, feedback and all; a message in
+// the room that only approves - the word, or the card's name - approves too;
+// and anything the room can read as none of those is answered with the gestures
+// it does take, so a dead room and a working one cannot look the same.
+func textGestures(operator string, st State, pending []Approval, byMessage map[string]Approval, messages []RoomEvent) []ApprovalAction {
 	var actions []ApprovalAction
-	for _, reply := range replies {
-		if reply.Sender != operator || strings.TrimSpace(reply.Body) == "" || reply.ThreadRoot == "" {
+	for _, message := range messages {
+		if message.Sender != operator || strings.TrimSpace(message.Body) == "" {
 			continue
 		}
-		approval, known := byMessage[reply.ThreadRoot]
-		if !known || !undecided(st, approval.Key) {
+		if message.ThreadRoot != "" {
+			if approval, known := byMessage[message.ThreadRoot]; known {
+				if !undecided(st, approval.Key) {
+					continue
+				}
+				if affirmative(message.Body, approval) {
+					actions = append(actions, ApprovalAction{
+						Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionApproved,
+					})
+					continue
+				}
+				actions = append(actions, ApprovalAction{
+					Kind: ResolveApproval, Key: approval.Key, Approval: approval, Resolution: ResolutionSentBack, Feedback: message.Body,
+				})
+				continue
+			}
+		}
+		if key, approval, matched := approvalForText(pending, message.Body); matched && undecided(st, key) {
+			actions = append(actions, ApprovalAction{
+				Kind: ResolveApproval, Key: key, Approval: approval, Resolution: ResolutionApproved,
+			})
 			continue
 		}
-		actions = append(actions, ApprovalAction{
-			Kind:       ResolveApproval,
-			Key:        approval.Key,
-			Approval:   approval,
-			Resolution: ResolutionSentBack,
-			Feedback:   reply.Body,
-		})
+		actions = append(actions, ApprovalAction{Kind: AnswerGestures})
 	}
 	return actions
+}
+
+// unansweredReactions plans the answer for a reaction the room cannot read: the
+// operator's own reaction that is not a check mark decides nothing, and says as
+// much. Reactions from anyone else stay silent.
+func unansweredReactions(operator string, reactions []Reaction) []ApprovalAction {
+	var actions []ApprovalAction
+	for _, reaction := range reactions {
+		if reaction.Sender == operator && !Approves(reaction.Key) {
+			actions = append(actions, ApprovalAction{Kind: AnswerGestures})
+		}
+	}
+	return actions
+}
+
+// affirmativeWords are the plain answers a phone keyboard sends.
+var affirmativeWords = []string{"approve", "approved", "go ahead", "yes", "ok", "okay", "lgtm"}
+
+// affirmative reports whether a message's whole text approves the approval.
+func affirmative(text string, approval Approval) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(text))
+	if trimmed == "" {
+		return false
+	}
+	if strings.ToLower(strings.TrimSpace(approval.Card)) == trimmed {
+		return true
+	}
+	for _, word := range affirmativeWords {
+		if trimmed == word {
+			return true
+		}
+	}
+	return false
+}
+
+// approvalForText finds the approval a plain message approves: the one whose
+// card it names, or the only one waiting when the text is just an affirmative.
+func approvalForText(pending []Approval, text string) (string, Approval, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(text))
+	for _, approval := range pending {
+		if strings.ToLower(strings.TrimSpace(approval.Card)) == trimmed {
+			return approval.Key, approval, true
+		}
+	}
+	if len(pending) == 1 && affirmative(text, pending[0]) {
+		return pending[0].Key, pending[0], true
+	}
+	return "", Approval{}, false
+}
+
+func approvalByText(pending []Approval, text string) (bool, string) {
+	if key, _, matched := approvalForText(pending, text); matched {
+		return true, key
+	}
+	return false, ""
 }
 
 // unpostedApprovals plans the messages for the approvals the room has not seen
