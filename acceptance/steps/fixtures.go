@@ -59,6 +59,19 @@ func (w *World) configureForge(name string) error {
 	return nil
 }
 
+// nameForge records the name the operator knows a fixture forge by. The name
+// has nothing to do with the folder the forge lives in.
+func (w *World) nameForge(name, displayName string) error {
+	if err := w.configureForge(name); err != nil {
+		return err
+	}
+	if w.forgeNames == nil {
+		w.forgeNames = map[string]string{}
+	}
+	w.forgeNames[filepath.Join(w.workDir, name)] = displayName
+	return nil
+}
+
 // user registers and connects a fixture Matrix user on first use.
 func (w *World) user(ctx context.Context, userID string) (*fixtures.User, error) {
 	if user, ok := w.users[userID]; ok {
@@ -96,12 +109,20 @@ func (w *World) configure(ctx context.Context) error {
 	}
 	configPath := filepath.Join(w.workDir, "bridge.json")
 	stateDir := filepath.Join(w.workDir, "bridge-state")
+	forges := make([]map[string]string, 0, len(w.configured))
+	for _, root := range w.configured {
+		forge := map[string]string{"root": root}
+		if name := w.forgeNames[root]; name != "" {
+			forge["name"] = name
+		}
+		forges = append(forges, forge)
+	}
 	body, err := json.MarshalIndent(map[string]any{
 		"homeserver_url": synapse.URL,
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,
-		"forge_roots":    w.configured,
+		"forges":         forges,
 		"state_dir":      stateDir,
 	}, "", "  ")
 	if err != nil {

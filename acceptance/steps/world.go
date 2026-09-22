@@ -43,6 +43,7 @@ type World struct {
 	stateDir   string
 	forgeRoots []string
 	configured []string
+	forgeNames map[string]string
 	operatorID string
 
 	users      map[string]*fixtures.User
@@ -70,6 +71,7 @@ func newWorld() *World {
 		workDir:    workDir,
 		log:        slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
 		forgeRoots: nil,
+		forgeNames: map[string]string{},
 		operatorID: DefaultOperator,
 		users:      map[string]*fixtures.User{},
 		dashboards: map[string]*dashboard.Store{},

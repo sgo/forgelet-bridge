@@ -380,6 +380,16 @@ func (u *User) Rooms(ctx context.Context) ([]string, error) {
 	return rooms, nil
 }
 
+// DisplayName is the name a user shows up under in a room, which is what the
+// phone shows as the sender of their messages.
+func (u *User) DisplayName(ctx context.Context, roomID, userID string) (string, error) {
+	var content event.MemberEventContent
+	if err := u.cli.StateEvent(ctx, id.RoomID(roomID), event.StateMember, userID, &content); err != nil {
+		return "", err
+	}
+	return content.Displayname, nil
+}
+
 // Devices lists the devices a user has published, seen from this client.
 func (u *User) Devices(ctx context.Context, userID string) ([]DeviceKey, error) {
 	resp, err := u.cli.QueryKeys(ctx, &mautrix.ReqQueryKeys{

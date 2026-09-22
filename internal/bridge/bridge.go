@@ -112,7 +112,8 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	}
 
 	carriedOut := 0
-	for _, root := range b.cfg.ForgeRoots {
+	for _, forge := range b.cfg.Forges {
+		root := forge.Root
 		room, err := b.roomFor(ctx, root)
 		if err != nil {
 			return err

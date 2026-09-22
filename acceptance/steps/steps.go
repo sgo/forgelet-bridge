@@ -17,6 +17,7 @@ func register(registry *runtime.Registry) error {
 	}{
 		{`^the fixture forge roots? (.+) (?:has|have) (?:its|their) dashboards? running$`, fixturesRunning},
 		{`^the bridge is configured with the forge root (.+?) and the operator (\S+)$`, configuredForgeAndOperator},
+		{`^the bridge is configured with the forge root (\S+) named (.+)$`, namedForge},
 		{`^the bridge is configured with the operator (\S+)$`, configuredOperator},
 		{`^the bridge is configured with the forge roots? (.+)$`, configuredForges},
 		{`^the bridge is started$`, bridgeStarted},
@@ -28,6 +29,7 @@ func register(registry *runtime.Registry) error {
 
 		{`^the operator sees the forge space (.+)$`, operatorSeesSpace},
 		{`^the operator sees exactly one forge space named (.+)$`, operatorSeesOneSpace},
+		{`^the operator sees no forge space named (.+)$`, noForgeSpace},
 		{`^the operator sees (\d+) forge spaces$`, operatorSeesSpaces},
 		{`^the operator is invited to the forge space (.+)$`, operatorInvitedToSpace},
 		{`^the operator is invited to chat room (.+)$`, operatorInvitedToRoom},
@@ -36,10 +38,13 @@ func register(registry *runtime.Registry) error {
 		{`^chat room (.+) is encrypted$`, chatRoomEncrypted},
 
 		{`^the forge's dashboard already holds the chat request "(.+)"$`, dashboardHoldsRequest},
+		{`^the forge (\S+)'s dashboard already holds the chat request "(.+)"$`, namedDashboardHoldsRequest},
 		{`^the lieutenant answers the chat request "(.+)" with "(.+)"$`, lieutenantAnswers},
 		{`^the operator decrypts the chat message "(.+)"$`, operatorDecryptsChatMessage},
+		{`^the operator decrypts the chat message "(.+)" in the forge (.+)'s chat room sent under the name (.+)$`, forgeSentChatMessage},
 		{`^the bridge sent the chat message "(.+)" encrypted$`, bridgeSentEncrypted},
 		{`^the operator decrypts the thread reply "(.+)" to the chat message "(.+)"$`, operatorDecryptsThreadReply},
+		{`^the operator decrypts the thread reply "(.+)" in the forge (.+)'s chat room sent under the name (.+) to the chat message "(.+)"$`, forgeSentThreadReply},
 		{`^the operator sends the message "(.+)" into chat room (.+)$`, operatorSendsMessage},
 		{`^(\S+) sends the message "(.+)" into chat room (.+)$`, userSendsMessage},
 		{`^the matrix client (\S+) has joined chat room (.+)$`, userJoinedChatRoom},

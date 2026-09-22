@@ -63,11 +63,11 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	return nil
 }
 
-// stores opens one dashboard chat-request queue per configured forge root.
+// stores opens one dashboard chat-request queue per configured forge.
 func stores(cfg config.Config) map[string]bridge.ForgeStore {
-	queues := make(map[string]bridge.ForgeStore, len(cfg.ForgeRoots))
-	for _, root := range cfg.ForgeRoots {
-		queues[root] = dashboard.Queue{Store: dashboard.New(root)}
+	queues := make(map[string]bridge.ForgeStore, len(cfg.Forges))
+	for _, forge := range cfg.Forges {
+		queues[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
 	}
 	return queues
 }

@@ -124,6 +124,34 @@ func (w *World) allSpaces(ctx context.Context) ([]string, error) {
 
 // roomsMatching polls the rooms the operator knows about until match takes at
 // least one of them, or the step runs out of time.
+// roomsMatchingNow lists the rooms that match right now, without waiting for
+// one to appear: a step that checks something is absent cannot wait for it.
+func (w *World) roomsMatchingNow(ctx context.Context, match func(*fixtures.User, string) bool) ([]string, error) {
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := operator.Rooms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, roomID := range candidates {
+		if match(operator, roomID) {
+			found = append(found, roomID)
+		}
+	}
+	return found, nil
+}
+
+// spacesNow lists the forge spaces the operator knows about right now.
+func (w *World) spacesNow(ctx context.Context) ([]string, error) {
+	return w.roomsMatchingNow(ctx, func(operator *fixtures.User, roomID string) bool {
+		isSpace, err := operator.IsSpace(ctx, roomID)
+		return err == nil && isSpace
+	})
+}
+
 func (w *World) roomsMatching(ctx context.Context, match func(*fixtures.User, string) bool) ([]string, error) {
 	deadline := time.Now().Add(stepTimeout)
 	for {

@@ -16,17 +16,33 @@ const DefaultStateDir = "forgelet-bridge-state"
 // RoomName is the Matrix room that carries a forge's chat channel.
 const RoomName = "Chat"
 
+// Forge is one forge the bridge serves: where it lives, and the name the
+// operator knows it by.
+type Forge struct {
+	Root string `json:"root"`
+	Name string `json:"name,omitempty"`
+}
+
+// DisplayName is the name the forge shows up under: the configured name, or
+// the name of its folder when the configuration does not name it.
+func (f Forge) DisplayName() string {
+	if strings.TrimSpace(f.Name) != "" {
+		return strings.TrimSpace(f.Name)
+	}
+	return filepath.Base(strings.TrimRight(f.Root, string(filepath.Separator)))
+}
+
 // Config describes one bridge process: the homeserver it talks to, the one
-// operator it relays for, and the forge roots it serves.
+// operator it relays for, and the forges it serves.
 type Config struct {
-	HomeserverURL string   `json:"homeserver_url"`
-	UserID        string   `json:"user_id"`
-	Password      string   `json:"password,omitempty"`
-	AccessToken   string   `json:"access_token,omitempty"`
-	DeviceID      string   `json:"device_id,omitempty"`
-	Operator      string   `json:"operator"`
-	ForgeRoots    []string `json:"forge_roots"`
-	StateDir      string   `json:"state_dir,omitempty"`
+	HomeserverURL string  `json:"homeserver_url"`
+	UserID        string  `json:"user_id"`
+	Password      string  `json:"password,omitempty"`
+	AccessToken   string  `json:"access_token,omitempty"`
+	DeviceID      string  `json:"device_id,omitempty"`
+	Operator      string  `json:"operator"`
+	Forges        []Forge `json:"forges"`
+	StateDir      string  `json:"state_dir,omitempty"`
 }
 
 // Load reads, defaults, and validates a configuration file.
@@ -68,21 +84,20 @@ func (c Config) Validate() error {
 	if c.AccessToken == "" && c.Password == "" {
 		return errors.New("either access_token or password is required")
 	}
-	if len(c.ForgeRoots) == 0 {
-		return errors.New("at least one forge root is required")
+	if len(c.Forges) == 0 {
+		return errors.New("at least one forge is required")
 	}
-	for _, root := range c.ForgeRoots {
-		if strings.TrimSpace(root) == "" {
+	seen := map[string]bool{}
+	for _, forge := range c.Forges {
+		if strings.TrimSpace(forge.Root) == "" {
 			return errors.New("forge roots must not be blank")
 		}
+		if seen[forge.Root] {
+			return fmt.Errorf("forge root %s is configured twice", forge.Root)
+		}
+		seen[forge.Root] = true
 	}
 	return nil
-}
-
-// ForgeName is the Matrix-visible name of a forge: the base name of its root
-// directory.
-func ForgeName(root string) string {
-	return filepath.Base(strings.TrimRight(root, string(filepath.Separator)))
 }
 
 // mutate4go-manifest-begin

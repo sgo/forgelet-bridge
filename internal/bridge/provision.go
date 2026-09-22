@@ -20,7 +20,7 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 		return room, nil
 	}
 
-	room, err := b.rooms.EnsureForge(ctx, config.ForgeName(root), b.cfg.Operator)
+	room, err := b.rooms.EnsureForge(ctx, b.forgeName(root), b.cfg.Operator)
 	if err != nil {
 		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
 	}
@@ -31,6 +31,19 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 	b.provisioned[root] = room
 	b.log.Info("provisioned forge", "root", root, "space", room.SpaceID, "room", room.RoomID)
 	return room, nil
+}
+
+// forgeName is the name the operator knows a forge root by: the configured
+// display name, or the folder's name when the configuration does not name it.
+func (b *Bridge) forgeName(root string) string {
+	for _, forge := range b.cfg.Forges {
+		if forge.Root == root {
+			return forge.DisplayName()
+		}
+	}
+	return config.Forge{ // a root the configuration no longer names
+		Root: root,
+	}.DisplayName()
 }
 
 // mutate4go-manifest-begin
