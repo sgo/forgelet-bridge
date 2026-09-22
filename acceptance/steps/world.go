@@ -47,8 +47,8 @@ type World struct {
 
 	users      map[string]*fixtures.User
 	dashboards map[string]*dashboard.Store
-	stubs      map[string]*stub
-	bridge     *bridgeProcess
+	stubs      map[string]*child
+	bridge     *child
 	binaryPath string
 	anchors    map[string]string
 	devices    []fixtures.DeviceKey
@@ -73,7 +73,7 @@ func newWorld() *World {
 		operatorID: DefaultOperator,
 		users:      map[string]*fixtures.User{},
 		dashboards: map[string]*dashboard.Store{},
-		stubs:      map[string]*stub{},
+		stubs:      map[string]*child{},
 		anchors:    map[string]string{},
 	}
 }
@@ -82,7 +82,7 @@ func newWorld() *World {
 func (w *World) Close() {
 	w.stopBridge()
 	for _, running := range w.stubs {
-		stopProcess(running.cmd, running.log)
+		running.stop()
 	}
 	for _, user := range w.users {
 		_ = user.Close()

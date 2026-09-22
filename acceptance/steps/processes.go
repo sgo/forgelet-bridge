@@ -13,19 +13,59 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 )
 
-// stub is a running dashboard stub, the fixture stand-in for a forge's
-// dashboard.
-type stub struct {
-	cmd *exec.Cmd
-	log *os.File
-}
-
-// bridgeProcess is the running bridge.
-type bridgeProcess struct {
+// child is a child process the scenario started: a forge's dashboard stub, or
+// the bridge. Every child is reaped by its own waiter, so the scenario can tell
+// a clean stop from a crash, and one stop routine serves them all.
+type child struct {
 	cmd     *exec.Cmd
 	log     *os.File
 	done    chan struct{}
 	waitErr error
+}
+
+// start launches a child and starts reaping it.
+func start(cmd *exec.Cmd, log *os.File) (*child, error) {
+	started := &child{cmd: cmd, log: log, done: make(chan struct{})}
+	if err := cmd.Start(); err != nil {
+		closeLog(log)
+		return nil, err
+	}
+	go func() {
+		started.waitErr = cmd.Wait()
+		close(started.done)
+	}()
+	return started, nil
+}
+
+// stopped reports whether the child has already ended, and how.
+func (c *child) stopped() (bool, error) {
+	select {
+	case <-c.done:
+		return true, c.waitErr
+	default:
+		return false, nil
+	}
+}
+
+// stop asks the child to stop, and kills it if it does not.
+func (c *child) stop() {
+	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+		return
+	}
+	_ = c.cmd.Process.Signal(os.Interrupt)
+	select {
+	case <-c.done:
+	case <-time.After(10 * time.Second):
+		_ = c.cmd.Process.Kill()
+		<-c.done
+	}
+	closeLog(c.log)
+}
+
+func closeLog(log *os.File) {
+	if log != nil {
+		log.Close()
+	}
 }
 
 // startDashboard runs the forge's dashboard stub.
@@ -48,11 +88,11 @@ func (w *World) startDashboard(name string) error {
 	cmd := exec.Command(binary, "--root", store.Root())
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
+	running, err := start(cmd, logFile)
+	if err != nil {
 		return err
 	}
-	w.stubs[name] = &stub{cmd: cmd, log: logFile}
+	w.stubs[name] = running
 	return nil
 }
 
@@ -78,15 +118,10 @@ func (w *World) startBridge(ctx context.Context) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
+	running, err := start(cmd, logFile)
+	if err != nil {
 		return err
 	}
-	running := &bridgeProcess{cmd: cmd, log: logFile, done: make(chan struct{})}
-	go func() {
-		running.waitErr = cmd.Wait()
-		close(running.done)
-	}()
 	w.bridge = running
 	if err := w.waitForBridgeStart(ctx, running, started); err != nil {
 		return err
@@ -100,43 +135,22 @@ func (w *World) stopBridge() {
 	}
 	running := w.bridge
 	w.bridge = nil
-	stopBridgeProcess(running)
-}
-
-// stopBridgeProcess asks a running bridge to stop, and kills it if it does not.
-func stopBridgeProcess(running *bridgeProcess) {
-	if running == nil || running.cmd.Process == nil {
-		return
-	}
-	_ = running.cmd.Process.Signal(os.Interrupt)
-	select {
-	case <-running.done:
-	case <-time.After(10 * time.Second):
-		_ = running.cmd.Process.Kill()
-		<-running.done
-	}
-	if running.log != nil {
-		running.log.Close()
-	}
+	running.stop()
 }
 
 // waitForBridgeStart waits until the bridge process is really running: it has
 // written a fresh status after this start. A bridge that dies on startup, or
 // that never reaches its first tick, fails here instead of leaving the
 // scenario silently asserting stale state.
-func (w *World) waitForBridgeStart(ctx context.Context, running *bridgeProcess, started time.Time) error {
-	select {
-	case <-running.done:
-		return fmt.Errorf("the bridge stopped during startup: %v", running.waitErr)
-	default:
+func (w *World) waitForBridgeStart(ctx context.Context, running *child, started time.Time) error {
+	if stopped, err := running.stopped(); stopped {
+		return fmt.Errorf("the bridge stopped during startup: %v", err)
 	}
 
 	path := filepath.Join(w.stateDir, bridge.StatusName)
 	return waitFor(ctx, "the bridge never reported a tick after starting", func() (bool, error) {
-		select {
-		case <-running.done:
-			return false, fmt.Errorf("the bridge stopped during startup: %v", running.waitErr)
-		default:
+		if stopped, err := running.stopped(); stopped {
+			return false, fmt.Errorf("the bridge stopped during startup: %v", err)
 		}
 		info, err := os.Stat(path)
 		if err != nil {
@@ -181,26 +195,4 @@ func buildHelper(name, pkg string) (string, error) {
 	}
 	builtBinary[name] = path
 	return path, nil
-}
-
-// stopProcess asks a child process to stop, and kills it if it does not.
-func stopProcess(cmd *exec.Cmd, logFile *os.File) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	_ = cmd.Process.Signal(os.Interrupt)
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		_ = cmd.Process.Kill()
-		<-done
-	}
-	if logFile != nil {
-		logFile.Close()
-	}
 }

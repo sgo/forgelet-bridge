@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -21,7 +22,11 @@ func bridgePublishedDevice(_ context.Context, world any, _ []string) error {
 	if err := w.waitForPublishedDevice(ctx); err != nil {
 		return err
 	}
-	w.devices, _ = w.bridgeDevices(ctx)
+	devices, err := w.bridgeDevices(ctx)
+	if err != nil {
+		return err
+	}
+	w.devices = devices
 	return nil
 }
 
@@ -135,5 +140,6 @@ func keysOf(devices map[string]string) []string {
 	for deviceID := range devices {
 		ids = append(ids, deviceID)
 	}
+	sort.Strings(ids)
 	return ids
 }
