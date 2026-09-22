@@ -35,6 +35,28 @@ func TestPlanApprovalsPostsAnApprovalTheRoomHasNotSeen(t *testing.T) {
 	}
 }
 
+func TestApprovalsAcceptsTheCheckMarksPickersSend(t *testing.T) {
+	for _, key := range []string{"\u2705", "\u2705\ufe0f", "\u2714", "\u2714\ufe0f", "\u2611", "\u2611\ufe0f"} {
+		reactions := []Reaction{{Sender: operator, Key: key, TargetEventID: "$approval-message"}}
+
+		actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil)
+
+		if len(actions) != 1 || actions[0].Resolution != ResolutionApproved {
+			t.Errorf("key %q planned %+v, want the operator's approval", key, actions)
+		}
+	}
+}
+
+func TestApprovalsIgnoresReactionsThatAreNotACheckMark(t *testing.T) {
+	for _, key := range []string{"👍", "❌", "🎉", ""} {
+		reactions := []Reaction{{Sender: operator, Key: key, TargetEventID: "$approval-message"}}
+
+		if actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil); len(actions) != 0 {
+			t.Errorf("key %q planned %+v, want nothing", key, actions)
+		}
+	}
+}
+
 func TestPlanApprovalsPostsAnApprovalOnlyOnce(t *testing.T) {
 	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, nil)
 

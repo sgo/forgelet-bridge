@@ -45,6 +45,9 @@ func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root 
 	}
 	b.state.Relay.EnsureMaps()
 	b.state.Relay.Pending[action.SourceEventID] = action.Body
+	if action.SourceThread != "" {
+		b.state.Relay.PendingThreads[action.SourceEventID] = action.SourceThread
+	}
 	return nil
 }
 
@@ -71,7 +74,16 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 			}
 			taken[request.ID] = true
 			b.state.Relay.Relayed[eventID] = request.ID
-			b.state.Relay.Threads[request.ID] = eventID
+			// The answer belongs in the thread the operator wrote in. When their
+			// message was itself a reply, that thread is where it sits, not the
+			// message: a thread cannot start from an event that already carries a
+			// relation, and the room answers 400 when we try.
+			if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
+				b.state.Relay.Threads[request.ID] = thread
+			} else {
+				b.state.Relay.Threads[request.ID] = eventID
+			}
+			delete(b.state.Relay.PendingThreads, eventID)
 			delete(b.state.Relay.Pending, eventID)
 			paired++
 			break

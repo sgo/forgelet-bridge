@@ -43,6 +43,22 @@ type Reaction struct {
 // ApproveReaction is the reaction the operator approves with.
 const ApproveReaction = "✅"
 
+// approveReactions are the check marks that mean approval. Reaction pickers
+// disagree about the variation selector, and ✔️ and ☑️ are what a thumb reaches
+// when it means ✅; the sender check below is what keeps approval narrow, not
+// the glyph. A reaction the operator did not send never approves.
+var approveReactions = map[string]bool{
+	"\u2705":       true, // ✅
+	"\u2705\ufe0f": true, // ✅ with the variation selector
+	"\u2714":       true, // ✔
+	"\u2714\ufe0f": true, // ✔️
+	"\u2611":       true, // ☑
+	"\u2611\ufe0f": true, // ☑️
+}
+
+// Approves reports whether a reaction key is one the operator approves with.
+func Approves(key string) bool { return approveReactions[key] }
+
 // ApprovalKind names the work an approval action asks for.
 type ApprovalKind string
 
@@ -99,7 +115,7 @@ func approvalsByMessage(st State, pending []Approval) (map[string]Approval, map[
 func approvedByReaction(operator string, st State, byMessage map[string]Approval, reactions []Reaction) []ApprovalAction {
 	var actions []ApprovalAction
 	for _, reaction := range reactions {
-		if reaction.Sender != operator || reaction.Key != ApproveReaction {
+		if reaction.Sender != operator || !Approves(reaction.Key) {
 			continue
 		}
 		approval, known := byMessage[reaction.TargetEventID]
