@@ -84,10 +84,10 @@ func TestCardsOfAProjectWithoutABoardIsEmpty(t *testing.T) {
 	}
 }
 
-func TestCardRowIgnoresMalformedLines(t *testing.T) {
+func TestParseRowIgnoresMalformedLines(t *testing.T) {
 	for _, line := range []string{"", "only-a-name", "\t lane-only", "name\t"} {
-		if _, _, ok := cardRow(line); ok {
-			t.Errorf("cardRow(%q) accepted a malformed row", line)
+		if _, _, ok := ParseRow(line); ok {
+			t.Errorf("ParseRow(%q) accepted a malformed row", line)
 		}
 	}
 }

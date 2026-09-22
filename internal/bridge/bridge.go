@@ -154,12 +154,6 @@ func (b *Bridge) Tick(ctx context.Context) error {
 			return err
 		}
 		carriedOut += done
-
-		done, err = b.carryOutActivity(ctx, root, room)
-		if err != nil {
-			return err
-		}
-		carriedOut += done
 	}
 
 	b.tick++
@@ -227,7 +221,12 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 	if err != nil {
 		return 0, err
 	}
-	return carriedOut + approvals, nil
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		return 0, err
+	}
+	return carriedOut + approvals + activity, nil
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {

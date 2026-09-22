@@ -75,7 +75,7 @@ func (s *Store) CardsFor(project string) ([]Card, error) {
 	}
 	var cards []Card
 	for _, line := range strings.Split(string(data), "\n") {
-		name, lane, ok := cardRow(line)
+		name, lane, ok := ParseRow(line)
 		if !ok {
 			continue
 		}
@@ -84,8 +84,10 @@ func (s *Store) CardsFor(project string) ([]Card, error) {
 	return cards, nil
 }
 
-// cardRow reads one board row: name, lane, and the rest of the columns.
-func cardRow(line string) (name, lane string, ok bool) {
+// ParseRow reads one board row: the card's name and the lane it is in. It is
+// the way every reader of a board file, in this process or in the tools that
+// write one, gets at a row.
+func ParseRow(line string) (name, lane string, ok bool) {
 	columns := strings.Split(line, "\t")
 	if len(columns) < 2 {
 		return "", "", false
