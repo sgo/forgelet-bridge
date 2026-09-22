@@ -54,6 +54,7 @@ type World struct {
 	binaryPath string
 	anchors    map[string]string
 	devices    []fixtures.DeviceKey
+	lane       *laneState
 }
 
 // Registry builds the acceptance registry.

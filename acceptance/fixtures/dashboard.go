@@ -43,7 +43,12 @@ func StartDashboard(ctx context.Context, root string) (*Dashboard, error) {
 	}
 	cmd := exec.CommandContext(ctx, script, "--serve", root)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "SWARMFORGE_TMUX_STUB="+wakeLog(root))
+	cmd.Env = append(os.Environ(),
+		"SWARMFORGE_TMUX_STUB="+wakeLog(root),
+		// Whatever the dashboard does with git, it does inside the fixture:
+		// git must not walk up out of it into the worktree running the suite.
+		"GIT_CEILING_DIRECTORIES="+filepath.Dir(root),
+	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
@@ -162,8 +167,10 @@ func wakeLog(root string) string {
 	return filepath.Join(root, filepath.FromSlash(".swarmforge/tmux-stub.log"))
 }
 
-// prepareForgeRoot gives the forge root what its dashboard needs: the roles it
-// serves, with a worktree each, and the tmux socket it types into.
+// prepareForgeRoot gives the forge root what its dashboard needs: its own git
+// world, the roles it serves with a worktree each, and the tmux socket it types
+// into. The repository is the fixture's own, so the snapshots and resets the
+// dashboard performs on a worktree it is handed stay inside the fixture.
 func prepareForgeRoot(root string) error {
 	stateDir := filepath.Join(root, ".swarmforge")
 	if err := os.MkdirAll(filepath.Join(stateDir, "board"), 0o755); err != nil {
@@ -184,5 +191,49 @@ func prepareForgeRoot(root string) error {
 	if err := os.WriteFile(filepath.Join(stateDir, "roles.tsv"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(stateDir, "tmux-socket"), []byte(filepath.Join(stateDir, "tmux.sock")+"\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(stateDir, "tmux-socket"), []byte(filepath.Join(stateDir, "tmux.sock")+"\n"), 0o644); err != nil {
+		return err
+	}
+	return initFixtureRepo(root)
+}
+
+// initFixtureRepo gives the fixture forge root a repository of its own, with
+// one commit, so every git command the dashboard runs on the fixture's behalf
+// resolves to it and stops there.
+func initFixtureRepo(root string) error {
+	if _, err := os.Stat(filepath.Join(root, ".git")); err == nil {
+		return nil
+	}
+	keep := filepath.Join(root, "README.fixture")
+	if err := os.WriteFile(keep, []byte("fixture forge root\n"), 0o644); err != nil {
+		return err
+	}
+	for _, args := range [][]string{
+		{"init", "--quiet"},
+		{"add", "-A"},
+		{"-c", "user.email=fixture@example.org", "-c", "user.name=Fixture", "commit", "--quiet", "-m", "fixture forge root"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("prepare the fixture repository: git %s: %w: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	return nil
+}
+
+// FixtureSnapshots lists the snapshot branches the fixture's own repository
+// holds for a card, which is where the dashboard's snapshots have to land.
+func (d *Dashboard) FixtureSnapshots(card string) ([]string, error) {
+	cmd := exec.Command("git", "-C", d.Root, "branch", "--list", "rejected/*"+card+"*", "--format=%(refname:short)")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("list the fixture's snapshots: %w: %s", err, out)
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			branches = append(branches, trimmed)
+		}
+	}
+	return branches, nil
 }
