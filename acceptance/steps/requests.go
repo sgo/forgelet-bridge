@@ -186,3 +186,26 @@ func countRequests(w *World, body string) (int, error) {
 	}
 	return count, nil
 }
+
+// forgeHoldsRequestTheDashboardTook checks both halves of who wrote a request:
+// the forge holds it, and the dashboard is the one that typed it into the
+// lieutenant's pane. A bridge that wrote the queue itself would show the first
+// without the second.
+func forgeHoldsRequestTheDashboardTook(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	text := captures[1]
+	if err := w.holdsRequest(text); err != nil {
+		return err
+	}
+	return dashboardWoke(context.Background(), w, []string{"", text})
+}
+
+// holdsRequest waits until the forge holds a chat request reading text.
+func (w *World) holdsRequest(text string) error {
+	ctx, cancel := stepContext()
+	defer cancel()
+	return waitFor(ctx, fmt.Sprintf("the forge never held a chat request reading %q", text), func() (bool, error) {
+		count, err := countRequests(w, text)
+		return count >= 1, err
+	})
+}
