@@ -1,7 +1,9 @@
-// Package approvals reads and writes the approvals a forge's projects are
-// waiting for: the same pending handoffs and decisions the desktop dashboard
-// works with.
-package approvals
+// This file mirrors the desktop dashboard's own handling of approvals: the
+// pending handoffs a forge's projects are waiting for, and the file effects
+// approving or sending one back has. The bridge does not use it; the fixture's
+// dashboard double does, so the acceptance suite exercises the bridge against a
+// dashboard that behaves the way the real one does.
+package fixtures
 
 import (
 	"encoding/json"
@@ -10,16 +12,16 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/unclebob/forgelet-bridge/internal/forge"
 )
 
 const (
-	projectsDir      = "projects"
-	openProjectsFile = ".swarmforge/open-projects"
-	pendingDir       = ".swarmforge/handoffs/pending_approval"
-	outboxDir        = ".swarmforge/handoffs/outbox"
-	reviewsDir       = ".swarmforge/rejected-tasks"
-	handoffSuffix    = ".handoff"
-	reviewsSuffix    = ".reviews.json"
+	pendingDir    = ".swarmforge/handoffs/pending_approval"
+	outboxDir     = ".swarmforge/handoffs/outbox"
+	reviewsDir    = ".swarmforge/rejected-tasks"
+	handoffSuffix = ".handoff"
+	reviewsSuffix = ".reviews.json"
 
 	// specRole is the role the desktop dashboard credits when a handoff does
 	// not say which role handed the work over.
@@ -27,49 +29,37 @@ const (
 )
 
 // Approval is one handoff waiting for the operator's decision.
+// Approval is one handoff waiting for the operator's decision, as the dashboard
+// holds it: the gate the handoff reports, and the roles that handed it over
+// when the handoff names them.
 type Approval struct {
 	Project   string
 	ID        string
 	Card      string
 	TaskID    string
 	Gate      string
+	From      string
+	To        string
 	Artifacts []string
 	File      string
 }
 
-// Store is the approvals side of one forge.
-type Store struct {
+// ApprovalStore is the approvals side of one forge, as the dashboard keeps it.
+type approvalStore struct {
 	root string
 	now  func() time.Time
 }
 
 // New opens the approvals of a forge root.
-func New(root string) *Store {
-	return &Store{root: root, now: time.Now}
-}
-
-// Projects lists the forge's open projects, the ones whose approvals the
-// operator has to see.
-func (s *Store) Projects() ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(openProjectsFile)))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var projects []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			projects = append(projects, name)
-		}
-	}
-	return projects, nil
+// NewApprovals opens the approvals of a forge root the way the dashboard has
+// them.
+func NewApprovals(root string) *approvalStore {
+	return &approvalStore{root: root, now: time.Now}
 }
 
 // Pending lists the approvals every open project is waiting for.
-func (s *Store) Pending() ([]Approval, error) {
-	projects, err := s.Projects()
+func (s *approvalStore) Pending() ([]Approval, error) {
+	projects, err := forge.OpenProjects(s.root)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +75,7 @@ func (s *Store) Pending() ([]Approval, error) {
 }
 
 // PendingFor lists one project's pending approvals.
-func (s *Store) PendingFor(project string) ([]Approval, error) {
+func (s *approvalStore) PendingFor(project string) ([]Approval, error) {
 	dir := s.projectDir(project, pendingDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -115,7 +105,7 @@ func (s *Store) PendingFor(project string) ([]Approval, error) {
 // Approve approves an approval the way the desktop dashboard does: the pending
 // handoff moves to the project's outbox carrying approved: true, and its
 // review notes are dropped.
-func (s *Store) Approve(project, id string) error {
+func (s *approvalStore) Approve(project, id string) error {
 	source, err := s.pendingFile(project, id)
 	if err != nil {
 		return err
@@ -143,7 +133,7 @@ func (s *Store) Approve(project, id string) error {
 // the approval stops being pending. The repository work the desktop also does
 // (rewinding to the task's base commit and re-seeding the lane) stays on the
 // desktop.
-func (s *Store) SendBack(project, id, feedback string) error {
+func (s *approvalStore) SendBack(project, id, feedback string) error {
 	source, err := s.pendingFile(project, id)
 	if err != nil {
 		return err
@@ -164,7 +154,7 @@ func (s *Store) SendBack(project, id, feedback string) error {
 
 // appendReview records the feedback against every file the approval is about,
 // in the card's review history, the same store the desktop's comments use.
-func (s *Store) appendReview(project string, approval Approval, feedback string) error {
+func (s *approvalStore) appendReview(project string, approval Approval, feedback string) error {
 	text := strings.TrimSpace(feedback)
 	if text == "" || approval.TaskID == "" {
 		return nil
@@ -197,7 +187,7 @@ type review struct {
 	Text string `json:"text"`
 }
 
-func (s *Store) pendingFile(project, id string) (string, error) {
+func (s *approvalStore) pendingFile(project, id string) (string, error) {
 	if strings.TrimSpace(id) == "" {
 		return "", fmt.Errorf("approvals: no approval id")
 	}
@@ -208,12 +198,12 @@ func (s *Store) pendingFile(project, id string) (string, error) {
 	return path, nil
 }
 
-func (s *Store) reviewsFile(project, id string) string {
+func (s *approvalStore) reviewsFile(project, id string) string {
 	return filepath.Join(s.projectDir(project, pendingDir), id+reviewsSuffix)
 }
 
-func (s *Store) projectDir(project, dir string) string {
-	return filepath.Join(s.root, projectsDir, project, filepath.FromSlash(dir))
+func (s *approvalStore) projectDir(project, dir string) string {
+	return filepath.Join(forge.ProjectDir(s.root, project), filepath.FromSlash(dir))
 }
 
 // parse reads a pending handoff: headers, a blank line, then the body.
@@ -233,10 +223,6 @@ func parse(project, path, content string) Approval {
 
 	id := strings.TrimSuffix(filepath.Base(path), handoffSuffix)
 	to := firstOf(headers["to"])
-	from := headers["role"]
-	if from == "" {
-		from = specRole
-	}
 	taskID := headers["task_id"]
 	if taskID == "" {
 		taskID = headers["task"]
@@ -246,7 +232,9 @@ func parse(project, path, content string) Approval {
 		ID:        id,
 		Card:      headers["task"],
 		TaskID:    taskID,
-		Gate:      from + " → " + to,
+		Gate:      specRole + " → " + to,
+		From:      strings.TrimSpace(headers["role"]),
+		To:        to,
 		Artifacts: commaList(headers["artifacts"]),
 		File:      path,
 	}

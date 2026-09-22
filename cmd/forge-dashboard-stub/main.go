@@ -1,7 +1,8 @@
-// Command forge-dashboard-stub stands in for a forge's dashboard. It watches
-// the dashboard request queue and records the wake it would give the
-// lieutenant when a new chat request lands, the way the real dashboard opens
-// the request in the agent's pane.
+// Command forge-dashboard-stub stands in for a forge's dashboard. It serves the
+// endpoints the bridge has to call, applies the same file effects the desktop
+// dashboard applies, watches the request queue, and records the wake it would
+// give the lieutenant when a new chat request lands, the way the real dashboard
+// opens the request in the agent's pane.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
@@ -25,6 +27,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: forge-dashboard-stub --root <forge-root>")
 		os.Exit(2)
 	}
+	dashboardServer, err := fixtures.StartDashboard(*root)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer dashboardServer.Stop()
+	log.Printf("dashboard listening at %s", dashboardServer.URL)
 	if err := run(*root); err != nil {
 		log.Fatal(err)
 	}

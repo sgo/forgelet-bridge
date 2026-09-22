@@ -68,6 +68,7 @@ func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, e
 		SpaceID:         "!space-" + forgeName,
 		RoomID:          "!room-" + forgeName,
 		ApprovalsRoomID: "!approvals-" + forgeName,
+		ActivityRoomID:  "!activity-" + forgeName,
 	}, nil
 }
 
@@ -137,16 +138,27 @@ func newTestConfig(t *testing.T, roots ...string) config.Config {
 func newTestBridge(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, roots ...string) (*Bridge, config.Config) {
 	t.Helper()
 	approvalStores := map[string]ApprovalStore{}
+	boardStores := map[string]BoardStore{}
 	for _, root := range roots {
 		approvalStores[root] = &fakeApprovals{}
+		boardStores[root] = &fakeBoard{}
 	}
-	return newTestBridgeWithApprovals(t, rooms, stores, approvalStores, roots...)
+	return newTestBridgeWithStores(t, rooms, stores, approvalStores, boardStores, roots...)
 }
 
 func newTestBridgeWithApprovals(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, approvalStores map[string]ApprovalStore, roots ...string) (*Bridge, config.Config) {
 	t.Helper()
+	boardStores := map[string]BoardStore{}
+	for _, root := range roots {
+		boardStores[root] = &fakeBoard{}
+	}
+	return newTestBridgeWithStores(t, rooms, stores, approvalStores, boardStores, roots...)
+}
+
+func newTestBridgeWithStores(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, approvalStores map[string]ApprovalStore, boardStores map[string]BoardStore, roots ...string) (*Bridge, config.Config) {
+	t.Helper()
 	cfg := newTestConfig(t, roots...)
-	built, err := New(cfg, rooms, stores, approvalStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	built, err := New(cfg, rooms, stores, approvalStores, boardStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -156,7 +168,7 @@ func newTestBridgeWithApprovals(t *testing.T, rooms *fakeRooms, stores map[strin
 func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, logger)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]BoardStore{}, logger)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -167,7 +179,7 @@ func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 }
 
 func TestNewFindsALoggerWithoutOne(t *testing.T) {
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, nil)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]BoardStore{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -271,7 +283,7 @@ func TestTickRepeatsNothingWhenRestarted(t *testing.T) {
 	}
 
 	restartedRooms := &fakeRooms{}
-	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}}, nil)
+	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}}, map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
 	if err != nil {
 		t.Fatalf("New after restart: %v", err)
 	}
@@ -492,7 +504,7 @@ func newFailingBridge(t *testing.T, logs *logBuffer) *Bridge {
 	rooms := &fakeRooms{drainErr: errors.New("the homeserver is away")}
 	built, err := New(newTestConfig(t, "/forges/forge-a"), rooms,
 		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
-		slog.New(slog.NewTextHandler(logs, nil)))
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

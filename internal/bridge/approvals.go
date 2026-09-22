@@ -33,7 +33,7 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 	if !ok {
 		return 0, fmt.Errorf("no approvals configured for forge root %s", root)
 	}
-	pending, err := store.Pending()
+	pending, err := store.Pending(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
 	}
@@ -60,7 +60,7 @@ func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Ro
 		})
 
 	case relay.ResolveApproval:
-		if err := b.resolveApproval(store, action); err != nil {
+		if err := b.resolveApproval(ctx, store, action); err != nil {
 			return err
 		}
 		b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
@@ -85,15 +85,15 @@ func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Ro
 	return b.state.Save(b.statePath)
 }
 
-func (b *Bridge) resolveApproval(store ApprovalStore, action relay.ApprovalAction) error {
+func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, action relay.ApprovalAction) error {
 	approval := action.Approval
 	switch action.Resolution {
 	case relay.ResolutionApproved:
-		if err := store.Approve(approval.Project, approval.ID); err != nil {
+		if err := store.Approve(ctx, approval.Project, approval.ID); err != nil {
 			return fmt.Errorf("approve %s: %w", action.Key, err)
 		}
 	case relay.ResolutionSentBack:
-		if err := store.SendBack(approval.Project, approval.ID, action.Feedback); err != nil {
+		if err := store.SendBack(ctx, approval.Project, approval.ID, action.Feedback); err != nil {
 			return fmt.Errorf("send back %s: %w", action.Key, err)
 		}
 	default:
@@ -108,5 +108,5 @@ func (b *Bridge) recordApproval(key string, update func(relay.ApprovalState) rel
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T15:51:29+02:00","module_hash":"e0ad4dc50d144bca3fde7768b51a030eb65f23c4b0d52a23ccc7664bf5c8667e","functions":[{"id":"func/approvalMessage","name":"approvalMessage","line":17,"end_line":27,"hash":"c966f60938103c21d172fec1ff43c92a9528355965f869398c2d7e6b1ed880a1"},{"id":"func/Bridge.carryOutApprovals","name":"Bridge.carryOutApprovals","line":31,"end_line":48,"hash":"d6f57c11dbed075dfd26d498815ea1786366b0b716271c549bab31b3a554408b"},{"id":"func/Bridge.applyApproval","name":"Bridge.applyApproval","line":50,"end_line":86,"hash":"8fbb23ce660e877c8fe6cd7ac1f4bfbbe6f6dc0a35f3e5fe34bc16dc38e9107e"},{"id":"func/Bridge.resolveApproval","name":"Bridge.resolveApproval","line":88,"end_line":103,"hash":"31a622927ad84e5cf3cad85cee2635ec97c9294c7abf0f2dcd1f6c7b0fef9cb0"},{"id":"func/Bridge.recordApproval","name":"Bridge.recordApproval","line":105,"end_line":108,"hash":"6d8353e7b3a9a49604cd3afca95c652a42d4380552b33d4fe34c21ce9ae3cb54"}]}
+// {"version":1,"tested_at":"2026-09-22T16:11:53+02:00","module_hash":"bf6db4601782952b14f9306e56e0e9919ef90cd4b2408b72805c2f728cf7b752","functions":[{"id":"func/approvalMessage","name":"approvalMessage","line":17,"end_line":27,"hash":"c966f60938103c21d172fec1ff43c92a9528355965f869398c2d7e6b1ed880a1"},{"id":"func/Bridge.carryOutApprovals","name":"Bridge.carryOutApprovals","line":31,"end_line":48,"hash":"3ce7216007de4376acf2b0d99d615f6a46b17f26196ca029aada157078f4dce5"},{"id":"func/Bridge.applyApproval","name":"Bridge.applyApproval","line":50,"end_line":86,"hash":"2e08a8e3ce00d39f35215a9ca10beaeaee85f98ee35d2790d345bf9f5bb1b7d2"},{"id":"func/Bridge.resolveApproval","name":"Bridge.resolveApproval","line":88,"end_line":103,"hash":"cea2619e88d108f0867fe96e1cf177db9bff2aa8a01efc028687cb766ab3de26"},{"id":"func/Bridge.recordApproval","name":"Bridge.recordApproval","line":105,"end_line":108,"hash":"6d8353e7b3a9a49604cd3afca95c652a42d4380552b33d4fe34c21ce9ae3cb54"}]}
 // mutate4go-manifest-end

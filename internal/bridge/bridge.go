@@ -25,9 +25,15 @@ type ForgeStore interface {
 // ApprovalStore is the forge side of one root's approvals: the handoffs its
 // projects are waiting for.
 type ApprovalStore interface {
-	Pending() ([]relay.Approval, error)
-	Approve(project, id string) error
-	SendBack(project, id, feedback string) error
+	Pending(ctx context.Context) ([]relay.Approval, error)
+	Approve(ctx context.Context, project, id string) error
+	SendBack(ctx context.Context, project, id, feedback string) error
+}
+
+// BoardStore is the forge side of one root's boards: the cards its projects
+// hold and the lanes they are in.
+type BoardStore interface {
+	Cards() ([]relay.Card, error)
 }
 
 // Room is the Matrix side the bridge created for a forge.
@@ -35,6 +41,7 @@ type Room struct {
 	SpaceID         string
 	RoomID          string
 	ApprovalsRoomID string
+	ActivityRoomID  string
 }
 
 // Rooms is the Matrix side of the bridge: spaces, chat rooms, and the messages
@@ -52,6 +59,7 @@ type Bridge struct {
 	rooms       Rooms
 	stores      map[string]ForgeStore
 	approvals   map[string]ApprovalStore
+	boards      map[string]BoardStore
 	statePath   string
 	statusDir   string
 	state       *state.State
@@ -63,7 +71,7 @@ type Bridge struct {
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
 // root. The state file keeps restarts from repeating work.
-func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, log *slog.Logger) (*Bridge, error) {
+func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, boards map[string]BoardStore, log *slog.Logger) (*Bridge, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -77,6 +85,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		rooms:       rooms,
 		stores:      stores,
 		approvals:   approvals,
+		boards:      boards,
 		statePath:   statePath,
 		statusDir:   cfg.StateDir,
 		state:       loaded,
@@ -206,7 +215,12 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 	if err != nil {
 		return 0, err
 	}
-	return carriedOut + approvals, nil
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		return 0, err
+	}
+	return carriedOut + approvals + activity, nil
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
@@ -230,5 +244,5 @@ func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, ro
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T15:52:22+02:00","module_hash":"eac48b4f0153c96823d523c2a4dce64675c05154b4a44b4a53d2c967402c15c5","functions":[{"id":"func/New","name":"New","line":66,"end_line":86,"hash":"52753a333897e6a89f9cbacc84d00bdef9a4728c3e4b2c2dc0f167cef64831c3"},{"id":"func/Bridge.State","name":"Bridge.State","line":89,"end_line":91,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":94,"end_line":115,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":120,"end_line":122,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":129,"end_line":151,"hash":"5c9eb6c2be4c4793a314ff71034c5278fc243861ff92ff8d8f98e1a74f6b733a"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":161,"end_line":179,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":183,"end_line":210,"hash":"b94226c60c20eaa61911f6476c5b79a188a611047c1f97825f2f93d944cce11d"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":212,"end_line":217,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":220,"end_line":230,"hash":"506f097a3daf97bea3e2e32cf7db5ff88bc6bd556a181d7dc6d47400b0bc6374"}]}
+// {"version":1,"tested_at":"2026-09-22T16:14:31+02:00","module_hash":"8cde7f821ad7998e5851a7228127c535cafb30e76c0104020f7e42fad420e292","functions":[{"id":"func/New","name":"New","line":74,"end_line":95,"hash":"19816dc089b747fe932a6bba03d6598394cf98e00064c7886cfcfc206630edda"},{"id":"func/Bridge.State","name":"Bridge.State","line":98,"end_line":100,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":103,"end_line":124,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":129,"end_line":131,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":138,"end_line":160,"hash":"5c9eb6c2be4c4793a314ff71034c5278fc243861ff92ff8d8f98e1a74f6b733a"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":170,"end_line":188,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":192,"end_line":224,"hash":"ad87f1bbd41f9c7ccd31ae6dec75d9cafa8530c6dbf4638e764899686083ad1c"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":226,"end_line":231,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":234,"end_line":244,"hash":"506f097a3daf97bea3e2e32cf7db5ff88bc6bd556a181d7dc6d47400b0bc6374"}]}
 // mutate4go-manifest-end

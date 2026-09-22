@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
+	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 // child is a child process the scenario started: a forge's dashboard stub, or
@@ -93,7 +95,20 @@ func (w *World) startDashboard(name string) error {
 		return err
 	}
 	w.stubs[name] = running
-	return nil
+	return w.waitForDashboardURL(store.Root())
+}
+
+// waitForDashboardURL waits until the fixture dashboard has announced itself,
+// which is how the bridge finds the endpoints it has to call.
+func (w *World) waitForDashboardURL(root string) error {
+	path := filepath.Join(root, filepath.FromSlash(dashboard.URLFile))
+	return waitFor(context.Background(), "the forge's dashboard never announced itself", func() (bool, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false, nil
+		}
+		return strings.TrimSpace(string(data)) != "", nil
+	})
 }
 
 // startBridge runs the bridge process.

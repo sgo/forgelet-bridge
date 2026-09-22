@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/unclebob/forgelet-bridge/internal/approvals"
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 // approvalProject is the project the acceptance approvals belong to, the way
@@ -126,6 +127,9 @@ func approvalApproved(_ context.Context, world any, captures []string) error {
 	defer cancel()
 	approved := filepath.Join(pathsFor(root).outbox, approvalCardID(captures[1])+".handoff")
 	return waitFor(ctx, fmt.Sprintf("the forge never recorded %s as approved", captures[1]), func() (bool, error) {
+		if !dashboardWasAsked(root, "POST", "/api/approvals/"+approvalCardID(captures[1])+"/approve", approvalProject) {
+			return false, nil
+		}
 		data, err := os.ReadFile(approved)
 		if err != nil {
 			return false, nil
@@ -146,12 +150,31 @@ func approvalSentBack(_ context.Context, world any, captures []string) error {
 	card, feedback := captures[1], captures[2]
 	history := filepath.Join(pathsFor(root).reviews, approvalTaskID(card), "reviews.json")
 	return waitFor(ctx, fmt.Sprintf("the forge never recorded %s as sent back", card), func() (bool, error) {
+		if !dashboardWasAsked(root, "POST", "/api/tasks/retry", feedback) {
+			return false, nil
+		}
 		data, err := os.ReadFile(history)
 		if err != nil {
 			return false, nil
 		}
 		return strings.Contains(string(data), feedback), nil
 	})
+}
+
+// dashboardWasAsked reports whether the forge's dashboard handled a request of
+// this shape: the bridge has to work through the dashboard's endpoints, not by
+// editing the forge's files itself.
+func dashboardWasAsked(root, method, path, contains string) bool {
+	calls, err := fixtures.ReadDashboardCalls(root)
+	if err != nil {
+		return false
+	}
+	for _, call := range calls {
+		if call.Method == method && call.Path == path && strings.Contains(call.Body, contains) {
+			return true
+		}
+	}
+	return false
 }
 
 // approvalStillPending checks the forge is still waiting for the decision.
@@ -246,5 +269,13 @@ func desktopApproved(_ context.Context, world any, captures []string) error {
 	if err != nil {
 		return err
 	}
-	return approvals.New(root).Approve(approvalProject, approvalCardID(captures[1]))
+	// The desktop is the dashboard: approving there is the dashboard's own
+	// endpoint being called.
+	ctx, cancel := stepContext()
+	defer cancel()
+	url, err := dashboard.URL(root, "")
+	if err != nil {
+		return err
+	}
+	return dashboard.NewAPI(url).Approve(ctx, approvalProject, approvalCardID(captures[1]))
 }
