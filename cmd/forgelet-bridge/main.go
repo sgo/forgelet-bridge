@@ -55,6 +55,8 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	if err != nil {
 		return err
 	}
+	deviceID, fingerprint := client.DeviceIdentity()
+	relay.ReportDevice(bridge.Device{ID: deviceID, Fingerprint: fingerprint})
 	if err := relay.Run(ctx, interval); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("run bridge: %w", err)
 	}

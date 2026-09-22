@@ -14,6 +14,12 @@ room (`Chat`) inside it, invites the configured operator, and then:
 - messages from anyone but the operator never reach the forge;
 - a restart repeats nothing, in either direction.
 
+A restart also keeps the bridge on the same Matrix device: it reuses the device
+and the crypto store under `state_dir`, so the operator never meets a new
+unverified device, and chat that happens after a restart stays readable.
+`state_dir/status.json` reports the device the bridge is using, so what the
+operator's phone shows can be checked against it.
+
 ## Configuration
 
 ```json

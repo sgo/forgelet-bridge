@@ -304,6 +304,21 @@ func TestTickReportsBusyWhileItWorks(t *testing.T) {
 	}
 }
 
+func TestStatusReportsTheBridgeDevice(t *testing.T) {
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+	built.ReportDevice(Device{ID: "FORGELETBRIDGE", Fingerprint: "fingerprint"})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	status := readStatus(t, filepath.Join(cfg.StateDir, StatusName))
+	if status.DeviceID != "FORGELETBRIDGE" || status.DeviceFingerprint != "fingerprint" {
+		t.Errorf("status = %+v, want the bridge's own Matrix device", status)
+	}
+}
+
 func TestTickFailsWithoutADashboardQueue(t *testing.T) {
 	rooms := &fakeRooms{}
 	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{}, "/forges/forge-a")

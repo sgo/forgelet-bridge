@@ -41,10 +41,20 @@ type Rooms interface {
 	DrainEvents(ctx context.Context) ([]relay.RoomEvent, error)
 }
 
-// Status is what the bridge writes after every tick.
+// Status is what the bridge writes after every tick. The device fields tell
+// the operator (and the acceptance suite) which Matrix device the bridge is
+// using, so a restart that changes it is visible instead of silent.
 type Status struct {
-	Tick uint64 `json:"tick"`
-	Idle bool   `json:"idle"`
+	Tick              uint64 `json:"tick"`
+	Idle              bool   `json:"idle"`
+	DeviceID          string `json:"device_id,omitempty"`
+	DeviceFingerprint string `json:"device_fingerprint,omitempty"`
+}
+
+// Device is the Matrix device the bridge is using.
+type Device struct {
+	ID          string
+	Fingerprint string
 }
 
 // Bridge is the running relay.
@@ -58,6 +68,7 @@ type Bridge struct {
 	log         *slog.Logger
 	tick        uint64
 	provisioned map[string]Room
+	device      Device
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -86,6 +97,12 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, log *slog
 // State exposes the bridge's bookkeeping for tests and status reporting.
 func (b *Bridge) State() *state.State {
 	return b.state
+}
+
+// ReportDevice records the Matrix device the bridge is using, so that its
+// status shows which device the operator is talking to.
+func (b *Bridge) ReportDevice(device Device) {
+	b.device = device
 }
 
 // Run serves every configured forge until the context is cancelled.
@@ -147,7 +164,12 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	}
 
 	b.tick++
-	return b.writeStatus(Status{Tick: b.tick, Idle: carriedOut == 0})
+	return b.writeStatus(Status{
+		Tick:              b.tick,
+		Idle:              carriedOut == 0,
+		DeviceID:          b.device.ID,
+		DeviceFingerprint: b.device.Fingerprint,
+	})
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {

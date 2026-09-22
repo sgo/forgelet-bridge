@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,14 @@ type Message struct {
 	Body       string
 	ThreadRoot string
 	Encrypted  bool
+}
+
+// DeviceKey is one Matrix device of a user, as another client sees it. The
+// identity key is the fingerprint the operator's phone shows for the device.
+type DeviceKey struct {
+	DeviceID   string
+	Ed25519    string
+	Curve25519 string
 }
 
 // User is a Matrix user the tests drive: the operator standing in for the
@@ -369,6 +378,26 @@ func (u *User) Rooms(ctx context.Context) ([]string, error) {
 		}
 	}
 	return rooms, nil
+}
+
+// Devices lists the devices a user has published, seen from this client.
+func (u *User) Devices(ctx context.Context, userID string) ([]DeviceKey, error) {
+	resp, err := u.cli.QueryKeys(ctx, &mautrix.ReqQueryKeys{
+		DeviceKeys: mautrix.DeviceKeysRequest{id.UserID(userID): mautrix.DeviceIDList{}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var devices []DeviceKey
+	for deviceID, keys := range resp.DeviceKeys[id.UserID(userID)] {
+		devices = append(devices, DeviceKey{
+			DeviceID:   deviceID.String(),
+			Ed25519:    keys.Keys.GetEd25519(deviceID).String(),
+			Curve25519: keys.Keys.GetCurve25519(deviceID).String(),
+		})
+	}
+	sort.Slice(devices, func(i, j int) bool { return devices[i].DeviceID < devices[j].DeviceID })
+	return devices, nil
 }
 
 // EverInvited reports whether this user was ever invited to a room.

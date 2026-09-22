@@ -51,6 +51,7 @@ type World struct {
 	bridge     *bridgeProcess
 	binaryPath string
 	anchors    map[string]string
+	devices    []fixtures.DeviceKey
 }
 
 // Registry builds the acceptance registry.

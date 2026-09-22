@@ -117,6 +117,14 @@ func (c *Client) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
 	}
 }
 
+// DeviceIdentity is the Matrix device the bridge is using: its device id and
+// the ed25519 fingerprint the operator's phone shows for it. The fingerprint
+// comes from the bridge's own crypto store, so a restart that loses it is
+// visible instead of silent.
+func (c *Client) DeviceIdentity() (deviceID, fingerprint string) {
+	return c.cli.DeviceID.String(), c.helper.Machine().GetAccount().SigningKey().String()
+}
+
 // SendText posts an encrypted chat message. A non-empty thread anchor makes it
 // a reply in that message's thread.
 func (c *Client) SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error) {

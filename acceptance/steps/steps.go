@@ -22,6 +22,8 @@ func register(registry *runtime.Registry) error {
 		{`^the bridge is started$`, bridgeStarted},
 		{`^the bridge is stopped and started again$`, bridgeRestarted},
 		{`^the bridge has caught up with the forge$`, bridgeCaughtUp},
+		{`^the bridge has published its Matrix device to the operator$`, bridgePublishedDevice},
+		{`^the operator sees the same bridge Matrix device$`, operatorSeesSameDevice},
 		{`^the bridge has created the forge space (.+?) and its chat room (.+)$`, bridgeCreatedSpace},
 
 		{`^the operator sees the forge space (.+)$`, operatorSeesSpace},

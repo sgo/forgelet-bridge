@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+	"github.com/unclebob/forgelet-bridge/internal/bridge"
 )
 
 // stub is a running dashboard stub, the fixture stand-in for a forge's
@@ -21,8 +22,10 @@ type stub struct {
 
 // bridgeProcess is the running bridge.
 type bridgeProcess struct {
-	cmd *exec.Cmd
-	log *os.File
+	cmd     *exec.Cmd
+	log     *os.File
+	done    chan struct{}
+	waitErr error
 }
 
 // startDashboard runs the forge's dashboard stub.
@@ -74,11 +77,20 @@ func (w *World) startBridge(ctx context.Context) error {
 	cmd := exec.Command(binary, "--config", w.configPath, "--interval", "200ms")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	started := time.Now()
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return err
 	}
-	w.bridge = &bridgeProcess{cmd: cmd, log: logFile}
+	running := &bridgeProcess{cmd: cmd, log: logFile, done: make(chan struct{})}
+	go func() {
+		running.waitErr = cmd.Wait()
+		close(running.done)
+	}()
+	w.bridge = running
+	if err := w.waitForBridgeStart(ctx, running, started); err != nil {
+		return err
+	}
 	return w.waitForOperator(ctx)
 }
 
@@ -86,8 +98,52 @@ func (w *World) stopBridge() {
 	if w.bridge == nil {
 		return
 	}
-	stopProcess(w.bridge.cmd, w.bridge.log)
+	running := w.bridge
 	w.bridge = nil
+	stopBridgeProcess(running)
+}
+
+// stopBridgeProcess asks a running bridge to stop, and kills it if it does not.
+func stopBridgeProcess(running *bridgeProcess) {
+	if running == nil || running.cmd.Process == nil {
+		return
+	}
+	_ = running.cmd.Process.Signal(os.Interrupt)
+	select {
+	case <-running.done:
+	case <-time.After(10 * time.Second):
+		_ = running.cmd.Process.Kill()
+		<-running.done
+	}
+	if running.log != nil {
+		running.log.Close()
+	}
+}
+
+// waitForBridgeStart waits until the bridge process is really running: it has
+// written a fresh status after this start. A bridge that dies on startup, or
+// that never reaches its first tick, fails here instead of leaving the
+// scenario silently asserting stale state.
+func (w *World) waitForBridgeStart(ctx context.Context, running *bridgeProcess, started time.Time) error {
+	select {
+	case <-running.done:
+		return fmt.Errorf("the bridge stopped during startup: %v", running.waitErr)
+	default:
+	}
+
+	path := filepath.Join(w.stateDir, bridge.StatusName)
+	return waitFor(ctx, "the bridge never reported a tick after starting", func() (bool, error) {
+		select {
+		case <-running.done:
+			return false, fmt.Errorf("the bridge stopped during startup: %v", running.waitErr)
+		default:
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return false, nil
+		}
+		return info.ModTime().After(started), nil
+	})
 }
 
 func (w *World) bridgeBinary() (string, error) {
