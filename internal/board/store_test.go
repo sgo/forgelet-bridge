@@ -91,3 +91,11 @@ func TestParseRowIgnoresMalformedLines(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRowReadsARowOfTwoColumns(t *testing.T) {
+	name, lane, ok := ParseRow("card-activity-feed\tspecifier")
+
+	if !ok || name != "card-activity-feed" || lane != "specifier" {
+		t.Errorf("ParseRow = %q, %q, %v, want the card and its lane", name, lane, ok)
+	}
+}
