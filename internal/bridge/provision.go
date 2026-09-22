@@ -14,7 +14,7 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 		return room, nil
 	}
 	if forge, ok := b.state.ForgeFor(root); ok {
-		room := Room{SpaceID: forge.SpaceID, RoomID: forge.RoomID}
+		room := Room{SpaceID: forge.SpaceID, RoomID: forge.RoomID, ApprovalsRoomID: forge.ApprovalsRoomID}
 		b.provisioned[root] = room
 		return room, nil
 	}
@@ -23,7 +23,11 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 	if err != nil {
 		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
 	}
-	b.state.RecordForge(root, state.Forge{SpaceID: room.SpaceID, RoomID: room.RoomID})
+	b.state.RecordForge(root, state.Forge{
+		SpaceID:         room.SpaceID,
+		RoomID:          room.RoomID,
+		ApprovalsRoomID: room.ApprovalsRoomID,
+	})
 	if err := b.state.Save(b.statePath); err != nil {
 		return Room{}, err
 	}

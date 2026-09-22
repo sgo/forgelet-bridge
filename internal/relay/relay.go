@@ -18,6 +18,9 @@ type RoomEvent struct {
 	EventID string
 	Sender  string
 	Body    string
+	// ThreadRoot is the message a reply is threaded under, empty when the
+	// message starts its own thread.
+	ThreadRoot string
 }
 
 // State is the bridge's durable bookkeeping. Every map is keyed by the Matrix
@@ -31,6 +34,8 @@ type State struct {
 	Replied map[string]string `json:"replied,omitempty"`
 	// Relayed maps an operator message to the dashboard request it became.
 	Relayed map[string]string `json:"relayed,omitempty"`
+	// Approvals maps an approval to what the bridge has done about it.
+	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
 }
 
 // Kind names the work an action asks for.
@@ -69,6 +74,9 @@ func (s *State) EnsureMaps() {
 	}
 	if s.Relayed == nil {
 		s.Relayed = map[string]string{}
+	}
+	if s.Approvals == nil {
+		s.Approvals = map[string]ApprovalState{}
 	}
 }
 

@@ -230,6 +230,32 @@ enable_registration_without_verification: true
 report_stats: false
 trusted_key_servers: []
 suppress_key_server_warning: true
+rc_message:
+  per_second: 100
+  burst_count: 200
+rc_registration:
+  per_second: 100
+  burst_count: 200
+rc_login:
+  address:
+    per_second: 100
+    burst_count: 200
+  account:
+    per_second: 100
+    burst_count: 200
+  failed_attempts:
+    per_second: 100
+    burst_count: 200
+rc_room_creation:
+  per_second: 100
+  burst_count: 200
+rc_joins:
+  local:
+    per_second: 100
+    burst_count: 200
+  remote:
+    per_second: 100
+    burst_count: 200
 `,
 		ServerName,
 		filepath.Join(dir, "synapse.pid"),

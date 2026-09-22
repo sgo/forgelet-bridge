@@ -1,6 +1,7 @@
-// Package bridge keeps one or more forges' chat channels in step with their
-// Matrix rooms: forge requests become messages, operator replies become chat
-// requests, and answers arrive as thread replies.
+// Package bridge keeps one or more forges in step with their Matrix rooms:
+// forge requests become chat messages, operator replies become chat requests,
+// answers arrive as thread replies, and approvals reach the operator's phone
+// where a reaction or a reply decides them.
 package bridge
 
 import (
@@ -21,10 +22,19 @@ type ForgeStore interface {
 	CreateRequest(body string) (string, error)
 }
 
+// ApprovalStore is the forge side of one root's approvals: the handoffs its
+// projects are waiting for.
+type ApprovalStore interface {
+	Pending() ([]relay.Approval, error)
+	Approve(project, id string) error
+	SendBack(project, id, feedback string) error
+}
+
 // Room is the Matrix side the bridge created for a forge.
 type Room struct {
-	SpaceID string
-	RoomID  string
+	SpaceID         string
+	RoomID          string
+	ApprovalsRoomID string
 }
 
 // Rooms is the Matrix side of the bridge: spaces, chat rooms, and the messages
@@ -33,6 +43,7 @@ type Rooms interface {
 	EnsureForge(ctx context.Context, forgeName, operator string) (Room, error)
 	SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error)
 	DrainEvents(ctx context.Context) ([]relay.RoomEvent, error)
+	DrainReactions(ctx context.Context) ([]relay.Reaction, error)
 }
 
 // Bridge is the running relay.
@@ -40,6 +51,7 @@ type Bridge struct {
 	cfg         config.Config
 	rooms       Rooms
 	stores      map[string]ForgeStore
+	approvals   map[string]ApprovalStore
 	statePath   string
 	statusDir   string
 	state       *state.State
@@ -51,7 +63,7 @@ type Bridge struct {
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
 // root. The state file keeps restarts from repeating work.
-func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, log *slog.Logger) (*Bridge, error) {
+func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, log *slog.Logger) (*Bridge, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -64,6 +76,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, log *slog
 		cfg:         cfg,
 		rooms:       rooms,
 		stores:      stores,
+		approvals:   approvals,
 		statePath:   statePath,
 		statusDir:   cfg.StateDir,
 		state:       loaded,
@@ -85,19 +98,37 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration) error {
 	if err := b.Tick(ctx); err != nil {
 		b.log.Error("tick failed", "error", err)
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	wait := interval
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
+		case <-time.After(wait):
 			if err := b.Tick(ctx); err != nil {
 				b.log.Error("tick failed", "error", err)
+				wait = backOff(wait, interval)
+				continue
 			}
+			wait = interval
 		}
 	}
 }
+
+// backOff spaces out retries after a failed tick, so a homeserver that is
+// throttling or away is not hammered.
+func backOff(wait, interval time.Duration) time.Duration {
+	next := wait * 2
+	if next < interval {
+		next = interval
+	}
+	if next > maxBackOff {
+		return maxBackOff
+	}
+	return next
+}
+
+// maxBackOff is how long the bridge waits at most between tries.
+const maxBackOff = 30 * time.Second
 
 // Tick carries out one round of work: catch the rooms up with the forges and
 // the forges up with the rooms.
@@ -109,6 +140,14 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	byRoom := map[string][]relay.RoomEvent{}
 	for _, event := range events {
 		byRoom[event.RoomID] = append(byRoom[event.RoomID], event)
+	}
+	reactions, err := b.rooms.DrainReactions(ctx)
+	if err != nil {
+		return fmt.Errorf("read approvals room reactions: %w", err)
+	}
+	reactionsByRoom := map[string][]relay.Reaction{}
+	for _, reaction := range reactions {
+		reactionsByRoom[reaction.RoomID] = append(reactionsByRoom[reaction.RoomID], reaction)
 	}
 
 	carriedOut := 0
@@ -134,6 +173,12 @@ func (b *Bridge) Tick(ctx context.Context) error {
 			}
 			carriedOut++
 		}
+
+		done, err := b.carryOutApprovals(ctx, root, room, byRoom[room.ApprovalsRoomID], reactionsByRoom[room.ApprovalsRoomID])
+		if err != nil {
+			return err
+		}
+		carriedOut += done
 	}
 
 	b.tick++
