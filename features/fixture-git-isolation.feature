@@ -23,6 +23,6 @@ Feature: Fixture Git Isolation
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator replies "the timesheet total is still wrong" in the approval message's thread for the card phone-approvals
-    Then the forge recorded the approval for the card phone-approvals as sent back with "the timesheet total is still wrong"
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with "the timesheet total is still wrong"
     And the fixture forge holds the snapshot it took of the card phone-approvals
     And the worktree the acceptance suite runs from still holds its head, its branches and its changes
