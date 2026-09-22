@@ -652,6 +652,47 @@ func TestPendingRequestsArePairedWithWhatTheForgeQueued(t *testing.T) {
 	}
 }
 
+func TestAnswerToAThreadedMessageJoinsThatThread(t *testing.T) {
+	store := &fakeStore{}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+	// The operator wrote inside a thread, so their message already carries a
+	// relation. A thread cannot start from such an event — the room answers 400
+	// — so the answer belongs in the thread they wrote in.
+	rooms.push(relay.RoomEvent{
+		RoomID: "!room-forge-a", EventID: "$operator-reply", Sender: operator,
+		Body: "approve", ThreadRoot: "$thread-root",
+	})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+
+	requestID := built.State().Relay.Relayed["$operator-reply"]
+	if requestID == "" {
+		t.Fatal("the operator's threaded message was never paired with its chat request")
+	}
+	if anchor, ok := built.State().Relay.Anchor(requestID); !ok || anchor != "$thread-root" {
+		t.Errorf("anchor = %q, %v, want the thread the operator wrote in", anchor, ok)
+	}
+
+	store.mu.Lock()
+	store.requests[0].Response = "yes, the card is live"
+	store.mu.Unlock()
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	sent := rooms.sentMessages()
+	if len(sent) != 1 {
+		t.Fatalf("sent = %+v, want just the answer", sent)
+	}
+	if sent[0].anchor != "$thread-root" {
+		t.Errorf("reply anchor = %q, want the thread the operator wrote in", sent[0].anchor)
+	}
+}
+
 func TestTickDoesNotHandTheSameMessageOverTwiceWhilePairingWaits(t *testing.T) {
 	store := &fakeStore{}
 	rooms := &fakeRooms{}

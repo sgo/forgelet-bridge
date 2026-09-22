@@ -201,6 +201,9 @@ func (c *Client) captureReaction(_ context.Context, evt *event.Event) {
 		TargetEventID: content.RelatesTo.EventID.String(),
 		Key:           content.RelatesTo.Key,
 	}
+	// Say what arrived, so a reaction the bridge cannot read is a fact in the log
+	// rather than silence at the operator's end.
+	c.log.Info("reaction seen", "sender", seen.Sender, "key", seen.Key, "target", seen.TargetEventID)
 	select {
 	case c.reactions <- seen:
 	default:

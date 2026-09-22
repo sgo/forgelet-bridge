@@ -37,6 +37,11 @@ type State struct {
 	// Pending maps an operator message the forge has taken to its text, until
 	// the request the forge queued for it can be paired with it.
 	Pending map[string]string `json:"pending,omitempty"`
+	// PendingThreads maps an operator message the forge has taken to the thread
+	// it was written in, for messages that were themselves replies. A thread
+	// cannot start from an event that already carries a relation, so an answer
+	// to such a message has to land in the thread the operator wrote in.
+	PendingThreads map[string]string `json:"pendingthreads,omitempty"`
 	// Approvals maps an approval to what the bridge has done about it.
 	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
 	// Activity maps a card to the last thing the bridge said about it.
@@ -67,6 +72,9 @@ type Action struct {
 	AnchorEventID string
 	// SourceEventID is the operator's chat message a new forge request came from.
 	SourceEventID string
+	// SourceThread is the thread that message was written in, empty when the
+	// message starts its own thread.
+	SourceThread string
 }
 
 // EnsureMaps makes a state's maps writable.
@@ -82,6 +90,9 @@ func (s *State) EnsureMaps() {
 	}
 	if s.Pending == nil {
 		s.Pending = map[string]string{}
+	}
+	if s.PendingThreads == nil {
+		s.PendingThreads = map[string]string{}
 	}
 	if s.Approvals == nil {
 		s.Approvals = map[string]ApprovalState{}
@@ -117,6 +128,7 @@ func operatorRequests(operator string, st State, events []RoomEvent) []Action {
 			Kind:          CreateForgeRequest,
 			Body:          event.Body,
 			SourceEventID: event.EventID,
+			SourceThread:  event.ThreadRoot,
 		})
 	}
 	return actions

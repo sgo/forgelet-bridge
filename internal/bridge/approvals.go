@@ -79,11 +79,19 @@ func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Ro
 			return state
 		})
 
+	case relay.AnswerGestures:
+		if _, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, gestureAnswer, ""); err != nil {
+			return fmt.Errorf("answer the approval room: %w", err)
+		}
+
 	default:
 		return fmt.Errorf("unknown approval action %q", action.Kind)
 	}
 	return b.state.Save(b.statePath)
 }
+
+// gestureAnswer tells the operator, briefly, what this room can read.
+const gestureAnswer = `Reply "approve" or react ✅ to approve; reply with anything else in the thread to send it back.`
 
 func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, action relay.ApprovalAction) error {
 	approval := action.Approval

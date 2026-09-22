@@ -35,6 +35,29 @@ func TestPlanApprovalsPostsAnApprovalTheRoomHasNotSeen(t *testing.T) {
 	}
 }
 
+func TestApprovalsAcceptsTheCheckMarksPickersSend(t *testing.T) {
+	for _, key := range []string{"\u2705", "\u2705\ufe0f", "\u2714", "\u2714\ufe0f", "\u2611", "\u2611\ufe0f"} {
+		reactions := []Reaction{{Sender: operator, Key: key, TargetEventID: "$approval-message"}}
+
+		actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil)
+
+		if len(actions) != 1 || actions[0].Resolution != ResolutionApproved {
+			t.Errorf("key %q planned %+v, want the operator's approval", key, actions)
+		}
+	}
+}
+
+func TestApprovalsDecideNothingOnAReactionThatIsNotACheckMark(t *testing.T) {
+	for _, key := range []string{"👍", "❌", "🎉", ""} {
+		reactions := []Reaction{{Sender: operator, Key: key, TargetEventID: "$approval-message"}}
+
+		actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil)
+		if len(actions) != 1 || actions[0].Kind != AnswerGestures {
+			t.Errorf("key %q planned %+v, want only the room's answer", key, actions)
+		}
+	}
+}
+
 func TestPlanApprovalsPostsAnApprovalOnlyOnce(t *testing.T) {
 	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, nil)
 
@@ -59,14 +82,21 @@ func TestPlanApprovalsCarriesTheOperatorsApprovalBack(t *testing.T) {
 	}
 }
 
-func TestPlanApprovalsIgnoresEveryoneElsesReactions(t *testing.T) {
-	reactions := []Reaction{
-		{Sender: "@stranger:example.org", Key: ApproveReaction, TargetEventID: "$approval-message"},
-		{Sender: operator, Key: "🎉", TargetEventID: "$approval-message"},
-	}
+func TestPlanApprovalsIgnoresReactionsFromAnyoneElse(t *testing.T) {
+	reactions := []Reaction{{Sender: "@stranger:example.org", Key: ApproveReaction, TargetEventID: "$approval-message"}}
 
 	if actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil); len(actions) != 0 {
-		t.Errorf("actions = %+v, want nothing from a reaction that is not the operator's approval", actions)
+		t.Errorf("actions = %+v, want nothing from someone else's reaction", actions)
+	}
+}
+
+func TestPlanApprovalsAnswersAReactionItCannotRead(t *testing.T) {
+	reactions := []Reaction{{Sender: operator, Key: "🎉", TargetEventID: "$approval-message"}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, reactions, nil)
+
+	if len(actions) != 1 || actions[0].Kind != AnswerGestures {
+		t.Errorf("actions = %+v, want the room to answer with the gestures it takes", actions)
 	}
 }
 
@@ -100,11 +130,55 @@ func TestPlanApprovalsSendsTheApprovalBackWithTheOperatorsReply(t *testing.T) {
 	}
 }
 
-func TestPlanApprovalsIgnoresAMessageThatIsNotInTheApprovalsThread(t *testing.T) {
+func TestPlanApprovalsLeavesAMessageItCannotReadAloneAndAnswers(t *testing.T) {
 	replies := []RoomEvent{{EventID: "$plain", Sender: operator, Body: "when is this due?"}}
 
-	if actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies); len(actions) != 0 {
-		t.Errorf("actions = %+v, want a plain message to decide nothing", actions)
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	if len(actions) != 1 || actions[0].Kind != AnswerGestures {
+		t.Errorf("actions = %+v, want the room to answer, with no decision", actions)
+	}
+}
+
+func TestPlanApprovalsApprovesOnAPlainWordOrTheCardsName(t *testing.T) {
+	for _, body := range []string{"approve", "Approve", "go ahead", "phone-approvals"} {
+		replies := []RoomEvent{{EventID: "$plain", Sender: operator, Body: body}}
+
+		actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+		want := []ApprovalAction{{
+			Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(), Resolution: ResolutionApproved,
+		}}
+		if !reflect.DeepEqual(actions, want) {
+			t.Errorf("for %q: actions = %+v, want %+v", body, actions, want)
+		}
+	}
+}
+
+func TestPlanApprovalsKeepsAReplyThatSaysMoreAsASendBack(t *testing.T) {
+	replies := []RoomEvent{{EventID: "$reply", Sender: operator, Body: "approve please", ThreadRoot: "$approval-message"}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(),
+		Resolution: ResolutionSentBack, Feedback: "approve please",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsApprovesOnAPlainReply(t *testing.T) {
+	replies := []RoomEvent{{EventID: "$reply", Sender: operator, Body: "approve", ThreadRoot: "$approval-message"}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(), Resolution: ResolutionApproved,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want %+v", actions, want)
 	}
 }
 
