@@ -169,6 +169,9 @@ func TestEnsureMapsKeepsTheWorkAlreadyRecorded(t *testing.T) {
 		Approvals: map[string]ApprovalState{
 			"forgelet-bridge/approval-1": {MessageID: "$approval", Resolution: ResolutionApproved},
 		},
+		Activity: map[string]CardState{
+			"forgelet-bridge/card-activity-feed": {Lane: "coder", Reported: ReportedMovedOn},
+		},
 	}
 
 	state.EnsureMaps()
@@ -176,7 +179,8 @@ func TestEnsureMapsKeepsTheWorkAlreadyRecorded(t *testing.T) {
 	if state.Threads["req-1"] != "$message" ||
 		state.Replied["req-1"] != "$reply" ||
 		state.Relayed["$operator-message"] != "req-1" ||
-		state.Approvals["forgelet-bridge/approval-1"].MessageID != "$approval" {
+		state.Approvals["forgelet-bridge/approval-1"].MessageID != "$approval" ||
+		state.Activity["forgelet-bridge/card-activity-feed"].Lane != "coder" {
 		t.Errorf("state = %+v, want the recorded work kept: a restart must not forget it", state)
 	}
 }

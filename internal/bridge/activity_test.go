@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,44 @@ func boardCard(lane string) relay.Card {
 		Name:    "card-activity-feed",
 		Lane:    lane,
 		Done:    lane == "done",
+	}
+}
+
+func TestTickReportsWorkWhenItPostsACardUpdateAndAChatMessage(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(boardCard("specifier"))
+	rooms := &fakeRooms{}
+	chat := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	built, cfg := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": chat},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	if status := readStatus(t, filepath.Join(cfg.StateDir, StatusName)); status.Idle {
+		t.Errorf("status = %+v, want the tick that posted a chat message and a card update to report work", status)
+	}
+}
+
+func TestTickPostsEveryCardUpdateItOwes(t *testing.T) {
+	board := &fakeBoard{}
+	second := boardCard("specifier")
+	second.Key = "forgelet-bridge/other-card"
+	second.Name = "other-card"
+	board.set(boardCard("specifier"), second)
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	if sent := rooms.sentMessages(); len(sent) != 2 {
+		t.Errorf("sent = %+v, want one update per card", sent)
 	}
 }
 
