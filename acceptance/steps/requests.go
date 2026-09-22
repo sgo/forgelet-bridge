@@ -53,7 +53,13 @@ func askDashboard(w *World, name, text string) error {
 // dashboardWoke waits for the dashboard to have typed a chat request into the
 // lieutenant's pane.
 func dashboardWoke(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
+	return world.(*World).wokeWithTheRequest(captures[1])
+}
+
+// wokeWithTheRequest waits until the forge's dashboard typed the chat request
+// into the lieutenant's pane, which is what tells a request the dashboard took
+// apart from one the bridge wrote into the queue itself.
+func (w *World) wokeWithTheRequest(text string) error {
 	ctx, cancel := stepContext()
 	defer cancel()
 	root, err := singleForge(w)
@@ -64,7 +70,6 @@ func dashboardWoke(_ context.Context, world any, captures []string) error {
 	if !ok {
 		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", root)
 	}
-	text := captures[1]
 	return waitFor(ctx, fmt.Sprintf("the dashboard never typed the chat request %q into the lieutenant's pane", text), func() (bool, error) {
 		return dashboard.WokeWith(text)
 	})
@@ -197,7 +202,7 @@ func forgeHoldsRequestTheDashboardTook(_ context.Context, world any, captures []
 	if err := w.holdsRequest(text); err != nil {
 		return err
 	}
-	return dashboardWoke(context.Background(), w, []string{"", text})
+	return w.wokeWithTheRequest(text)
 }
 
 // holdsRequest waits until the forge holds a chat request reading text.

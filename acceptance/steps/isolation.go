@@ -11,11 +11,13 @@ import (
 )
 
 // laneState is what the worktree the suite runs from held when the scenario
-// started: its head, its branches, and its changes.
+// started: its head, the branch it is on, the snapshot branches a run would
+// leave behind, and its changes.
 type laneState struct {
-	head     string
-	branches string
-	changes  string
+	head    string
+	branch  string
+	refs    string
+	changes string
 }
 
 // rememberLane records the worktree the suite runs from, so the scenario can
@@ -31,7 +33,7 @@ func rememberLane(_ context.Context, world any, _ []string) error {
 }
 
 // laneHeld checks the worktree the suite runs from still holds its head, its
-// branches and its changes.
+// branch, its snapshot branches and its changes.
 func laneHeld(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
 	if w.lane == nil {
@@ -44,8 +46,11 @@ func laneHeld(_ context.Context, world any, _ []string) error {
 	if now.head != w.lane.head {
 		return fmt.Errorf("the worktree the suite runs from moved its head: %s -> %s", w.lane.head, now.head)
 	}
-	if now.branches != w.lane.branches {
-		return fmt.Errorf("the suite left branches behind in the worktree it runs from:\n%s\n->\n%s", w.lane.branches, now.branches)
+	if now.branch != w.lane.branch {
+		return fmt.Errorf("the suite moved the worktree it runs from onto another branch: %s -> %s", w.lane.branch, now.branch)
+	}
+	if now.refs != w.lane.refs {
+		return fmt.Errorf("the suite left snapshot branches in the worktree it runs from:\n%s\n->\n%s", w.lane.refs, now.refs)
 	}
 	if now.changes != w.lane.changes {
 		return fmt.Errorf("the worktree the suite runs from changed its changes:\n%s\n->\n%s", w.lane.changes, now.changes)
@@ -60,24 +65,23 @@ func readLaneState() (*laneState, error) {
 	if err != nil {
 		return nil, err
 	}
+	branch, err := git(root, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return nil, err
+	}
 	// Only what a suite run could move: the snapshot branches its dashboard
 	// would leave behind, and the branch this worktree is on. The swarm's own
 	// branches (master, the other lanes) move for their own reasons and are
 	// none of this check's business.
-	branches, err := git(root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/rejected")
+	refs, err := git(root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/rejected")
 	if err != nil {
 		return nil, err
 	}
-	current, err := git(root, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return nil, err
-	}
-	branches += "\n" + current
 	changes, err := git(root, "status", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
-	return &laneState{head: head, branches: branches, changes: changes}, nil
+	return &laneState{head: head, branch: branch, refs: refs, changes: changes}, nil
 }
 
 func git(root string, args ...string) (string, error) {
