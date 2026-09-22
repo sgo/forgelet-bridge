@@ -53,7 +53,13 @@ func askDashboard(w *World, name, text string) error {
 // dashboardWoke waits for the dashboard to have typed a chat request into the
 // lieutenant's pane.
 func dashboardWoke(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
+	return world.(*World).wokeWithTheRequest(captures[1])
+}
+
+// wokeWithTheRequest waits until the forge's dashboard typed the chat request
+// into the lieutenant's pane, which is what tells a request the dashboard took
+// apart from one the bridge wrote into the queue itself.
+func (w *World) wokeWithTheRequest(text string) error {
 	ctx, cancel := stepContext()
 	defer cancel()
 	root, err := singleForge(w)
@@ -64,7 +70,6 @@ func dashboardWoke(_ context.Context, world any, captures []string) error {
 	if !ok {
 		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", root)
 	}
-	text := captures[1]
 	return waitFor(ctx, fmt.Sprintf("the dashboard never typed the chat request %q into the lieutenant's pane", text), func() (bool, error) {
 		return dashboard.WokeWith(text)
 	})
@@ -185,4 +190,27 @@ func countRequests(w *World, body string) (int, error) {
 		}
 	}
 	return count, nil
+}
+
+// forgeHoldsRequestTheDashboardTook checks both halves of who wrote a request:
+// the forge holds it, and the dashboard is the one that typed it into the
+// lieutenant's pane. A bridge that wrote the queue itself would show the first
+// without the second.
+func forgeHoldsRequestTheDashboardTook(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	text := captures[1]
+	if err := w.holdsRequest(text); err != nil {
+		return err
+	}
+	return w.wokeWithTheRequest(text)
+}
+
+// holdsRequest waits until the forge holds a chat request reading text.
+func (w *World) holdsRequest(text string) error {
+	ctx, cancel := stepContext()
+	defer cancel()
+	return waitFor(ctx, fmt.Sprintf("the forge never held a chat request reading %q", text), func() (bool, error) {
+		count, err := countRequests(w, text)
+		return count >= 1, err
+	})
 }
