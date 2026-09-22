@@ -30,6 +30,19 @@ func TestQueuePresentsRequestsInRelayForm(t *testing.T) {
 	}
 }
 
+func TestQueueCreateRequestReportsADashboardThatRefusesIt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "not now", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, err := Queue{Store: fixedStore(t), ConfiguredURL: server.URL}.CreateRequest(context.Background(), "is the build green?")
+
+	if err == nil {
+		t.Fatal("CreateRequest accepted a chat the dashboard refused")
+	}
+}
+
 func TestQueueCreateRequestAsksTheForgeToTakeIt(t *testing.T) {
 	store := fixedStore(t)
 	var path, text string

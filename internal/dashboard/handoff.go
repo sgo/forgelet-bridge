@@ -65,3 +65,7 @@ func commaItems(list string) []string {
 	}
 	return items
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-22T21:26:19+02:00","module_hash":"deb7958f7955b3b90a0820bb64cf123a385cd4deb37679641d2ea80a230324b0","functions":[{"id":"func/readHandoff","name":"readHandoff","line":19,"end_line":30,"hash":"56cc7ec083d2ea932b6d18ce6fea0ebb8475b1b8fcaa090daac5398e2c1fe761"},{"id":"func/handoffPath","name":"handoffPath","line":33,"end_line":35,"hash":"6aa48943bf76b5cd242d95b7ec27cde905128c1eedba2629d9b7a09684182ae7"},{"id":"func/handoffHeaders","name":"handoffHeaders","line":38,"end_line":49,"hash":"c06d52ca4d62eab3b1c0a3879e337c3261f76b3ab704b80281defc60f7cd6997"},{"id":"func/firstItem","name":"firstItem","line":53,"end_line":56,"hash":"74cd3584d86870618d21d50d0937c21eb7ee474ab0243e9ef9d63f5a7f3ef97d"},{"id":"func/commaItems","name":"commaItems","line":59,"end_line":67,"hash":"ff6d7ac9dfc1d6e5c47cefad5a10eb3303242c6c07db18fe0579ca9b8c149d51"}]}
+// mutate4go-manifest-end
