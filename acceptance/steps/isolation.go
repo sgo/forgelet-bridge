@@ -80,6 +80,17 @@ func git(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// fixtureHead is the commit the fixture's own repository is on, which is the
+// commit a fixture handoff can name: the fixture's git world ends at the
+// fixture, so a hash from anywhere else means nothing to it.
+func fixtureHead(root string) string {
+	head, err := git(root, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return head
+}
+
 // fixtureHoldsSnapshot checks the dashboard's snapshot of a card landed in the
 // fixture's own repository, not in the worktree running the suite.
 func fixtureHoldsSnapshot(_ context.Context, world any, captures []string) error {

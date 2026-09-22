@@ -65,7 +65,7 @@ func pendingApproval(_ context.Context, world any, captures []string) error {
 		"type: git_handoff",
 		"task_id: " + approvalTaskID(card),
 		"task: " + card,
-		"commit: 301a407dc0",
+		"commit: " + fixtureHead(root),
 		"artifacts: internal/bridge/bridge.go, internal/relay/relay.go",
 	}
 	if withRoles {
