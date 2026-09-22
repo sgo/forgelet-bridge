@@ -631,3 +631,33 @@ func TestPendingRequestsArePairedWithWhatTheForgeQueued(t *testing.T) {
 		t.Errorf("anchor = %q, %v, want the operator's own message", anchor, ok)
 	}
 }
+
+func TestTickDoesNotHandTheSameMessageOverTwiceWhilePairingWaits(t *testing.T) {
+	store := &fakeStore{}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+	rooms.push(relay.RoomEvent{RoomID: "!room-forge-a", EventID: "$operator-message", Sender: operator, Body: "is the build green?"})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	handedOver := len(store.createdBodies())
+	if handedOver != 1 {
+		t.Fatalf("the forge was given the message %d times, want once", handedOver)
+	}
+
+	// The forge has taken it, but the queue does not show the request it
+	// became yet: the next ticks must wait for that, not hand it over again.
+	store.mu.Lock()
+	store.requests = nil
+	store.mu.Unlock()
+	for tick := 0; tick < 3; tick++ {
+		if err := built.Tick(context.Background()); err != nil {
+			t.Fatalf("tick %d: %v", tick, err)
+		}
+	}
+
+	if got := len(store.createdBodies()); got != 1 {
+		t.Errorf("the forge was given the message %d times, want it handed over exactly once", got)
+	}
+}
