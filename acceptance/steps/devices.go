@@ -143,3 +143,7 @@ func keysOf(devices map[string]string) []string {
 	sort.Strings(ids)
 	return ids
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-22T12:36:17+02:00","module_hash":"4be2d1ebac44777a772057c5ea2d8446583733ac3d7f00b8463e4b96ac24c913","functions":[{"id":"func/bridgePublishedDevice","name":"bridgePublishedDevice","line":17,"end_line":31,"hash":"d472bbc6869089c60f2b2fab2e82ae50b03912bd0601f5e4923f06c1ff7e5196"},{"id":"func/operatorSeesSameDevice","name":"operatorSeesSameDevice","line":36,"end_line":52,"hash":"622e089ac3be5cac5507ea05f0b7c3ff2ae4ffe034f3dd36cdd87828d977e353"},{"id":"func/World.waitForPublishedDevice","name":"World.waitForPublishedDevice","line":56,"end_line":77,"hash":"69db7bec7b2d9ad1eb6252e5bde0d35475db3f9a668def8769afdc2c837a3d06"},{"id":"func/World.reportedDevice","name":"World.reportedDevice","line":80,"end_line":89,"hash":"025533b30b50f48df29ff5e5835573b7bef253f6d123534b732f57bc838c5b1d"},{"id":"func/World.bridgeDevices","name":"World.bridgeDevices","line":92,"end_line":98,"hash":"8d81c7d19379bba5dd5b34675145b534f0e2a2de925d408e90cf93872cbea539"},{"id":"func/sameDevice","name":"sameDevice","line":102,"end_line":129,"hash":"64d8fea36f43613fe5d7448b7448f0f2a835b6dc0f00c740d39946f6ed904e81"},{"id":"func/shortKey","name":"shortKey","line":131,"end_line":136,"hash":"359e1e356bdfb4669aa4119b8f1a76ee6253a84672f6feac8e3dd5d1b83cd8ee"},{"id":"func/keysOf","name":"keysOf","line":138,"end_line":145,"hash":"b0b7dc80c1588872547f29ae0b1db4301414e0ea81de7cd4969a25a62bab92e7"}]}
+// mutate4go-manifest-end
