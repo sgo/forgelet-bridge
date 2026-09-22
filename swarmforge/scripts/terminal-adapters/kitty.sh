@@ -5,8 +5,9 @@ terminal_backend_label() {
 }
 
 kitty_remote_control() {
+  local address=""
   if [[ -n "${KITTY_LISTEN_ON:-}" ]]; then
-    local address="$KITTY_LISTEN_ON"
+    address="$KITTY_LISTEN_ON"
     # Kitty sometimes reports a listen_on template (e.g. unix:/tmp/kitty.sock)
     # while the live socket is PID-suffixed. Fall back to the suffixed path
     # if the literal one from the env var isn't actually there.
@@ -16,10 +17,32 @@ kitty_remote_control() {
         address="unix:${socket_path}-${KITTY_PID}"
       fi
     fi
+  fi
+  # Kitty only exports KITTY_LISTEN_ON and KITTY_PID to processes it spawned.
+  # A swarm launched from Terminal.app, an ssh session, or a launcher inherits
+  # SWARMFORGE_TERMINAL=kitty from the shell profile without those variables,
+  # so find a live socket on disk instead. Newest first, since a socket file
+  # can outlive the kitty that created it.
+  if [[ -z "$address" ]]; then
+    address="$(kitty_discover_address)"
+  fi
+  if [[ -n "$address" ]]; then
     kitten @ --to "$address" "$@"
   else
     kitten @ "$@"
   fi
+}
+
+kitty_discover_address() {
+  local candidate
+  for candidate in $(command ls -1dt /tmp/kitty.sock*(N) 2>/dev/null); do
+    [[ -S "$candidate" ]] || continue
+    if kitten @ --to "unix:${candidate}" ls >/dev/null 2>&1; then
+      print -- "unix:${candidate}"
+      return 0
+    fi
+  done
+  return 1
 }
 
 terminal_backend_can_open_sessions() {
