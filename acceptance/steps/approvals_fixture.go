@@ -45,6 +45,51 @@ func pathsFor(root string) projectPaths {
 // pendingApproval seeds a handoff waiting for the operator's approval, the way
 // the forge's dashboard holds it: a pending handoff in the project's forge
 // directory, with or without the roles that handed the work over.
+// pendingApprovalThatCannotBeSentBack seeds an approval whose send-back the
+// forge will refuse: the handoff names a commit the forge's own repository does
+// not have, so the dashboard's retry cannot restore it.
+func pendingApprovalThatCannotBeSentBack(_ context.Context, world any, captures []string) error {
+	return seedApprovalFor(world.(*World), captures[1], false)
+}
+
+// forgeRepairsApproval gives that approval a commit the forge does have, which
+// is what "the forge repaired it" means from the bridge's side.
+func forgeRepairsApproval(_ context.Context, world any, captures []string) error {
+	return seedApprovalFor(world.(*World), captures[1], true)
+}
+
+func seedApprovalFor(w *World, card string, healthy bool) error {
+	root, err := singleForge(w)
+	if err != nil {
+		return err
+	}
+	commit := fixtureHead(root)
+	if !healthy {
+		commit = "0000000000000000000000000000000000000000"
+	}
+	headers := []string{
+		"id: " + approvalCardID(card),
+		"from: coder",
+		"to: refactorer",
+		"recipient: refactorer",
+		"priority: 50",
+		"type: git_handoff",
+		"task_id: " + approvalTaskID(card),
+		"task: " + card,
+		"commit: " + commit,
+		"artifacts: internal/bridge/bridge.go, internal/relay/relay.go",
+		"role: coder",
+	}
+	content := strings.Join(headers, "\n") + "\n\nRe-read your role and constitution.\n"
+	if err := os.MkdirAll(pathsFor(root).pending, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pathsFor(root).pending, approvalCardID(card)+".handoff"), []byte(content), 0o644); err != nil {
+		return err
+	}
+	return markProjectOpen(root)
+}
+
 func pendingApproval(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	card, roles := captures[1], captures[2]
@@ -256,4 +301,14 @@ func desktopApproved(_ context.Context, world any, captures []string) error {
 		return err
 	}
 	return dashboard.NewAPI(url).Approve(ctx, approvalProject, approvalCardID(captures[1]))
+}
+
+// fixtureHead is the commit the fixture's own repository is on: the one a
+// fixture handoff can name, since a fixture's git world ends at the fixture.
+func fixtureHead(root string) string {
+	head, err := git(root, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return head
 }
