@@ -5,8 +5,8 @@ operator handle a forge's chat channel from their phone.
 
 The first slice is the encrypted chat channel. For every configured forge root
 the bridge creates a Matrix space (named after the forge) and an encrypted chat
-room (`Chat`) plus an encrypted approvals room (`Approvals`) inside it, invites
-the configured operator, and then:
+room (`Chat`), an encrypted approvals room (`Approvals`), and an encrypted
+activity room (`Activity`) inside it, invites the configured operator, and then:
 
 - a chat request in the forge's dashboard appears as an encrypted chat message;
 - the lieutenant's answer arrives as a reply in that message's thread;
@@ -27,6 +27,12 @@ card — rewinding to the task's base commit and re-seeding the lane — stays o
 the desktop. Once an approval is resolved, from the phone or from the desktop,
 the thread says so and nothing can approve it twice. Deleting work and tearing
 projects down stay on the desktop too.
+
+The activity room is a log to keep quiet: a card appearing, moving to another
+lane, or finishing in one of the forge's open projects arrives as one short
+update naming the project, the card, and where it moved. Nothing arrives while
+nothing changes — the quiet between updates is what says an agent may be stuck —
+and a restart never replays an update it already delivered.
 
 A restart also keeps the bridge on the same Matrix device: it reuses the device
 and the crypto store under `state_dir`, so the operator never meets a new

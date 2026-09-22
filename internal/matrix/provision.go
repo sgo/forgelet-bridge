@@ -41,7 +41,16 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 	if err != nil {
 		return bridge.Room{}, err
 	}
-	return bridge.Room{SpaceID: spaceID, RoomID: roomID, ApprovalsRoomID: approvalsRoomID}, nil
+	activityRoomID, err := c.ensureRoom(ctx, spaceID, operator, forgeName, config.ActivityRoomName)
+	if err != nil {
+		return bridge.Room{}, err
+	}
+	return bridge.Room{
+		SpaceID:         spaceID,
+		RoomID:          roomID,
+		ApprovalsRoomID: approvalsRoomID,
+		ActivityRoomID:  activityRoomID,
+	}, nil
 }
 
 // ensureRoom finds or creates one of the forge's rooms inside its space, makes

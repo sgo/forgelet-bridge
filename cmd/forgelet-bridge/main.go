@@ -14,6 +14,7 @@ import (
 	"time"
 
 	approvalspkg "github.com/unclebob/forgelet-bridge/internal/approvals"
+	"github.com/unclebob/forgelet-bridge/internal/board"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
@@ -52,7 +53,7 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	}
 	defer client.Close()
 
-	relay, err := bridge.New(cfg, client, stores(cfg), approvals(cfg), log)
+	relay, err := bridge.New(cfg, client, stores(cfg), approvals(cfg), boards(cfg), log)
 	if err != nil {
 		return err
 	}
@@ -80,6 +81,15 @@ func approvals(cfg config.Config) map[string]bridge.ApprovalStore {
 		queues[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
 	}
 	return queues
+}
+
+// boards opens the project boards of every configured forge.
+func boards(cfg config.Config) map[string]bridge.BoardStore {
+	opened := make(map[string]bridge.BoardStore, len(cfg.Forges))
+	for _, forge := range cfg.Forges {
+		opened[forge.Root] = board.Queue{Store: board.New(forge.Root)}
+	}
+	return opened
 }
 
 // mutate4go-manifest-begin

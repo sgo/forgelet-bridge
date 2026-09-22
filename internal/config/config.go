@@ -19,6 +19,9 @@ const RoomName = "Chat"
 // ApprovalsRoomName is the Matrix room that carries a forge's approvals.
 const ApprovalsRoomName = "Approvals"
 
+// ActivityRoomName is the Matrix room that carries a forge's card updates.
+const ActivityRoomName = "Activity"
+
 // Forge is one forge the bridge serves: where it lives, and the name the
 // operator knows it by.
 type Forge struct {
