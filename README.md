@@ -18,11 +18,15 @@ the configured operator, and then:
 In the approvals room the operator sees what each open project in the forge is
 waiting for: the card, the project, the gate (the handover roles when the
 handoff reports them, otherwise the gate as reported), and the changed files.
-Reacting with ✅ approves the approval, and replying in its thread sends it back
-with that feedback, both with the same effect the desktop dashboard has. Once an
-approval is resolved, from the phone or from the desktop, the thread says so and
-nothing can approve it twice. Deleting work and tearing projects down stay on
-the desktop.
+Reacting with ✅ approves the approval exactly as the desktop does: the pending
+handoff moves to the project's outbox carrying `approved: true`. Replying in its
+thread sends the card back with that feedback: the feedback lands in the card's
+review history, the same store the desktop's comments use, and the approval
+stops being pending. The repository work the desktop also does when it retries a
+card — rewinding to the task's base commit and re-seeding the lane — stays on
+the desktop. Once an approval is resolved, from the phone or from the desktop,
+the thread says so and nothing can approve it twice. Deleting work and tearing
+projects down stay on the desktop too.
 
 A restart also keeps the bridge on the same Matrix device: it reuses the device
 and the crypto store under `state_dir`, so the operator never meets a new
