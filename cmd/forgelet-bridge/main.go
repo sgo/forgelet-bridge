@@ -14,6 +14,7 @@ import (
 	"time"
 
 	approvalspkg "github.com/unclebob/forgelet-bridge/internal/approvals"
+	"github.com/unclebob/forgelet-bridge/internal/board"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
@@ -53,7 +54,7 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	defer client.Close()
 
 	opened := openAdapters(cfg)
-	relay, err := bridge.New(cfg, client, opened.chat, opened.approvals, log)
+	relay, err := bridge.New(cfg, client, opened.chat, opened.approvals, opened.boards, log)
 	if err != nil {
 		return err
 	}
@@ -66,22 +67,26 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 }
 
 // adapters are the forge-side adapters the bridge serves the configured forges
-// through: each forge's dashboard chat-request queue and its approvals.
+// through: each forge's dashboard chat-request queue, its approvals, and its
+// project boards.
 type adapters struct {
 	chat      map[string]bridge.ForgeStore
 	approvals map[string]bridge.ApprovalStore
+	boards    map[string]bridge.BoardStore
 }
 
-// openAdapters opens the dashboard queue and the approvals of every configured
-// forge, keyed by the forge's root.
+// openAdapters opens the dashboard queue, the approvals and the boards of every
+// configured forge, keyed by the forge's root.
 func openAdapters(cfg config.Config) adapters {
 	opened := adapters{
 		chat:      make(map[string]bridge.ForgeStore, len(cfg.Forges)),
 		approvals: make(map[string]bridge.ApprovalStore, len(cfg.Forges)),
+		boards:    make(map[string]bridge.BoardStore, len(cfg.Forges)),
 	}
 	for _, forge := range cfg.Forges {
 		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
 		opened.approvals[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
+		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root)}
 	}
 	return opened
 }

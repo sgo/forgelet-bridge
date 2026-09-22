@@ -36,6 +36,8 @@ type State struct {
 	Relayed map[string]string `json:"relayed,omitempty"`
 	// Approvals maps an approval to what the bridge has done about it.
 	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
+	// Activity maps a card to the last thing the bridge said about it.
+	Activity map[string]CardState `json:"activity,omitempty"`
 }
 
 // Kind names the work an action asks for.
@@ -77,6 +79,9 @@ func (s *State) EnsureMaps() {
 	}
 	if s.Approvals == nil {
 		s.Approvals = map[string]ApprovalState{}
+	}
+	if s.Activity == nil {
+		s.Activity = map[string]CardState{}
 	}
 }
 

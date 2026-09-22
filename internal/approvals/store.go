@@ -10,16 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/unclebob/forgelet-bridge/internal/forge"
 )
 
 const (
-	projectsDir      = "projects"
-	openProjectsFile = ".swarmforge/open-projects"
-	pendingDir       = ".swarmforge/handoffs/pending_approval"
-	outboxDir        = ".swarmforge/handoffs/outbox"
-	reviewsDir       = ".swarmforge/rejected-tasks"
-	handoffSuffix    = ".handoff"
-	reviewsSuffix    = ".reviews.json"
+	pendingDir    = ".swarmforge/handoffs/pending_approval"
+	outboxDir     = ".swarmforge/handoffs/outbox"
+	reviewsDir    = ".swarmforge/rejected-tasks"
+	handoffSuffix = ".handoff"
+	reviewsSuffix = ".reviews.json"
 
 	// specRole is the role the desktop dashboard credits when a handoff does
 	// not say which role handed the work over.
@@ -48,28 +48,9 @@ func New(root string) *Store {
 	return &Store{root: root, now: time.Now}
 }
 
-// Projects lists the forge's open projects, the ones whose approvals the
-// operator has to see.
-func (s *Store) Projects() ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(openProjectsFile)))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var projects []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			projects = append(projects, name)
-		}
-	}
-	return projects, nil
-}
-
 // Pending lists the approvals every open project is waiting for.
 func (s *Store) Pending() ([]Approval, error) {
-	projects, err := s.Projects()
+	projects, err := forge.OpenProjects(s.root)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +194,7 @@ func (s *Store) reviewsFile(project, id string) string {
 }
 
 func (s *Store) projectDir(project, dir string) string {
-	return filepath.Join(s.root, projectsDir, project, filepath.FromSlash(dir))
+	return filepath.Join(forge.ProjectDir(s.root, project), filepath.FromSlash(dir))
 }
 
 // parse reads a pending handoff: headers, a blank line, then the body.

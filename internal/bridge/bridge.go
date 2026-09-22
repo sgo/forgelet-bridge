@@ -30,11 +30,18 @@ type ApprovalStore interface {
 	SendBack(project, id, feedback string) error
 }
 
+// BoardStore is the forge side of one root's boards: the cards its projects
+// hold and the lanes they are in.
+type BoardStore interface {
+	Cards() ([]relay.Card, error)
+}
+
 // Room is the Matrix side the bridge created for a forge.
 type Room struct {
 	SpaceID         string
 	RoomID          string
 	ApprovalsRoomID string
+	ActivityRoomID  string
 }
 
 // Rooms is the Matrix side of the bridge: spaces, chat rooms, and the messages
@@ -52,6 +59,7 @@ type Bridge struct {
 	rooms       Rooms
 	stores      map[string]ForgeStore
 	approvals   map[string]ApprovalStore
+	boards      map[string]BoardStore
 	statePath   string
 	statusDir   string
 	state       *state.State
@@ -63,7 +71,7 @@ type Bridge struct {
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
 // root. The state file keeps restarts from repeating work.
-func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, log *slog.Logger) (*Bridge, error) {
+func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, boards map[string]BoardStore, log *slog.Logger) (*Bridge, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -77,6 +85,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		rooms:       rooms,
 		stores:      stores,
 		approvals:   approvals,
+		boards:      boards,
 		statePath:   statePath,
 		statusDir:   cfg.StateDir,
 		state:       loaded,
@@ -206,7 +215,12 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 	if err != nil {
 		return 0, err
 	}
-	return carriedOut + approvals, nil
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		return 0, err
+	}
+	return carriedOut + approvals + activity, nil
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
