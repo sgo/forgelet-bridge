@@ -265,3 +265,103 @@ func TestApprovedHeaderIsNotAddedTwice(t *testing.T) {
 		t.Errorf("approved() = %q, want it left alone", got)
 	}
 }
+
+func TestApprovedNamesAHandoffWithoutABody(t *testing.T) {
+	content := "id: x\ntask: phone-approvals\n"
+
+	if got := approved(content); !strings.Contains(got, "approved: true") {
+		t.Errorf("approved() = %q, want the header added to a handoff with no body", got)
+	}
+}
+
+func TestPendingKeepsTheOrderTheFilesComeBackIn(t *testing.T) {
+	store := newStore(t, "forgelet-bridge")
+	seed(t, store, "forgelet-bridge", "b-approval", pending)
+	seed(t, store, "forgelet-bridge", "a-approval", pending)
+
+	pendingApprovals, err := store.PendingFor("forgelet-bridge")
+	if err != nil {
+		t.Fatalf("PendingFor: %v", err)
+	}
+
+	var ids []string
+	for _, approval := range pendingApprovals {
+		ids = append(ids, approval.ID)
+	}
+	if len(ids) != 2 || ids[0] != "a-approval" || ids[1] != "b-approval" {
+		t.Errorf("ids = %v, want the approvals in file-name order", ids)
+	}
+}
+
+func TestSendBackDropsThePendingReviewNotes(t *testing.T) {
+	store := newStore(t, "forgelet-bridge")
+	seed(t, store, "forgelet-bridge", "approval-1", pending)
+	notes := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "handoffs",
+		"pending_approval", "approval-1"+reviewsSuffix)
+	if err := os.WriteFile(notes, []byte(`{"internal/bridge/bridge.go":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SendBack("forgelet-bridge", "approval-1", "one more thing"); err != nil {
+		t.Fatalf("SendBack: %v", err)
+	}
+
+	if _, err := os.Stat(notes); !os.IsNotExist(err) {
+		t.Errorf("the pending review notes are still there: %v", err)
+	}
+}
+
+func TestSendBackRecordsNothingWithoutFeedbackOrATaskID(t *testing.T) {
+	cases := map[string]struct{ content, feedback string }{
+		"blank feedback": {content: pending, feedback: "   "},
+		"no task id": {
+			content:  "id: approval-1\nartifacts: internal/bridge/bridge.go\n\nbody\n",
+			feedback: "one more thing",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := newStore(t, "forgelet-bridge")
+			seed(t, store, "forgelet-bridge", "approval-1", tc.content)
+
+			if err := store.SendBack("forgelet-bridge", "approval-1", tc.feedback); err != nil {
+				t.Fatalf("SendBack: %v", err)
+			}
+
+			reviews := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "rejected-tasks")
+			entries, err := os.ReadDir(reviews)
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatalf("read the card's review history: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Errorf("review history = %v, want nothing recorded", entries)
+			}
+		})
+	}
+}
+
+func TestSendBackRecordsUnderTheCardWhenTheApprovalNamesNoArtifacts(t *testing.T) {
+	store := newStore(t, "forgelet-bridge")
+	seed(t, store, "forgelet-bridge", "approval-1",
+		"id: approval-1\ntask_id: 20260922T124152671989Z-phone-approvals\ntask: phone-approvals\n\nbody\n")
+
+	if err := store.SendBack("forgelet-bridge", "approval-1", "one more thing"); err != nil {
+		t.Fatalf("SendBack: %v", err)
+	}
+
+	historyPath := filepath.Join(store.root, "projects", "forgelet-bridge", ".swarmforge", "rejected-tasks",
+		"20260922T124152671989Z-phone-approvals", "reviews.json")
+	data, err := os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatalf("read the card's review history: %v", err)
+	}
+	var history map[string][]review
+	if err := json.Unmarshal(data, &history); err != nil {
+		t.Fatalf("parse review history: %v", err)
+	}
+	entries := history["phone-approvals"]
+	if len(entries) != 1 || entries[0].Text != "one more thing" {
+		t.Errorf("review history = %+v, want the feedback under the card", history)
+	}
+}

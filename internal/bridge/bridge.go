@@ -115,16 +115,10 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration) error {
 }
 
 // backOff spaces out retries after a failed tick, so a homeserver that is
-// throttling or away is not hammered.
+// throttling or away is not hammered: the wait doubles, never drops below the
+// interval the bridge was told to tick at, and never passes its ceiling.
 func backOff(wait, interval time.Duration) time.Duration {
-	next := wait * 2
-	if next < interval {
-		next = interval
-	}
-	if next > maxBackOff {
-		return maxBackOff
-	}
-	return next
+	return min(max(wait*2, interval), maxBackOff)
 }
 
 // maxBackOff is how long the bridge waits at most between tries.
@@ -236,5 +230,5 @@ func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, ro
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T14:59:43+02:00","module_hash":"990f3f51730cfeddc306bd502d2c6df7155c1ec4558fe849fe0223c8f6ab23f3","functions":[{"id":"func/New","name":"New","line":54,"end_line":73,"hash":"f3657729186b52d630853c6fd6aa4164e98b6fde9fb4fa444db6c050cdad49a6"},{"id":"func/Bridge.State","name":"Bridge.State","line":76,"end_line":78,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":81,"end_line":100,"hash":"b8772f032b4a90a982599b8cabb97e5219cc7d6e4f681adba897b8427dd4f462"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":104,"end_line":146,"hash":"4363e3dc0facaeb31b41f153c74977390f32ec720153776d30f5e6b1884844e2"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":148,"end_line":153,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":156,"end_line":166,"hash":"506f097a3daf97bea3e2e32cf7db5ff88bc6bd556a181d7dc6d47400b0bc6374"}]}
+// {"version":1,"tested_at":"2026-09-22T15:52:22+02:00","module_hash":"eac48b4f0153c96823d523c2a4dce64675c05154b4a44b4a53d2c967402c15c5","functions":[{"id":"func/New","name":"New","line":66,"end_line":86,"hash":"52753a333897e6a89f9cbacc84d00bdef9a4728c3e4b2c2dc0f167cef64831c3"},{"id":"func/Bridge.State","name":"Bridge.State","line":89,"end_line":91,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":94,"end_line":115,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":120,"end_line":122,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":129,"end_line":151,"hash":"5c9eb6c2be4c4793a314ff71034c5278fc243861ff92ff8d8f98e1a74f6b733a"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":161,"end_line":179,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":183,"end_line":210,"hash":"b94226c60c20eaa61911f6476c5b79a188a611047c1f97825f2f93d944cce11d"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":212,"end_line":217,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":220,"end_line":230,"hash":"506f097a3daf97bea3e2e32cf7db5ff88bc6bd556a181d7dc6d47400b0bc6374"}]}
 // mutate4go-manifest-end

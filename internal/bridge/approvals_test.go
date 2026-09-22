@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -312,5 +313,41 @@ func TestTickFailsWhenAnApprovalCannotBeDecided(t *testing.T) {
 
 	if err := built.Tick(context.Background()); err == nil {
 		t.Fatal("Tick succeeded although the forge refused the approval")
+	}
+}
+
+func TestApprovalMessageNamesTheOneChangedFileItWasGiven(t *testing.T) {
+	approval := phoneApproval()
+	approval.Artifacts = []string{"internal/bridge/bridge.go"}
+
+	message := approvalMessage(approval)
+
+	if !strings.Contains(message, "Changed files: internal/bridge/bridge.go") {
+		t.Errorf("message = %q, want the one changed file named", message)
+	}
+}
+
+func TestApprovalMessageLeavesTheFilesOutWhenTheApprovalNamesNone(t *testing.T) {
+	approval := phoneApproval()
+	approval.Artifacts = nil
+
+	if message := approvalMessage(approval); strings.Contains(message, "Changed files") {
+		t.Errorf("message = %q, want no changed-files line for an approval that names none", message)
+	}
+}
+
+func TestTickReportsWorkWhenItPostsAnApproval(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	chat := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	built, cfg := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": chat},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	if status := readStatus(t, filepath.Join(cfg.StateDir, StatusName)); status.Idle {
+		t.Errorf("status = %+v, want the tick that posted a chat message and an approval to report work", status)
 	}
 }

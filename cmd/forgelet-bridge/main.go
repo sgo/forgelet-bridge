@@ -52,7 +52,8 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	}
 	defer client.Close()
 
-	relay, err := bridge.New(cfg, client, stores(cfg), approvals(cfg), log)
+	opened := openAdapters(cfg)
+	relay, err := bridge.New(cfg, client, opened.chat, opened.approvals, log)
 	if err != nil {
 		return err
 	}
@@ -64,25 +65,23 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	return nil
 }
 
-// stores opens one dashboard chat-request queue per configured forge.
-func stores(cfg config.Config) map[string]bridge.ForgeStore {
-	return byForge(cfg, func(root string) bridge.ForgeStore {
-		return dashboard.Queue{Store: dashboard.New(root)}
-	})
+// adapters are the forge-side adapters the bridge serves the configured forges
+// through: each forge's dashboard chat-request queue and its approvals.
+type adapters struct {
+	chat      map[string]bridge.ForgeStore
+	approvals map[string]bridge.ApprovalStore
 }
 
-// approvals opens the approvals of every configured forge.
-func approvals(cfg config.Config) map[string]bridge.ApprovalStore {
-	return byForge(cfg, func(root string) bridge.ApprovalStore {
-		return approvalspkg.Queue{Store: approvalspkg.New(root)}
-	})
-}
-
-// byForge opens one adapter per configured forge, keyed by the forge's root.
-func byForge[T any](cfg config.Config, open func(root string) T) map[string]T {
-	opened := make(map[string]T, len(cfg.Forges))
+// openAdapters opens the dashboard queue and the approvals of every configured
+// forge, keyed by the forge's root.
+func openAdapters(cfg config.Config) adapters {
+	opened := adapters{
+		chat:      make(map[string]bridge.ForgeStore, len(cfg.Forges)),
+		approvals: make(map[string]bridge.ApprovalStore, len(cfg.Forges)),
+	}
 	for _, forge := range cfg.Forges {
-		opened[forge.Root] = open(forge.Root)
+		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
+		opened.approvals[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
 	}
 	return opened
 }

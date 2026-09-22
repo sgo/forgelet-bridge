@@ -47,3 +47,7 @@ func (q Queue) SendBack(project, id, feedback string) error {
 func Key(project, id string) string {
 	return fmt.Sprintf("%s/%s", project, id)
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-22T15:41:43+02:00","module_hash":"4bc28fcc6f2a93b1b83105348bc1df8e1723d563486e69ce3c8f14f40b8db21f","functions":[{"id":"func/Queue.Pending","name":"Queue.Pending","line":16,"end_line":33,"hash":"cc810dd66357863f0461e709dceb4513ccb5e634db5999975625a361a5811178"},{"id":"func/Queue.Approve","name":"Queue.Approve","line":36,"end_line":38,"hash":"ca5e5e31e26a0427f30802fcd48028b6eaebc91d25b32ab4f6184b28c98b5334"},{"id":"func/Queue.SendBack","name":"Queue.SendBack","line":41,"end_line":43,"hash":"db53516dda5b6d3edf24d5c98c336effe549007643215cacbd7af8b5806db683"},{"id":"func/Key","name":"Key","line":47,"end_line":49,"hash":"68e43f3e4ead2972e95508918766fe1a2d42375378089b9839f72dfe6360aa27"}]}
+// mutate4go-manifest-end

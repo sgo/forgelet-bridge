@@ -51,6 +51,10 @@ func pendingApproval(_ context.Context, world any, captures []string) error {
 	if err != nil {
 		return err
 	}
+	withRoles, err := handoverRoles(roles)
+	if err != nil {
+		return err
+	}
 
 	headers := []string{
 		"id: " + approvalCardID(card),
@@ -64,7 +68,7 @@ func pendingApproval(_ context.Context, world any, captures []string) error {
 		"commit: 301a407dc0",
 		"artifacts: internal/bridge/bridge.go, internal/relay/relay.go",
 	}
-	if !strings.Contains(roles, "without") {
+	if withRoles {
 		headers = append(headers, "role: coder")
 	}
 	content := strings.Join(headers, "\n") + "\n\nRe-read your role and constitution.\n"
@@ -75,6 +79,21 @@ func pendingApproval(_ context.Context, world any, captures []string) error {
 		return err
 	}
 	return markProjectOpen(root)
+}
+
+// handoverRoles reads the outline column that says whether an approval handoff
+// carries the roles that handed the work over. The step has to interpret that
+// wording, so a wording it does not know is an error rather than one of the two
+// cases by accident.
+func handoverRoles(wording string) (bool, error) {
+	switch strings.TrimSpace(wording) {
+	case "with its handover roles":
+		return true, nil
+	case "without its handover roles":
+		return false, nil
+	default:
+		return false, fmt.Errorf("the approval step does not know the wording %q, which says whether the handoff carries its handover roles", wording)
+	}
 }
 
 // markProjectOpen tells the forge the project is open, so its approvals are

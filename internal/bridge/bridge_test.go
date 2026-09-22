@@ -424,6 +424,28 @@ func TestRunDefaultsAnIntervalThatIsNotPositive(t *testing.T) {
 	}
 }
 
+func TestRunWaitsBetweenTicksWithoutAnInterval(t *testing.T) {
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- built.Run(ctx, 0) }()
+
+	// An interval without a value means "tick once a second": a bridge told to
+	// wait must not turn into a loop that never waits.
+	statusPath := filepath.Join(cfg.StateDir, StatusName)
+	waitForTicks(t, statusPath, 1)
+	time.Sleep(50 * time.Millisecond)
+	status := readStatus(t, statusPath)
+	cancel()
+	<-done
+
+	if status.Tick > 3 {
+		t.Errorf("tick = %d, want the bridge to wait between ticks", status.Tick)
+	}
+}
+
 func TestRunKeepsTickingAtTheIntervalItIsGiven(t *testing.T) {
 	rooms := &fakeRooms{}
 	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
@@ -439,30 +461,28 @@ func TestRunKeepsTickingAtTheIntervalItIsGiven(t *testing.T) {
 	<-done
 }
 
-func TestRunLogsTheFirstFailingTick(t *testing.T) {
-	logs := &logBuffer{}
-	built := newFailingBridge(t, logs)
+func TestRunLogsAFailingTick(t *testing.T) {
+	cases := map[string]struct {
+		interval time.Duration
+		want     int
+	}{
+		"the first tick":   {interval: time.Hour, want: 1},
+		"every tick after": {interval: time.Millisecond, want: 2},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			logs := &logBuffer{}
+			built := newFailingBridge(t, logs)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- built.Run(ctx, time.Hour) }()
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- built.Run(ctx, tc.interval) }()
 
-	waitForLogs(t, logs, "tick failed", 1)
-	cancel()
-	<-done
-}
-
-func TestRunLogsEveryFailingTick(t *testing.T) {
-	logs := &logBuffer{}
-	built := newFailingBridge(t, logs)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- built.Run(ctx, time.Millisecond) }()
-
-	waitForLogs(t, logs, "tick failed", 2)
-	cancel()
-	<-done
+			waitForLogs(t, logs, "tick failed", tc.want)
+			cancel()
+			<-done
+		})
+	}
 }
 
 // newFailingBridge builds a bridge whose forge is unreachable, so that every
@@ -571,5 +591,8 @@ func TestBackOffSlowsRetriesDownAndIsCapped(t *testing.T) {
 	}
 	if got := backOff(time.Minute, interval); got != maxBackOff {
 		t.Errorf("back off = %v, want it capped at %v", got, maxBackOff)
+	}
+	if got := backOff(time.Millisecond, interval); got != interval {
+		t.Errorf("back off = %v, want it never below the interval %v", got, interval)
 	}
 }

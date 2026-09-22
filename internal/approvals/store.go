@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -107,12 +106,9 @@ func (s *Store) PendingFor(project string) ([]Approval, error) {
 		}
 		pending = append(pending, parse(project, path, string(data)))
 	}
-	sort.Slice(pending, func(i, j int) bool {
-		if pending[i].Project != pending[j].Project {
-			return pending[i].Project < pending[j].Project
-		}
-		return pending[i].ID < pending[j].ID
-	})
+	// os.ReadDir lists a directory by file name, and an approval's id is the
+	// name of its file, so the approvals already come back in the order the
+	// operator's room should show them.
 	return pending, nil
 }
 
@@ -284,3 +280,7 @@ func commaList(text string) []string {
 	}
 	return items
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-22T15:49:45+02:00","module_hash":"bdac9d216d65196e13bb3c2a9a8d5a5184d799b109199b1f63ea66121e8f45e4","functions":[{"id":"func/New","name":"New","line":47,"end_line":49,"hash":"dfc5d4ae80c4a49694b7d6b824c51a6415279d23ebba7a22172ea7455c83821c"},{"id":"func/Store.Projects","name":"Store.Projects","line":53,"end_line":68,"hash":"fa4aaf87b6aa3cc91d6479e33aca17c25c246dd2756ad982b178f396e610533c"},{"id":"func/Store.Pending","name":"Store.Pending","line":71,"end_line":85,"hash":"04033c28ccb8f986eab6b7f55ebd0b5e99eb403c0fab43a2775e3776e2532a9b"},{"id":"func/Store.PendingFor","name":"Store.PendingFor","line":88,"end_line":113,"hash":"b2c3c9aa4f2449a53ac2c4de85f5e8d9c32b8b6aee8c348e303f3841b1faa3c1"},{"id":"func/Store.Approve","name":"Store.Approve","line":118,"end_line":139,"hash":"2468d08a40693a5af5c6e677e98bfe2c63148f01d2bc54d36e74279266c58003"},{"id":"func/Store.SendBack","name":"Store.SendBack","line":146,"end_line":163,"hash":"b130eae71c35296bf9b8ef9904e9fabd51e8ed5fdc77770eeecdf08702924cc2"},{"id":"func/Store.appendReview","name":"Store.appendReview","line":167,"end_line":193,"hash":"588dc780b0de9c54184600fd83ad57a2f09362e73a6e32a3b0195774f3b9507b"},{"id":"func/Store.pendingFile","name":"Store.pendingFile","line":200,"end_line":209,"hash":"3140ff0f0cb1ebe7f3c3fc6dbe95f183fcc9e5ae7633860805d5da2bfa2fb115"},{"id":"func/Store.reviewsFile","name":"Store.reviewsFile","line":211,"end_line":213,"hash":"00ce01befea2bade36633333f87ffaab828cf32fe9ee59169287fc38a1224a14"},{"id":"func/Store.projectDir","name":"Store.projectDir","line":215,"end_line":217,"hash":"7217b718448acaf76f3bd1aa6ead2327d9fba56fe416841ad5558f80d72e9cbd"},{"id":"func/parse","name":"parse","line":220,"end_line":253,"hash":"bdeede12cd4c4ee4755b40cc60f1661d1efa6270463ddc414e6f0cf1346c5634"},{"id":"func/approved","name":"approved","line":256,"end_line":264,"hash":"c493307c1b1c260f36ffb022e5941fc7abb5bc9613d4c6818aae2ef7c863a989"},{"id":"func/firstOf","name":"firstOf","line":266,"end_line":272,"hash":"f17289c996f9ec61c1d22d2c614d4e387873663c1bc8ed33bb0be4967b67c425"},{"id":"func/commaList","name":"commaList","line":274,"end_line":282,"hash":"d6788f35ca14f91bc2c1003da431ca81f0083e31569c58847793c6d4047d49ae"}]}
+// mutate4go-manifest-end

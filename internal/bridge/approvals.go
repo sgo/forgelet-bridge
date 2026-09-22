@@ -106,3 +106,7 @@ func (b *Bridge) recordApproval(key string, update func(relay.ApprovalState) rel
 	b.state.Relay.EnsureMaps()
 	b.state.Relay.Approvals[key] = update(b.state.Relay.Approvals[key])
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-22T15:51:29+02:00","module_hash":"e0ad4dc50d144bca3fde7768b51a030eb65f23c4b0d52a23ccc7664bf5c8667e","functions":[{"id":"func/approvalMessage","name":"approvalMessage","line":17,"end_line":27,"hash":"c966f60938103c21d172fec1ff43c92a9528355965f869398c2d7e6b1ed880a1"},{"id":"func/Bridge.carryOutApprovals","name":"Bridge.carryOutApprovals","line":31,"end_line":48,"hash":"d6f57c11dbed075dfd26d498815ea1786366b0b716271c549bab31b3a554408b"},{"id":"func/Bridge.applyApproval","name":"Bridge.applyApproval","line":50,"end_line":86,"hash":"8fbb23ce660e877c8fe6cd7ac1f4bfbbe6f6dc0a35f3e5fe34bc16dc38e9107e"},{"id":"func/Bridge.resolveApproval","name":"Bridge.resolveApproval","line":88,"end_line":103,"hash":"31a622927ad84e5cf3cad85cee2635ec97c9294c7abf0f2dcd1f6c7b0fef9cb0"},{"id":"func/Bridge.recordApproval","name":"Bridge.recordApproval","line":105,"end_line":108,"hash":"6d8353e7b3a9a49604cd3afca95c652a42d4380552b33d4fe34c21ce9ae3cb54"}]}
+// mutate4go-manifest-end
