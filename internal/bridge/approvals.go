@@ -48,42 +48,64 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 }
 
 func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {
-	switch action.Kind {
-	case relay.PostApproval:
-		eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, approvalMessage(action.Approval), "")
-		if err != nil {
-			return fmt.Errorf("post approval %s: %w", action.Key, err)
-		}
-		b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
-			state.MessageID = eventID
-			return state
-		})
-
-	case relay.ResolveApproval:
-		if err := b.resolveApproval(ctx, store, action); err != nil {
-			return err
-		}
-		b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
-			state.Resolution = action.Resolution
-			return state
-		})
-
-	case relay.ReplyApproval:
-		eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, action.Text, action.MessageID)
-		if err != nil {
-			return fmt.Errorf("report approval %s: %w", action.Key, err)
-		}
-		b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
-			state.Resolution = action.Resolution
-			state.ReplyID = eventID
-			return state
-		})
-
-	default:
-		return fmt.Errorf("unknown approval action %q", action.Kind)
+	if err := b.carryOutApproval(ctx, store, room, action); err != nil {
+		return err
 	}
 	return b.state.Save(b.statePath)
 }
+
+// carryOutApproval is the one piece of approvals work an action asks for.
+func (b *Bridge) carryOutApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {
+	switch action.Kind {
+	case relay.PostApproval:
+		return b.postApproval(ctx, room, action)
+	case relay.ResolveApproval:
+		return b.resolveApproval(ctx, store, action)
+	case relay.ReplyApproval:
+		return b.reportResolution(ctx, room, action)
+	case relay.AnswerGestures:
+		return b.answerGestures(ctx, room)
+	}
+	return fmt.Errorf("unknown approval action %q", action.Kind)
+}
+
+// postApproval posts a pending approval into the room and remembers its message.
+func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.ApprovalAction) error {
+	eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, approvalMessage(action.Approval), "")
+	if err != nil {
+		return fmt.Errorf("post approval %s: %w", action.Key, err)
+	}
+	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.MessageID = eventID
+		return state
+	})
+	return nil
+}
+
+// reportResolution reports in the approval's thread how it was resolved.
+func (b *Bridge) reportResolution(ctx context.Context, room Room, action relay.ApprovalAction) error {
+	eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, action.Text, action.MessageID)
+	if err != nil {
+		return fmt.Errorf("report approval %s: %w", action.Key, err)
+	}
+	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.Resolution = action.Resolution
+		state.ReplyID = eventID
+		return state
+	})
+	return nil
+}
+
+// answerGestures tells the operator which gestures this room takes.
+func (b *Bridge) answerGestures(ctx context.Context, room Room) error {
+	if _, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, gestureAnswer, ""); err != nil {
+		return fmt.Errorf("answer the approval room: %w", err)
+	}
+	return nil
+}
+
+// gestureAnswer tells the operator, briefly, what this room can read.
+const gestureAnswer = `Reply "approve" or react ✅ to approve; reply with anything else in the thread to send it back.`
 
 func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, action relay.ApprovalAction) error {
 	approval := action.Approval
@@ -99,6 +121,10 @@ func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, actio
 	default:
 		return fmt.Errorf("unknown resolution %q for %s", action.Resolution, action.Key)
 	}
+	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.Resolution = action.Resolution
+		return state
+	})
 	return nil
 }
 

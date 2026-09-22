@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"strings"
 )
 
 // approvalTapped sends the operator's approval reaction.
@@ -88,4 +89,31 @@ func userJoinedApprovalsRoom(_ context.Context, world any, captures []string) er
 		return err
 	}
 	return w.addUserToRoom(ctx, captures[1], roomID, "the approvals room")
+}
+
+// gesturesAnswered checks the room told the operator what it can read.
+func gesturesAnswered(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, err := w.approvalsRoom(ctx)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	return waitFor(ctx, "the bridge never answered with the gestures the room takes", func() (bool, error) {
+		for _, message := range operator.Messages(roomID) {
+			if message.Sender != w.bridgeUserID {
+				continue
+			}
+			text := strings.ToLower(message.Body)
+			if strings.Contains(text, "approve") && strings.Contains(text, "✅") {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
 }

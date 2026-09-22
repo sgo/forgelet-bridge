@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
@@ -45,6 +46,9 @@ func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root 
 	}
 	b.state.Relay.EnsureMaps()
 	b.state.Relay.Pending[action.SourceEventID] = action.Body
+	if action.SourceThread != "" {
+		b.state.Relay.PendingThreads[action.SourceEventID] = action.SourceThread
+	}
 	return nil
 }
 
@@ -64,23 +68,52 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 		taken[requestID] = true
 	}
 	paired := 0
-	for eventID, body := range b.state.Relay.Pending {
-		for _, request := range requests {
-			if request.Body != body || taken[request.ID] {
-				continue
-			}
-			taken[request.ID] = true
-			b.state.Relay.Relayed[eventID] = request.ID
-			b.state.Relay.Threads[request.ID] = eventID
-			delete(b.state.Relay.Pending, eventID)
-			paired++
-			break
+	for _, eventID := range pendingEvents(b.state.Relay.Pending) {
+		requestID, ok := takeRequest(requests, b.state.Relay.Pending[eventID], taken)
+		if !ok {
+			continue
 		}
+		taken[requestID] = true
+		b.state.Relay.Relayed[eventID] = requestID
+		// The answer belongs in the thread the operator wrote in. When their
+		// message was itself a reply, that thread is where it sits, not the
+		// message: a thread cannot start from an event that already carries a
+		// relation, and the room answers 400 when we try.
+		if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
+			b.state.Relay.Threads[requestID] = thread
+		} else {
+			b.state.Relay.Threads[requestID] = eventID
+		}
+		delete(b.state.Relay.PendingThreads, eventID)
+		delete(b.state.Relay.Pending, eventID)
+		paired++
 	}
 	if paired == 0 {
 		return 0, nil
 	}
 	return paired, b.state.Save(b.statePath)
+}
+
+// pendingEvents is the messages waiting to be paired, in a stable order so the
+// same state pairs the same way on every tick.
+func pendingEvents(pending map[string]string) []string {
+	events := make([]string, 0, len(pending))
+	for eventID := range pending {
+		events = append(events, eventID)
+	}
+	sort.Strings(events)
+	return events
+}
+
+// takeRequest is the first request in the queue that reads body and that no
+// message has taken yet.
+func takeRequest(requests []relay.Request, body string, taken map[string]bool) (string, bool) {
+	for _, request := range requests {
+		if request.Body == body && !taken[request.ID] {
+			return request.ID, true
+		}
+	}
+	return "", false
 }
 
 // mutate4go-manifest-begin
