@@ -48,5 +48,5 @@ func (q Queue) CreateRequest(ctx context.Context, body string) (string, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-21T23:18:09+02:00","module_hash":"61ca5bdfe172e71906a52d8b6fa491e2585e74bc9c9b1f255d28d05eb7a38a46","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":13,"end_line":27,"hash":"b91905a09bc1c384883a8271cc1bfb18a12ef831c100bf4dab704be7a5cba86f"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":30,"end_line":32,"hash":"4567248275920b2e51926aa38488d3e80b240d2be7351cff9c0e29645726925a"}]}
+// {"version":1,"tested_at":"2026-09-22T21:28:19+02:00","module_hash":"200db89bc7045ecc03fc4cc8187e2d0b66e264de75c10004b58e546f05265ab4","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":21,"end_line":35,"hash":"b91905a09bc1c384883a8271cc1bfb18a12ef831c100bf4dab704be7a5cba86f"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":39,"end_line":48,"hash":"d096d34f1391990cbb5b3916b2e08d34221662bf60e36024e17b66f65932ab5e"}]}
 // mutate4go-manifest-end
