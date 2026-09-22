@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
@@ -67,27 +68,25 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 		taken[requestID] = true
 	}
 	paired := 0
-	for eventID, body := range b.state.Relay.Pending {
-		for _, request := range requests {
-			if request.Body != body || taken[request.ID] {
-				continue
-			}
-			taken[request.ID] = true
-			b.state.Relay.Relayed[eventID] = request.ID
-			// The answer belongs in the thread the operator wrote in. When their
-			// message was itself a reply, that thread is where it sits, not the
-			// message: a thread cannot start from an event that already carries a
-			// relation, and the room answers 400 when we try.
-			if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
-				b.state.Relay.Threads[request.ID] = thread
-			} else {
-				b.state.Relay.Threads[request.ID] = eventID
-			}
-			delete(b.state.Relay.PendingThreads, eventID)
-			delete(b.state.Relay.Pending, eventID)
-			paired++
-			break
+	for _, eventID := range pendingEvents(b.state.Relay.Pending) {
+		requestID, ok := takeRequest(requests, b.state.Relay.Pending[eventID], taken)
+		if !ok {
+			continue
 		}
+		taken[requestID] = true
+		b.state.Relay.Relayed[eventID] = requestID
+		// The answer belongs in the thread the operator wrote in. When their
+		// message was itself a reply, that thread is where it sits, not the
+		// message: a thread cannot start from an event that already carries a
+		// relation, and the room answers 400 when we try.
+		if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
+			b.state.Relay.Threads[requestID] = thread
+		} else {
+			b.state.Relay.Threads[requestID] = eventID
+		}
+		delete(b.state.Relay.PendingThreads, eventID)
+		delete(b.state.Relay.Pending, eventID)
+		paired++
 	}
 	if paired == 0 {
 		return 0, nil
@@ -95,6 +94,28 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 	return paired, b.state.Save(b.statePath)
 }
 
+// pendingEvents is the messages waiting to be paired, in a stable order so the
+// same state pairs the same way on every tick.
+func pendingEvents(pending map[string]string) []string {
+	events := make([]string, 0, len(pending))
+	for eventID := range pending {
+		events = append(events, eventID)
+	}
+	sort.Strings(events)
+	return events
+}
+
+// takeRequest is the first request in the queue that reads body and that no
+// message has taken yet.
+func takeRequest(requests []relay.Request, body string, taken map[string]bool) (string, bool) {
+	for _, request := range requests {
+		if request.Body == body && !taken[request.ID] {
+			return request.ID, true
+		}
+	}
+	return "", false
+}
+
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-21T23:21:13+02:00","module_hash":"60cfc865bbce16cd05a046b7ecd302bbee89793fa91f4d762abe93ef5dee02d8","functions":[{"id":"func/Bridge.postRequestMessage","name":"Bridge.postRequestMessage","line":12,"end_line":19,"hash":"052960d9985c540dd7d3746816bf408c5f752037dc511a9155800b4966cbe57c"},{"id":"func/Bridge.postRequestReply","name":"Bridge.postRequestReply","line":23,"end_line":37,"hash":"b1e6e90a779873656c907eb073609f031afeb3aa4e428cd801b9c9c2047e4769"},{"id":"func/Bridge.createForgeRequest","name":"Bridge.createForgeRequest","line":41,"end_line":49,"hash":"bed62b85346e54e9e7aee203de39ba9b69f1198151461ac2429c2386c3ee30e1"}]}
+// {"version":1,"tested_at":"2026-09-22T23:06:42+02:00","module_hash":"2a8ad62015fbae7745e46ee428a6fa28d7e9e040a1410b47c3975a9be3b2ab7c","functions":[{"id":"func/Bridge.postRequestMessage","name":"Bridge.postRequestMessage","line":13,"end_line":20,"hash":"052960d9985c540dd7d3746816bf408c5f752037dc511a9155800b4966cbe57c"},{"id":"func/Bridge.postRequestReply","name":"Bridge.postRequestReply","line":24,"end_line":38,"hash":"b1e6e90a779873656c907eb073609f031afeb3aa4e428cd801b9c9c2047e4769"},{"id":"func/Bridge.createForgeRequest","name":"Bridge.createForgeRequest","line":43,"end_line":53,"hash":"37e2b48899f3a3dc0e74cdfb78642c83f29dc96d8acb4730eaff966a75a45fc5"},{"id":"func/Bridge.pairPendingRequests","name":"Bridge.pairPendingRequests","line":57,"end_line":95,"hash":"20dcd726a0cbd275e3d46f9dee1015cd28c46ef131235f09ec0b3b92b7be07c4"},{"id":"func/pendingEvents","name":"pendingEvents","line":99,"end_line":106,"hash":"0addd14d4e12e79b889d0b0064d3abfa14af82a342b8e785cbb2d11d05df0ceb"},{"id":"func/takeRequest","name":"takeRequest","line":110,"end_line":117,"hash":"34e8a2cfb9ccda0290c931b0aa16c67783a39d3911dda62ad825c62d93d258d0"}]}
 // mutate4go-manifest-end

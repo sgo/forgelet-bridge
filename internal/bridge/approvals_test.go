@@ -297,22 +297,64 @@ func TestTickReportsAResolutionOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestTickFailsWhenAnApprovalCannotBeDecided(t *testing.T) {
+func TestTickKeepsGoingWhenAnApprovalCannotBeDecided(t *testing.T) {
 	store := &fakeApprovals{
 		pending: []relay.Approval{phoneApproval()},
 		errors:  map[string]error{"forgelet-bridge/approval-1": fmt.Errorf("the forge is not there")},
 	}
+	board := &fakeBoard{}
 	rooms := &fakeRooms{}
-	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
-		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("first Tick: %v", err)
 	}
 	messageID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].MessageID
 	rooms.pushReaction(relay.Reaction{RoomID: "!approvals-forge-a", Sender: operator, Key: relay.ApproveReaction, TargetEventID: messageID})
+	board.set(boardCard("coder"))
+	rooms.sent = nil
 
-	if err := built.Tick(context.Background()); err == nil {
-		t.Fatal("Tick succeeded although the forge refused the approval")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("the refused approval failed the whole tick: %v", err)
+	}
+
+	// The operator is told the room could not carry it out...
+	told := false
+	for _, sent := range rooms.sentMessages() {
+		if strings.Contains(sent.body, "Could not approve it") && sent.anchor == messageID {
+			told = true
+		}
+	}
+	if !told {
+		t.Errorf("sent = %+v, want the refusal reported in the approval's thread", rooms.sentMessages())
+	}
+	// ...and the card update behind it still went out.
+	update := false
+	for _, sent := range rooms.sentMessages() {
+		if strings.Contains(sent.body, "card card-activity-feed appeared") {
+			update = true
+		}
+	}
+	if !update {
+		t.Errorf("sent = %+v, want the card update to go ahead", rooms.sentMessages())
+	}
+	// The refused approval is kept for another try.
+	if state := built.State().Relay.Approvals["forgelet-bridge/approval-1"]; state.Resolution != "" {
+		t.Errorf("resolution = %q, want the approval still undecided", state.Resolution)
+	}
+
+	// Once the forge can take it, the retry lands.
+	store.mu.Lock()
+	store.errors = nil
+	store.mu.Unlock()
+	rooms.sent = nil
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("retry Tick: %v", err)
+	}
+	approved, _ := store.decisions()
+	if len(approved) != 1 {
+		t.Fatalf("approved = %v, want the retry to reach the forge", approved)
 	}
 }
 

@@ -74,6 +74,10 @@ type Bridge struct {
 	tick        uint64
 	provisioned map[string]Room
 	device      Device
+	// Work the forge refused, kept so it is tried again rather than lost.
+	pending          map[string]*pendingChat
+	pendingApprovals map[string]*pendingApprovals
+	lastError        error
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -88,16 +92,18 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		return nil, fmt.Errorf("load bridge state: %w", err)
 	}
 	return &Bridge{
-		cfg:         cfg,
-		rooms:       rooms,
-		stores:      stores,
-		approvals:   approvals,
-		boards:      boards,
-		statePath:   statePath,
-		statusDir:   cfg.StateDir,
-		state:       loaded,
-		log:         log,
-		provisioned: map[string]Room{},
+		cfg:              cfg,
+		rooms:            rooms,
+		stores:           stores,
+		approvals:        approvals,
+		boards:           boards,
+		statePath:        statePath,
+		statusDir:        cfg.StateDir,
+		state:            loaded,
+		log:              log,
+		provisioned:      map[string]Room{},
+		pending:          map[string]*pendingChat{},
+		pendingApprovals: map[string]*pendingApprovals{},
 	}, nil
 }
 
@@ -158,12 +164,40 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	}
 
 	b.tick++
-	return b.writeStatus(Status{
+	status := Status{
 		Tick:              b.tick,
-		Idle:              carriedOut == 0,
+		Idle:              carriedOut == 0 && b.pendingCount() == 0,
 		DeviceID:          b.device.ID,
 		DeviceFingerprint: b.device.Fingerprint,
-	})
+		Pending:           b.pendingCount(),
+	}
+	if b.lastError != nil {
+		status.LastError = b.lastError.Error()
+	}
+	return b.writeStatus(status)
+}
+
+// pendingFor is the work one forge still owes the rooms.
+func (b *Bridge) pendingFor(root string) *pendingChat {
+	if _, ok := b.pending[root]; !ok {
+		b.pending[root] = newPendingChat()
+	}
+	return b.pending[root]
+}
+
+// pendingApprovalsFor is the approvals work one forge still owes the rooms.
+func (b *Bridge) pendingApprovalsFor(key string) *pendingApprovals {
+	if _, ok := b.pendingApprovals[key]; !ok {
+		b.pendingApprovals[key] = newPendingApprovals()
+	}
+	return b.pendingApprovals[key]
+}
+
+// refuse records an action the forge would not carry out, so the tick can carry
+// on and the action can be tried again.
+func (b *Bridge) refuse(err error, root string) {
+	b.lastError = err
+	b.log.Error("the forge refused an action", "root", root, "error", err)
 }
 
 // roomEvents is what the Matrix side has said since the last tick, grouped by
@@ -210,30 +244,51 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
 	}
 
-	carriedOut := 0
+	carriedOut := b.carryOutChat(ctx, root, store, room, seen, requests)
+
+	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += approvals
+	}
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += activity
+	}
+	return carriedOut, nil
+}
+
+// carryOutChat carries out the chat work one forge owes the room and reports
+// how much of it was carried out. An action the forge refuses is kept and tried
+// again, while the rest of the work still goes ahead.
+func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore, room Room, seen roomEvents, requests []relay.Request) int {
+	pending := b.pendingFor(root)
 	for _, action := range relay.Plan(b.cfg.Operator, b.state.Relay, requests, seen.messages[room.RoomID]) {
+		pending.keep(action)
+	}
+
+	carriedOut := 0
+	for _, action := range pending.list() {
 		if err := b.apply(ctx, root, store, room, action); err != nil {
-			return 0, err
+			// One action the forge refuses is reported and tried again; the
+			// rest of the tick still goes ahead.
+			b.refuse(err, root)
+			continue
 		}
+		pending.done(action)
 		carriedOut++
 	}
 
 	paired, err := b.pairPendingRequests(store)
 	if err != nil {
-		return 0, err
+		b.refuse(err, root)
+		return carriedOut
 	}
-	carriedOut += paired
-
-	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
-	if err != nil {
-		return 0, err
-	}
-
-	activity, err := b.carryOutActivity(ctx, root, room)
-	if err != nil {
-		return 0, err
-	}
-	return carriedOut + approvals + activity, nil
+	return carriedOut + paired
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
@@ -257,5 +312,5 @@ func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, ro
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T21:26:58+02:00","module_hash":"5de2ebd898633e6782173ad9f31afa12813cf1c4e97ea009f2fb09090e56b7ec","functions":[{"id":"func/New","name":"New","line":77,"end_line":98,"hash":"19816dc089b747fe932a6bba03d6598394cf98e00064c7886cfcfc206630edda"},{"id":"func/Bridge.State","name":"Bridge.State","line":101,"end_line":103,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":106,"end_line":127,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":132,"end_line":134,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":141,"end_line":163,"hash":"5c9eb6c2be4c4793a314ff71034c5278fc243861ff92ff8d8f98e1a74f6b733a"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":173,"end_line":191,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":195,"end_line":233,"hash":"4835a4d4309c3298b0b00cbc5fa0ab61d7f6227b7347c813e1adbc1337d5697c"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":235,"end_line":240,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":243,"end_line":253,"hash":"73839d70b2ed29dd317ee1a565750e233d3fd802787c531d6a98987f5a067a0c"}]}
+// {"version":1,"tested_at":"2026-09-22T23:05:40+02:00","module_hash":"dd101d05e4f4094573afb16b0ad62a8fadae18a28d9582f1844a4c2b47bb6784","functions":[{"id":"func/New","name":"New","line":85,"end_line":108,"hash":"f2df5c0392d2277d0915d3a0326fc67c1d17c4c0322246d3c6a5cb5dca6a3111"},{"id":"func/Bridge.State","name":"Bridge.State","line":111,"end_line":113,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":116,"end_line":137,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":142,"end_line":144,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":151,"end_line":178,"hash":"804b69a9afcf9b6984ef8a718e854043f245bbcd481624710cd7360d180dbba6"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":181,"end_line":186,"hash":"e24b769fdb12b3920a27d27caa61902542869e3d5b2d30d2425c402ad2067e53"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":189,"end_line":194,"hash":"5f25b070d19c366ae1ada6b186e967e5fd02f6bae66a7bf466dafde414c50975"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":198,"end_line":201,"hash":"7c2e3db6ecfba20d18a110b1374992bbfcad7302f337430077a214495bd620d7"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":211,"end_line":229,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":233,"end_line":263,"hash":"a16453dd69faa8774de1b6d9e748d6c4211d9cb5a03f620de27170dac4b02eca"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":268,"end_line":292,"hash":"19f031febc9abce01cb10dfec83c320b71839f9d240a22d9e0ab45ef6e2ead65"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":294,"end_line":299,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":302,"end_line":312,"hash":"73839d70b2ed29dd317ee1a565750e233d3fd802787c531d6a98987f5a067a0c"}]}
 // mutate4go-manifest-end
