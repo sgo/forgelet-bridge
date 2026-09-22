@@ -16,6 +16,9 @@ const DefaultStateDir = "forgelet-bridge-state"
 // RoomName is the Matrix room that carries a forge's chat channel.
 const RoomName = "Chat"
 
+// ApprovalsRoomName is the Matrix room that carries a forge's approvals.
+const ApprovalsRoomName = "Approvals"
+
 // Forge is one forge the bridge serves: where it lives, and the name the
 // operator knows it by.
 type Forge struct {

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	approvalspkg "github.com/unclebob/forgelet-bridge/internal/approvals"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
@@ -51,7 +52,7 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	}
 	defer client.Close()
 
-	relay, err := bridge.New(cfg, client, stores(cfg), log)
+	relay, err := bridge.New(cfg, client, stores(cfg), approvals(cfg), log)
 	if err != nil {
 		return err
 	}
@@ -68,6 +69,15 @@ func stores(cfg config.Config) map[string]bridge.ForgeStore {
 	queues := make(map[string]bridge.ForgeStore, len(cfg.Forges))
 	for _, forge := range cfg.Forges {
 		queues[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root)}
+	}
+	return queues
+}
+
+// approvals opens the approvals of every configured forge.
+func approvals(cfg config.Config) map[string]bridge.ApprovalStore {
+	queues := make(map[string]bridge.ApprovalStore, len(cfg.Forges))
+	for _, forge := range cfg.Forges {
+		queues[forge.Root] = approvalspkg.Queue{Store: approvalspkg.New(forge.Root)}
 	}
 	return queues
 }

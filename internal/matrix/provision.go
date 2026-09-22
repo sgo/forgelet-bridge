@@ -13,9 +13,10 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/config"
 )
 
-// EnsureForge finds or creates the forge's space and the chat room inside it.
-// Encryption is on from room creation, the operator is invited to both, and
-// the bridge posts in the chat room under the forge's own name.
+// EnsureForge finds or creates the forge's space and the rooms inside it: the
+// chat channel and the approvals room. Encryption is on from room creation,
+// the operator is invited to all of them, and the bridge posts under the
+// forge's own name.
 func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (bridge.Room, error) {
 	spaceID, err := c.findSpace(ctx, forgeName)
 	if err != nil {
@@ -32,24 +33,38 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 		return bridge.Room{}, err
 	}
 
-	roomID, err := c.findChatRoom(ctx, spaceID)
+	roomID, err := c.ensureRoom(ctx, spaceID, operator, forgeName, config.RoomName)
 	if err != nil {
 		return bridge.Room{}, err
 	}
+	approvalsRoomID, err := c.ensureRoom(ctx, spaceID, operator, forgeName, config.ApprovalsRoomName)
+	if err != nil {
+		return bridge.Room{}, err
+	}
+	return bridge.Room{SpaceID: spaceID, RoomID: roomID, ApprovalsRoomID: approvalsRoomID}, nil
+}
+
+// ensureRoom finds or creates one of the forge's rooms inside its space, makes
+// sure the operator is in it, and names the bridge after the forge there.
+func (c *Client) ensureRoom(ctx context.Context, spaceID, operator, forgeName, roomName string) (string, error) {
+	roomID, err := c.findRoom(ctx, spaceID, roomName)
+	if err != nil {
+		return "", err
+	}
 	if roomID == "" {
-		roomID, err = c.createChatRoom(ctx, spaceID, operator)
+		roomID, err = c.createRoom(ctx, spaceID, operator, roomName)
 		if err != nil {
-			return bridge.Room{}, err
+			return "", err
 		}
-		c.log.Info("created chat room", "forge", forgeName, "room", roomID)
+		c.log.Info("created forge room", "forge", forgeName, "room", roomName, "id", roomID)
 	}
 	if err := c.ensureInvited(ctx, roomID, operator); err != nil {
-		return bridge.Room{}, err
+		return "", err
 	}
 	if err := c.ensureDisplayName(ctx, roomID, forgeName); err != nil {
-		return bridge.Room{}, err
+		return "", err
 	}
-	return bridge.Room{SpaceID: spaceID, RoomID: roomID}, nil
+	return roomID, nil
 }
 
 // ensureDisplayName makes the bridge post in a room under the forge's name, so
@@ -100,7 +115,7 @@ func (c *Client) findSpace(ctx context.Context, forgeName string) (string, error
 	return "", nil
 }
 
-func (c *Client) findChatRoom(ctx context.Context, spaceID string) (string, error) {
+func (c *Client) findRoom(ctx context.Context, spaceID, roomName string) (string, error) {
 	state, err := c.cli.State(ctx, id.RoomID(spaceID))
 	if err != nil {
 		return "", fmt.Errorf("read forge space state: %w", err)
@@ -110,7 +125,7 @@ func (c *Client) findChatRoom(ctx context.Context, spaceID string) (string, erro
 		if err != nil {
 			continue
 		}
-		if name == config.RoomName {
+		if name == roomName {
 			return childID, nil
 		}
 	}
@@ -130,9 +145,9 @@ func (c *Client) createSpace(ctx context.Context, forgeName, operator string) (s
 	return resp.RoomID.String(), nil
 }
 
-func (c *Client) createChatRoom(ctx context.Context, spaceID, operator string) (string, error) {
+func (c *Client) createRoom(ctx context.Context, spaceID, operator, roomName string) (string, error) {
 	resp, err := c.cli.CreateRoom(ctx, &mautrix.ReqCreateRoom{
-		Name:   config.RoomName,
+		Name:   roomName,
 		Preset: "private_chat",
 		Invite: []id.UserID{id.UserID(operator)},
 		InitialState: []*event.Event{{

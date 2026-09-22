@@ -28,7 +28,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	path := statePath(t)
 	saved := &State{}
 	saved.EnsureMaps()
-	saved.RecordForge("/forges/forge-a", Forge{SpaceID: "!space", RoomID: "!room"})
+	saved.RecordForge("/forges/forge-a", Forge{SpaceID: "!space", RoomID: "!room", ApprovalsRoomID: "!approvals"})
 	saved.Relay.Threads["req-1"] = "$message"
 	saved.Relay.Replied["req-1"] = "$reply"
 	saved.Relay.Relayed["$operator-message"] = "req-1"
@@ -42,7 +42,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 
 	forge, ok := loaded.ForgeFor("/forges/forge-a")
-	if !ok || forge != (Forge{SpaceID: "!space", RoomID: "!room"}) {
+	if !ok || forge != (Forge{SpaceID: "!space", RoomID: "!room", ApprovalsRoomID: "!approvals"}) {
 		t.Errorf("forge = %+v, %v", forge, ok)
 	}
 	if loaded.Relay.Threads["req-1"] != "$message" ||

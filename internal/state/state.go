@@ -13,8 +13,9 @@ import (
 
 // Forge is the Matrix side the bridge created for one forge root.
 type Forge struct {
-	SpaceID string `json:"space_id"`
-	RoomID  string `json:"room_id"`
+	SpaceID         string `json:"space_id"`
+	RoomID          string `json:"room_id"`
+	ApprovalsRoomID string `json:"approvals_room_id,omitempty"`
 }
 
 // State is everything the bridge remembers between runs.
@@ -54,7 +55,7 @@ func (s *State) EnsureMaps() {
 // ForgeFor returns the Matrix side already recorded for a forge root.
 func (s *State) ForgeFor(root string) (Forge, bool) {
 	forge, ok := s.Forges[root]
-	return forge, ok && forge.SpaceID != "" && forge.RoomID != ""
+	return forge, ok && forge.SpaceID != "" && forge.RoomID != "" && forge.ApprovalsRoomID != ""
 }
 
 // RecordForge remembers the Matrix side of a forge root.
