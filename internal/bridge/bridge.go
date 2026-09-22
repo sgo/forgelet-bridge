@@ -244,6 +244,28 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
 	}
 
+	carriedOut := b.carryOutChat(ctx, root, store, room, seen, requests)
+
+	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += approvals
+	}
+
+	activity, err := b.carryOutActivity(ctx, root, room)
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += activity
+	}
+	return carriedOut, nil
+}
+
+// carryOutChat carries out the chat work one forge owes the room and reports
+// how much of it was carried out. An action the forge refuses is kept and tried
+// again, while the rest of the work still goes ahead.
+func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore, room Room, seen roomEvents, requests []relay.Request) int {
 	pending := b.pendingFor(root)
 	for _, action := range relay.Plan(b.cfg.Operator, b.state.Relay, requests, seen.messages[room.RoomID]) {
 		pending.keep(action)
@@ -264,24 +286,9 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 	paired, err := b.pairPendingRequests(store)
 	if err != nil {
 		b.refuse(err, root)
-	} else {
-		carriedOut += paired
+		return carriedOut
 	}
-
-	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
-	if err != nil {
-		b.refuse(err, root)
-	} else {
-		carriedOut += approvals
-	}
-
-	activity, err := b.carryOutActivity(ctx, root, room)
-	if err != nil {
-		b.refuse(err, root)
-	} else {
-		carriedOut += activity
-	}
-	return carriedOut, nil
+	return carriedOut + paired
 }
 
 func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
