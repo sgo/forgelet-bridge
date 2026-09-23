@@ -39,6 +39,10 @@ go build -tags goolm -o build/acceptance/bin/acceptance-entrypoint-generator ./c
   --feature "$feature" \
   --project-root "$project_root"
 
+# The pass leaves a whole run under the build tree for every mutant it made.
+# Keep the newest few so a mutant that failed can still be looked at, and say
+# what went.
+status=0
 "$mutator" \
   --feature "$feature" \
   --work-dir build/acceptance-mutation \
@@ -47,4 +51,6 @@ go build -tags goolm -o build/acceptance/bin/acceptance-entrypoint-generator ./c
   --level hard \
   --status-interval 10s \
   --runner-worker "$project_root/scripts/acceptance-runner-worker.sh" \
-  "$@"
+  "$@" || status=$?
+"$project_root/scripts/clean.sh" "$project_root/build" || true
+exit "$status"

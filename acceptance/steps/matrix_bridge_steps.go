@@ -134,10 +134,7 @@ func bridgeConfigHoldsOnlyForge(_ context.Context, world any, captures []string)
 // adapterRefused checks the adapter refused the new forge.
 func adapterRefused(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "refused") {
-		return fmt.Errorf("the adapter did not refuse the new forge:\n%s", w.adapterOutput)
-	}
-	return nil
+	return outputSays(w.adapterOutput, "refused", "the adapter did not refuse the new forge")
 }
 
 // statusNamesEveryConfiguredForgeAsReached checks the bridge's status names
