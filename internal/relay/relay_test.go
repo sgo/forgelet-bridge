@@ -78,6 +78,27 @@ func TestPlanIgnoresMessagesFromAnyoneElse(t *testing.T) {
 	}
 }
 
+func TestPlanKeepsAMessageWrittenInAThreadInThatThread(t *testing.T) {
+	// The operator wrote inside a thread, so their message already carries a
+	// relation: a thread cannot begin at such an event, and the answer belongs
+	// in the thread they wrote in.
+	events := []RoomEvent{{
+		EventID: "$operator-message", Sender: operator, Body: "one more thing", ThreadRoot: "$thread-root",
+	}}
+
+	actions := Plan(operator, State{}, nil, events)
+
+	want := []Action{{
+		Kind:          CreateForgeRequest,
+		Body:          "one more thing",
+		SourceEventID: "$operator-message",
+		SourceThread:  "$thread-root",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the answer kept in the thread the operator wrote in %+v", actions, want)
+	}
+}
+
 func TestPlanIgnoresEmptyMessages(t *testing.T) {
 	events := []RoomEvent{{EventID: "$operator-message", Sender: operator, Body: "   "}}
 
