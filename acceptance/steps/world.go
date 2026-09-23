@@ -45,6 +45,8 @@ type World struct {
 	// a scenario works with, and adapterOutput is what that adapter said.
 	servedRoot    string
 	adapterOutput string
+	// rulesSnapshot is the tree an install of the prompt rules left behind.
+	rulesSnapshot string
 	forgeRoots    []string
 	configured    []string
 	forgeNames    map[string]string

@@ -97,6 +97,12 @@ going quiet. Install them with the same adapter:
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" install-rules
 ```
 
+The installer is built from this repository beside the bridge itself:
+`scripts/build.sh` puts `install-rules` in `build/acceptance/bin/`, next to the
+binary the adapter already runs. `MATRIX_BRIDGE_RULES_BINARY` and
+`MATRIX_BRIDGE_RULES` point the adapter at another installer or another
+directory of rules; the rules this repository ships are in `rules/`.
+
 It owns one marked block per rule: it writes the block into the forge's
 constitution and into every pack under `packs/`, and leaves everything else
 alone. A forge that has deliberately changed its own wording keeps it — this one
