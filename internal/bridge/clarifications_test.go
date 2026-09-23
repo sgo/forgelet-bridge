@@ -118,6 +118,41 @@ func TestTickCarriesTheOperatorsReplyBackAsTheAnswer(t *testing.T) {
 	}
 }
 
+func TestRestartRepeatsNoClarificationWork(t *testing.T) {
+	store := &fakeClarifications{pending: []relay.Clarification{
+		clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?"),
+	}}
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridgeWithClarifications(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ClarificationStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	posted := len(rooms.sentMessages())
+
+	restartedRooms := &fakeRooms{}
+	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": store},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+	if err != nil {
+		t.Fatalf("New after restart: %v", err)
+	}
+	if err := restarted.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick after restart: %v", err)
+	}
+
+	if sent := restartedRooms.sentMessages(); len(sent) != 0 {
+		t.Errorf("sent after restart = %+v, want nothing repeated", sent)
+	}
+	if posted == 0 {
+		t.Fatal("the bridge never posted the clarification in the first place")
+	}
+}
+
 func TestTickReportsAClarificationAnsweredOnTheDesktop(t *testing.T) {
 	clarification := clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?")
 	store := &fakeClarifications{pending: []relay.Clarification{clarification}}

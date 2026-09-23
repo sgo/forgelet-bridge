@@ -5,8 +5,9 @@ operator handle a forge's chat channel from their phone.
 
 The first slice is the encrypted chat channel. For every configured forge root
 the bridge creates a Matrix space (named after the forge) and an encrypted chat
-room (`Chat`), an encrypted approvals room (`Approvals`), and an encrypted
-activity room (`Activity`) inside it, invites the configured operator, and then:
+room (`Chat`), an encrypted approvals room (`Approvals`), an encrypted activity
+room (`Activity`), and an encrypted clarifications room (`Clarifications`)
+inside it, invites the configured operator, and then:
 
 - a chat request in the forge's dashboard appears as an encrypted chat message;
 - the lieutenant's answer arrives as a reply in that message's thread;
@@ -27,6 +28,17 @@ card — rewinding to the task's base commit and re-seeding the lane — stays o
 the desktop. Once an approval is resolved, from the phone or from the desktop,
 the thread says so and nothing can approve it twice. Deleting work and tearing
 projects down stay on the desktop too.
+
+The clarifications room carries the questions a forge's agents are blocked on.
+Each pending clarification arrives as a message naming the project, the role
+that is blocked, and the question itself. A reply in its thread is the answer -
+unlike an approval, where a reply sends the work back - and the operator's
+words are carried back through the dashboard, which is what wakes the blocked
+role with them and resolves the clarification; the thread then says it was
+answered. A reply the phone makes by quoting the message counts as a reply as
+well, and the quote the phone writes into the body is not read as the answer. A
+clarification answered from the desktop is marked resolved in the room rather
+than left looking open.
 
 The activity room is a log to keep quiet: a card appearing, moving to another
 lane, or finishing in one of the forge's open projects arrives as one short
