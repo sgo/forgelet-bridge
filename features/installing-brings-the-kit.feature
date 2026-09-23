@@ -23,7 +23,7 @@ Feature: Installing Brings The Kit
     When the adapter for the forge root forge-a installs the kit
     Then the installer's output says it installed the route gate, the idler check and the stall watch
     And the forge root forge-a carries the route gate, the idler check and the stall watch
-    And the self-check of the idler check names the pane it read and the marker it looked for
+    And the self-check of the idler check names the command it ran, the pane it read and the marker it looked for
     And the self-check of the idler check names the card and the mail it read
 
   # Installing Brings The Kit 2: a tool that reads nothing is a failure, not silence
