@@ -142,6 +142,16 @@ func Install(forgeRoot string, loaded []Rule) (Report, error) {
 // targets are the places one forge's rules live: its own constitution first,
 // then the packs.
 func targets(forgeRoot string) ([]Target, error) {
+	// A root that is not a forge is a typo, not somewhere to build a
+	// constitution: the installer reports it rather than leaving a tree behind
+	// and calling it a change.
+	info, err := os.Stat(forgeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("the forge %s is not there: %w", forgeRoot, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("the forge %s is not a directory", forgeRoot)
+	}
 	found := []Target{{
 		Path:        filepath.Join(forgeRoot, "swarmforge", "constitution", "articles"),
 		Description: "the forge's own constitution",
@@ -222,3 +232,7 @@ func owned(text, subject string) bool {
 	return strings.HasPrefix(trimmed, markerPrefix+subject+" -->") &&
 		strings.HasSuffix(trimmed, markerEnd+subject+" -->")
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T15:26:02+02:00","module_hash":"6ec1083fff18791b71bfdd2c5257b227b83e14af7315f323fb30a65245efc84d","functions":[{"id":"func/Load","name":"Load","line":30,"end_line":52,"hash":"64c71e7ecf17857dd9378f719753b4b582c462d9b63808429c53c12d37d6fed5"},{"id":"func/Parse","name":"Parse","line":55,"end_line":69,"hash":"08983239c968995fea16341c8f51320a9d1efde09e590c23b9ca866a43cac5a0"},{"id":"func/Report.add","name":"Report.add","line":88,"end_line":98,"hash":"676a574b06970784f6697564570a75cbf52e04b47438362daa8dc57d5f46901a"},{"id":"func/Report.String","name":"Report.String","line":101,"end_line":114,"hash":"f3caa7672006bbd6d9d7383ae95c73f1cc2c7ff81c5a147bbb2e4fabb719af3c"},{"id":"func/Install","name":"Install","line":121,"end_line":140,"hash":"52e75b838d7d937c3f93d61d55b0307ad2c51e99af7450ff4120a7218fd3f8dc"},{"id":"func/targets","name":"targets","line":144,"end_line":174,"hash":"4a78097b531822d2be12171d3f24fff56289e05bf991182cd504e3758807cf08"},{"id":"func/installInto","name":"installInto","line":195,"end_line":221,"hash":"343395fc39ad323dd876ee9155e86496f195ff3aa50741f24fffc38a9a6c4b19"},{"id":"func/sameBlock","name":"sameBlock","line":224,"end_line":226,"hash":"d8ee90d8b926dd25b0ef6ae8824b662eb3a6d09651f319299f88ad65ffcb6f2e"},{"id":"func/owned","name":"owned","line":230,"end_line":234,"hash":"f0330d075be9936f334b68fa400b4162f658f02021270d4551a4692a485cca65"}]}
+// mutate4go-manifest-end
