@@ -41,5 +41,5 @@ func Key(forge, project, name string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T16:08:47+02:00","module_hash":"569311f25fbf0c36e1d740c5be069c682d8f36ecb1547e069a2e83f608b9a0bc","functions":[{"id":"func/Queue.Cards","name":"Queue.Cards","line":15,"end_line":31,"hash":"8af945e1f2fe9680b2bf887a256be3883051c6c8c954c0a40ea4b2b358e62710"},{"id":"func/Key","name":"Key","line":35,"end_line":37,"hash":"ac132cedb0aea369e3970faa4b4db252fc9b3227684c5b9292b321a23456f149"}]}
+// {"version":1,"tested_at":"2026-09-23T14:24:40+02:00","module_hash":"a003e46195211e37719349156a967417d51064baa14f8acc6fc4de94634025bd","functions":[{"id":"func/Queue.Cards","name":"Queue.Cards","line":19,"end_line":35,"hash":"085c5a72c3ee970500db9b1a4cfe774e5fa0f24b7350fb3f28886b1a9a383316"},{"id":"func/Key","name":"Key","line":39,"end_line":41,"hash":"e694bf36e44ea1acf47fa1699bd1468d307f1c17d8373e7d878f2e2c2e8b3e54"}]}
 // mutate4go-manifest-end
