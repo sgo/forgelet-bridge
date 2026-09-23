@@ -33,7 +33,7 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, room R
 	}
 
 	waiting := b.pendingClarificationsFor(root)
-	for _, action := range relay.PlanClarifications(b.cfg.Operator, b.state.Relay, pending, replies) {
+	for _, action := range relay.PlanClarifications(b.cfg.Operator, b.clarificationState(room), pending, replies) {
 		waiting.keep(action)
 	}
 
@@ -80,10 +80,20 @@ func (b *Bridge) postClarification(ctx context.Context, room Room, action relay.
 		return fmt.Errorf("post clarification %s: %w", action.Key, err)
 	}
 	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+		state.RoomID = room.ClarificationsRoomID
 		state.MessageID = eventID
 		return state
 	})
 	return nil
+}
+
+// clarificationState is the share of the bridge's bookkeeping this forge's
+// clarifications room reports on: what it carries itself, never what another
+// forge's room carries.
+func (b *Bridge) clarificationState(room Room) relay.State {
+	scoped := b.state.Relay
+	scoped.Clarifications = scopedToRoom(b.state.Relay.Clarifications, relay.ClarificationState.Room, room.ClarificationsRoomID)
+	return scoped
 }
 
 // answerClarification carries the operator's answer back through the forge's
@@ -119,5 +129,5 @@ func (b *Bridge) recordClarification(key string, update func(relay.Clarification
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T13:31:40+02:00","module_hash":"1f0d1cdad9aadfef14848558a22559c5c1484eae5690e900053b76c5316a18a9","functions":[{"id":"func/clarificationMessage","name":"clarificationMessage","line":14,"end_line":21,"hash":"bf629b53647781870cc687f0e3b611af29eaa93ea8200c62e142c80ab282e220"},{"id":"func/Bridge.carryOutClarifications","name":"Bridge.carryOutClarifications","line":25,"end_line":50,"hash":"855df5b2a18cf629b11fbbe082b49d36563d95d81b356c13bab5745b216f9d79"},{"id":"func/Bridge.applyClarification","name":"Bridge.applyClarification","line":54,"end_line":59,"hash":"92f44e1017061c5e01053827c433bdf57ec0b25e89f60efd326aae0977c43992"},{"id":"func/Bridge.carryOutClarification","name":"Bridge.carryOutClarification","line":63,"end_line":73,"hash":"23d3356753d5cfd9f166c0a75aa8bc78c7b8c482df23c3c282e9c7c21653155d"},{"id":"func/Bridge.postClarification","name":"Bridge.postClarification","line":77,"end_line":87,"hash":"7bd44e92b3a66e303a9e916567e2ada9d5e825fc87c658e479e58ff8f8bb8842"},{"id":"func/Bridge.answerClarification","name":"Bridge.answerClarification","line":91,"end_line":100,"hash":"655952e47bba67fbc012ce6b59791225df8b1dc09da8155f68e54c2f0206fda7"},{"id":"func/Bridge.reportClarificationAnswer","name":"Bridge.reportClarificationAnswer","line":104,"end_line":114,"hash":"1c1d4473cbe89c4be70a2025035d70a0aa9d6c0b5d2eeed99d21dddaeb60bf47"},{"id":"func/Bridge.recordClarification","name":"Bridge.recordClarification","line":116,"end_line":119,"hash":"e154e2528d82ec618ebe08700597ab36c8d776abb2087de7674421d1a31b6faf"}]}
+// {"version":1,"tested_at":"2026-09-23T14:18:04+02:00","module_hash":"f43a40677ddae48a2f926a82152daf71cf76c998e2253f4da937c7098a55198c","functions":[{"id":"func/clarificationMessage","name":"clarificationMessage","line":14,"end_line":21,"hash":"bf629b53647781870cc687f0e3b611af29eaa93ea8200c62e142c80ab282e220"},{"id":"func/Bridge.carryOutClarifications","name":"Bridge.carryOutClarifications","line":25,"end_line":50,"hash":"b12f8d6adf227e159c399aefe3180bad62c09c12f11153dd4983f0186f7c1446"},{"id":"func/Bridge.applyClarification","name":"Bridge.applyClarification","line":54,"end_line":59,"hash":"92f44e1017061c5e01053827c433bdf57ec0b25e89f60efd326aae0977c43992"},{"id":"func/Bridge.carryOutClarification","name":"Bridge.carryOutClarification","line":63,"end_line":73,"hash":"23d3356753d5cfd9f166c0a75aa8bc78c7b8c482df23c3c282e9c7c21653155d"},{"id":"func/Bridge.postClarification","name":"Bridge.postClarification","line":77,"end_line":88,"hash":"0e7d4abab7c8ffe9dd7cd98c9bf773647a0b68ed973800436a47f4c28becab62"},{"id":"func/Bridge.clarificationState","name":"Bridge.clarificationState","line":93,"end_line":97,"hash":"977f6e2d654d6eb9617e5d702196122d6941f84fef1c999310fa6e13fd0f162b"},{"id":"func/Bridge.answerClarification","name":"Bridge.answerClarification","line":101,"end_line":110,"hash":"655952e47bba67fbc012ce6b59791225df8b1dc09da8155f68e54c2f0206fda7"},{"id":"func/Bridge.reportClarificationAnswer","name":"Bridge.reportClarificationAnswer","line":114,"end_line":124,"hash":"1c1d4473cbe89c4be70a2025035d70a0aa9d6c0b5d2eeed99d21dddaeb60bf47"},{"id":"func/Bridge.recordClarification","name":"Bridge.recordClarification","line":126,"end_line":129,"hash":"e154e2528d82ec618ebe08700597ab36c8d776abb2087de7674421d1a31b6faf"}]}
 // mutate4go-manifest-end

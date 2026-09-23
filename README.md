@@ -46,6 +46,14 @@ update naming the project, the card, and where it moved. Nothing arrives while
 nothing changes — the quiet between updates is what says an agent may be stuck —
 and a restart never replays an update it already delivered.
 
+One bridge can carry more than one forge, and the forges are kept apart. A forge
+whose dashboard has stopped, whose address is stale, or whose tooling does not
+expose an endpoint yet is that forge's problem: what it could not do is kept and
+tried again, `status_dir/status.json` names it under `unhappy_forges` until it is
+served again, and every other forge keeps carrying its rooms in both
+directions. Nothing the rooms said is lost with it either: what the operator
+sends to a forge that is down reaches it once it is back.
+
 A restart also keeps the bridge on the same Matrix device: it reuses the device
 and the crypto store under `state_dir`, so the operator never meets a new
 unverified device, and chat that happens after a restart stays readable.

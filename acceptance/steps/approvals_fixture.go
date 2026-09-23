@@ -64,6 +64,12 @@ func seedApprovalFor(w *World, card string, healthy bool) error {
 	if err != nil {
 		return err
 	}
+	return seedApprovalIn(root, card, healthy)
+}
+
+// seedApprovalIn seeds a handoff waiting for the operator's approval in one
+// forge root's own git world.
+func seedApprovalIn(root, card string, healthy bool) error {
 	commit := fixtureHead(root)
 	if !healthy {
 		commit = "0000000000000000000000000000000000000000"

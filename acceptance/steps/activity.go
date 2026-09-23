@@ -48,6 +48,11 @@ func waitForCardUpdate(w *World, card, want string) error {
 	if err != nil {
 		return err
 	}
+	return waitForCardUpdateIn(ctx, w, roomID, card, want)
+}
+
+// waitForCardUpdateIn waits for a card update the operator can read in a room.
+func waitForCardUpdateIn(ctx context.Context, w *World, roomID, card, want string) error {
 	operator, err := w.operator(ctx)
 	if err != nil {
 		return err
@@ -129,12 +134,7 @@ func operatorTalksInActivityRoom(_ context.Context, world any, captures []string
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = operator.Send(ctx, roomID, captures[1])
-	return err
+	return operatorSendsInto(ctx, w, roomID, captures[1])
 }
 
 // quietStretch lets the bridge run on with nothing changing. A heartbeat would

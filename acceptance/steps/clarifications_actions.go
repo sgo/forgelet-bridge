@@ -65,12 +65,7 @@ func operatorTalksInClarificationsRoom(_ context.Context, world any, captures []
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = operator.Send(ctx, roomID, captures[1])
-	return err
+	return operatorSendsInto(ctx, w, roomID, captures[1])
 }
 
 // userJoinedClarificationsRoom brings a fixture client into the clarifications

@@ -22,11 +22,17 @@ type fakeStore struct {
 	mu       sync.Mutex
 	requests []relay.Request
 	created  []string
+	// readErr is what the forge answers with instead of its queue, which is
+	// what a forge the bridge cannot reach looks like from here.
+	readErr error
 }
 
 func (s *fakeStore) Requests() ([]relay.Request, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.readErr != nil {
+		return nil, s.readErr
+	}
 	return append([]relay.Request(nil), s.requests...), nil
 }
 
@@ -407,12 +413,19 @@ func TestStatusReportsTheBridgeDevice(t *testing.T) {
 	}
 }
 
-func TestTickFailsWithoutADashboardQueue(t *testing.T) {
+func TestATickWithoutADashboardQueueNamesTheForge(t *testing.T) {
 	rooms := &fakeRooms{}
 	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{}, "/forges/forge-a")
 
-	if err := built.Tick(context.Background()); err == nil {
-		t.Fatal("Tick succeeded without a dashboard queue")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v, want a forge the bridge cannot serve kept to that forge", err)
+	}
+	if sent := rooms.sentMessages(); len(sent) != 0 {
+		t.Errorf("sent = %+v, want nothing said for a forge with no dashboard queue", sent)
+	}
+	status := statusOf(t, built)
+	if len(status.UnhappyForges) != 1 || status.UnhappyForges[0] != "forge-a" {
+		t.Errorf("unhappy forges = %v, want the forge with no dashboard queue named", status.UnhappyForges)
 	}
 }
 

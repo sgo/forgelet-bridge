@@ -41,9 +41,21 @@ func approvalMessageStart(card string) string {
 	return fmt.Sprintf("Approval for %s in %s", card, approvalProject)
 }
 
-// approvalMessage finds the approval message the operator has for a card.
+// approvalMessage finds the approval message the operator has for a card, in
+// the configured forge. The suite's single-forge scenarios name the forge
+// through which the bridge serves it, and the many-forge ones name it outright.
 func (w *World) approvalMessage(ctx context.Context, card string) (roomID, messageID, body string, err error) {
-	roomID, err = w.approvalsRoom(ctx)
+	forgeName, err := w.forgeSpace()
+	if err != nil {
+		return "", "", "", err
+	}
+	return w.forgeApprovalMessage(ctx, forgeName, card)
+}
+
+// forgeApprovalMessage finds the approval message one named forge's room holds
+// for a card.
+func (w *World) forgeApprovalMessage(ctx context.Context, forgeName, card string) (roomID, messageID, body string, err error) {
+	roomID, err = w.waitForSpaceChild(ctx, forgeName, config.ApprovalsRoomName)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -52,7 +64,7 @@ func (w *World) approvalMessage(ctx context.Context, card string) (roomID, messa
 		return "", "", "", err
 	}
 	start := approvalMessageStart(card)
-	err = waitFor(ctx, fmt.Sprintf("the operator never saw the approval message for %s", card), func() (bool, error) {
+	err = waitFor(ctx, fmt.Sprintf("the operator never saw the approval message for %s in %s", card, forgeName), func() (bool, error) {
 		for _, message := range operator.Messages(roomID) {
 			if strings.HasPrefix(message.Body, start) {
 				messageID, body = message.EventID, message.Body
