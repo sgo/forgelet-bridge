@@ -1,3 +1,8 @@
+# mutation-stamp: sha256=0c8bf16c63361536c341555a58f8fd7b6a6b1502b16a1449665811c485ac7873
+# acceptance-mutation-manifest-begin
+# {"version":1,"tested_at":"2026-09-23T17:09:45.919543Z","feature_name":"Role Health","feature_path":"features/role-health.feature","background_hash":"1d989f071c65a110cd748176f85254577c6f592812d666af2643c2fe11b3bca4","implementation_hash":"sha256:f8a95a0020f95ba9364f81418032e9644e0f3482161e62942d65811d784b43e7","scenarios":[]}
+# acceptance-mutation-manifest-end
+
 Feature: Role Health
 
   # The idler check answers one question at a glance: is each role holding a card

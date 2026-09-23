@@ -47,10 +47,16 @@ type World struct {
 	adapterOutput string
 	// rulesSnapshot is the tree an install of the prompt rules left behind.
 	rulesSnapshot string
-	forgeRoots    []string
-	configured    []string
-	forgeNames    map[string]string
-	operatorID    string
+	// gateProposal is the proposal the route gate is holding, and gateOutput
+	// and gateErr are what its last run said.
+	gateProposal string
+	gateOutput   string
+	gateWords    string
+	gateErr      error
+	forgeRoots   []string
+	configured   []string
+	forgeNames   map[string]string
+	operatorID   string
 
 	users      map[string]*fixtures.User
 	dashboards map[string]*dashboard.Store
