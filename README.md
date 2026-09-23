@@ -84,6 +84,12 @@ forges apart. A forge with no configured name falls back to the name of its
 folder. The bridge keeps its Matrix state and its restart bookkeeping under
 `state_dir`.
 
+Adding another forge to the same bridge is one entry in `forges` and a restart.
+[docs/adding-a-forge.md](docs/adding-a-forge.md) is the runbook for it, and
+`scripts/matrix-bridge.sh add-forge <root> <name>` makes the edit safely:
+it validates the configuration before it writes, keeps a copy of what it
+replaced, restarts the bridge, and names the new forge in what it echoes.
+
 Run it with:
 
 ```sh
