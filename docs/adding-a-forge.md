@@ -85,7 +85,34 @@ prints; nothing was changed and the bridge is still carrying what it carried.
 Run the same command again once the entry is fixed, or edit the configuration by
 hand and restart.
 
-## 3. Check it worked
+## 3. Teach the forge the rules
+
+The rooms only work because the forge's roles follow the rules behind them: a
+role that stops while holding a card raises a clarification — naming the card,
+what stops it, what it tried and what it needs — so the operator can move it
+back into work, and a role with nothing assigned reports `NO_TASK` instead of
+going quiet. Install them with the same adapter:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" install-rules
+```
+
+The installer is built from this repository beside the bridge itself:
+`scripts/build.sh` puts `install-rules` in `build/acceptance/bin/`, next to the
+binary the adapter already runs. `MATRIX_BRIDGE_RULES_BINARY` and
+`MATRIX_BRIDGE_RULES` point the adapter at another installer or another
+directory of rules; the rules this repository ships are in `rules/`.
+
+It owns one marked block per rule: it writes the block into the forge's
+constitution and into every pack under `packs/`, and leaves everything else
+alone. A forge that has deliberately changed its own wording keeps it — this one
+builds in Go — and a rule that drifted is refreshed, so the change shows up as a
+diff in the forge's own repository rather than as a surprise. Running it again
+is safe: it reports what it changed, what was already current and what it left
+alone. It never writes into a live project's tracked tree — a project picks a
+new rule up the way it picks up any other change, through its specifier.
+
+## 4. Check it worked
 
 ```sh
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" status
@@ -100,7 +127,7 @@ Then look at the phone: the new forge has its own space, named with the name you
 gave it, holding its chat room, approvals room, activity room and clarifications
 room, with the operator invited.
 
-## 4. Smoke test both directions
+## 5. Smoke test both directions
 
 1. **A message out and a message in.** From the phone, send a message into the
    new forge's chat room. It has to become a chat request that *that forge's*
@@ -113,7 +140,7 @@ room, with the operator invited.
    appears in its clarifications room. Replying in its thread carries the answer
    back through the dashboard, and the blocked agent wakes with it.
 
-## 5. Roll back
+## 6. Roll back
 
 ```sh
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" stop
@@ -127,6 +154,7 @@ Matrix — the bridge only adds — so remove them in Element if you want them g
 ## Where this is specified
 
 `features/adding-a-forge.feature` for the adapter's edit and its refusal,
-`features/forge-startup-report.feature` for the report the status prints, and
+`features/forge-startup-report.feature` for the report the status prints,
+`features/installing-brings-the-rules.feature` for the rules, and
 the per-room features (`chat-channel-relay`, `phone-approvals`,
 `phone-clarifications`, `card-activity-feed`) for what the smoke test shows.
