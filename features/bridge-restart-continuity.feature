@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=7199e733c26e7e614959bd93dcc37d40361d92b2b34cc8e2080038f5b12cfd25
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-23T19:33:05.716700Z","feature_name":"Bridge Restart Continuity","feature_path":"features/bridge-restart-continuity.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:44723d600f670f6293041c9e2291fc57c86bc1b1df8ac539fcf5d42e8fc4fd85","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-23T20:25:09.981281Z","feature_name":"Bridge Restart Continuity","feature_path":"features/bridge-restart-continuity.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:44723d600f670f6293041c9e2291fc57c86bc1b1df8ac539fcf5d42e8fc4fd85","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Bridge Restart Continuity

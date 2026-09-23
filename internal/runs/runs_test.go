@@ -157,6 +157,59 @@ func TestCleanKeepsTheNewestRunEvenWhenItIsAskedToKeepNone(t *testing.T) {
 	}
 }
 
+func TestCleanKeepsTheNewestMutantRunEvenWhenItIsAskedToKeepNone(t *testing.T) {
+	build := t.TempDir()
+	dir := filepath.Join(build, "acceptance-mutation", "chat-channel-relay", "mutations")
+	mutants := fixtureRuns(t, dir, 3)
+
+	if _, err := Clean(build, Limits{Scenarios: 0, Mutants: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	left := survivors(t, dir)
+	if len(left) != 1 || left[0] != mutants[2] {
+		t.Errorf("mutant runs left = %v, want the newest one (%s): it is what a run in flight is using", left, mutants[2])
+	}
+}
+
+func TestCleanNamesOneRunAsOneRun(t *testing.T) {
+	build := t.TempDir()
+	fixtureRuns(t, filepath.Join(build, "acceptance", "run"), 2)
+
+	report, err := Clean(build, Limits{Scenarios: 1, Mutants: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if report.String() != "removed 1 scenario run and 0 mutant runs" {
+		t.Errorf("report = %q, want one run named as one run, and none named as none", report)
+	}
+}
+
+func TestCleanBreaksATieByNameSoTheSameRunsSurvive(t *testing.T) {
+	build := t.TempDir()
+	dir := filepath.Join(build, "acceptance", "run")
+	names := fixtureRuns(t, dir, 4)
+	// The same moment for every run: with nothing to tell them apart by time,
+	// the order they are kept in still has to be the same one every time, or
+	// which runs survive a clean up is anyone's guess.
+	when := time.Now().Add(-time.Hour)
+	for _, name := range names {
+		if err := os.Chtimes(filepath.Join(dir, name), when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := Clean(build, Limits{Scenarios: 2, Mutants: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	left := survivors(t, dir)
+	if len(left) != 2 || left[0] != names[2] || left[1] != names[3] {
+		t.Errorf("scenario runs left = %v, want the last two by name (%v)", left, names[2:])
+	}
+}
+
 func TestCleanLeavesABuildTreeThatHasNoRunsAlone(t *testing.T) {
 	report, err := Clean(t.TempDir(), Limits{Scenarios: 3, Mutants: 2})
 	if err != nil {

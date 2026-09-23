@@ -74,3 +74,21 @@ func TestLimitsFallBackToHowManyRunsAForgeKeeps(t *testing.T) {
 		t.Errorf("limits = %+v, want the defaults %d and %d", limits, defaultScenarioRuns, defaultMutantRuns)
 	}
 }
+
+func TestRunRefusesALimitThatIsNotAtLeastOneRun(t *testing.T) {
+	// Asking to keep no runs at all is a limit this tool will not take: the run
+	// in flight is one it must not touch, so a limit of nothing is a mistake to
+	// be told about rather than a number to round up.
+	env := func(name string) string {
+		if name == scenarioRunsEnv {
+			return "0"
+		}
+		return ""
+	}
+
+	err := run(t.TempDir(), env, &bytes.Buffer{})
+
+	if err == nil || !strings.Contains(err.Error(), scenarioRunsEnv) {
+		t.Errorf("err = %v, want it to refuse a limit of no runs and name the limit", err)
+	}
+}
