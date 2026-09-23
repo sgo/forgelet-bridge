@@ -58,4 +58,7 @@ done
 
 export FORGELET_PROJECT_ROOT="$project_root"
 export FORGELET_BRIDGE_BIN="$project_root/build/acceptance/bin/forgelet-bridge"
-go test -tags goolm -count=1 -v ./build/acceptance/generated "${test_args[@]+"${test_args[@]}"}"
+# The suite starts a homeserver and runs every feature end to end, so it takes
+# several minutes; the default ten-minute go test timeout cuts it off mid-run.
+# A caller can still pass its own -timeout, which comes last and wins.
+go test -tags goolm -count=1 -timeout=20m -v ./build/acceptance/generated "${test_args[@]+"${test_args[@]}"}"

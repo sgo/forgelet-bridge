@@ -53,10 +53,19 @@ type World struct {
 	gateOutput   string
 	gateWords    string
 	gateErr      error
-	forgeRoots   []string
-	configured   []string
-	forgeNames   map[string]string
-	operatorID   string
+	// watchRoots are the forge roots the stall watch was last run for, and
+	// watchOutput and watchAgent are what its run and its agent said.
+	watchRoots  []string
+	watchOutput string
+	watchAgent  string
+	// sockets are the tmux servers the fixture started for the roles it serves,
+	// so a scenario can take them down with everything else it started.
+	sockets    []string
+	socketDirs []string
+	forgeRoots []string
+	configured []string
+	forgeNames map[string]string
+	operatorID string
 
 	users      map[string]*fixtures.User
 	dashboards map[string]*dashboard.Store
@@ -99,6 +108,12 @@ func newWorld() *World {
 func (w *World) Close() {
 	w.stopBridge()
 	w.stopAdapterBridge()
+	for _, socket := range w.sockets {
+		killTmuxServer(socket)
+	}
+	for _, dir := range w.socketDirs {
+		_ = os.RemoveAll(dir)
+	}
 	for _, running := range w.stubs {
 		running.stop()
 	}
