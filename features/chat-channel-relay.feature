@@ -11,6 +11,11 @@ Feature: Chat Channel Relay
   # arrives as a reply in that message's thread. A reply the phone makes by
   # quoting a message sends the operator's own words, with the quote the phone
   # writes into the body left out of the request.
+  # A message the operator writes inside a thread already carries a relation, and
+  # a thread cannot begin at an event that carries one, so the answer to such a
+  # message joins the thread the operator wrote in, anchored at its root: it
+  # arrives there, not at the top of the room and not as a failure the bridge
+  # retries forever.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -51,3 +56,12 @@ Feature: Chat Channel Relay
     Given the forge's dashboard already holds the chat request "is the build green?"
     When the operator swipes a reply "yes, the build is green" to the chat message "is the build green?"
     Then the forge holds the chat request "yes, the build is green" the dashboard took and typed into the lieutenant's pane
+
+  # Chat Channel Relay 6: the answer to a message written in a thread joins that thread
+  Scenario: Chat Channel Relay 6: the answer to a message written in a thread joins that thread
+    Given the forge's dashboard already holds the chat request "is the build green?"
+    And the lieutenant answers the chat request "is the build green?" with "yes, the build is green"
+    And the operator replies "one more thing" in the thread of the chat message "is the build green?"
+    And the lieutenant answers the chat request "one more thing" with "ask away"
+    Then the operator decrypts the thread reply "ask away" to the chat message "is the build green?"
+    And the chat room holds exactly one copy of "ask away" and it is a thread reply
