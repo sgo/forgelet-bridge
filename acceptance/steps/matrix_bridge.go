@@ -31,9 +31,14 @@ const AdapterName = "matrix-bridge.sh"
 // bridgeConfigName is the configuration the adapter works on.
 const bridgeConfigName = "matrix-bridge.json"
 
-// adapterEnv names the bridge binary the adapter is pointed at: the forge root
-// a scenario serves has no bridge checkout of its own.
-const adapterBinaryEnv = "MATRIX_BRIDGE_BINARY"
+// adapterBinaryEnv names the bridge binary the adapter is pointed at: the forge
+// root a scenario serves has no bridge checkout of its own. The rule installer
+// and the rules this repository ships are pointed at the same way.
+const (
+	adapterBinaryEnv      = "MATRIX_BRIDGE_BINARY"
+	adapterRulesBinaryEnv = "MATRIX_BRIDGE_RULES_BINARY"
+	adapterRulesDirEnv    = "MATRIX_BRIDGE_RULES"
+)
 
 // servedRoot is the fixture forge root whose configuration and adapter the
 // scenario is working with.
@@ -138,9 +143,17 @@ func (w *World) adapterCommand(ctx context.Context, args ...string) (string, err
 	if err != nil {
 		return "", err
 	}
+	installer, err := buildHelper("install-rules", "./cmd/install-rules")
+	if err != nil {
+		return "", err
+	}
 	command := exec.CommandContext(ctx, installed, args...)
 	command.Dir = fixtures.ProjectRoot()
-	command.Env = append(os.Environ(), adapterBinaryEnv+"="+binary)
+	command.Env = append(os.Environ(),
+		adapterBinaryEnv+"="+binary,
+		adapterRulesBinaryEnv+"="+installer,
+		adapterRulesDirEnv+"="+filepath.Join(fixtures.ProjectRoot(), "rules"),
+	)
 	out, runErr := command.CombinedOutput()
 	w.adapterOutput = string(out)
 	return w.adapterOutput, runErr
