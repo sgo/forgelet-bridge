@@ -239,7 +239,7 @@ func TestTickReportsAForgeWithNoClarificationsStore(t *testing.T) {
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("Tick: %v", err)
 	}
-	if built.lastError == nil {
-		t.Error("lastError = nil, want the forge without clarifications reported")
+	if status := statusOf(t, built); len(status.UnhappyForges) != 1 || status.UnhappyForges[0] != "forge-a" {
+		t.Errorf("unhappy forges = %v, want the forge without a clarifications store reported", status.UnhappyForges)
 	}
 }
