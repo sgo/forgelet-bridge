@@ -41,10 +41,14 @@ type World struct {
 
 	configPath string
 	stateDir   string
-	forgeRoots []string
-	configured []string
-	forgeNames map[string]string
-	operatorID string
+	// servedRoot is the forge root whose own adapter and bridge configuration
+	// a scenario works with, and adapterOutput is what that adapter said.
+	servedRoot    string
+	adapterOutput string
+	forgeRoots    []string
+	configured    []string
+	forgeNames    map[string]string
+	operatorID    string
 
 	users      map[string]*fixtures.User
 	dashboards map[string]*dashboard.Store
@@ -86,6 +90,7 @@ func newWorld() *World {
 // Close stops everything the scenario started.
 func (w *World) Close() {
 	w.stopBridge()
+	w.stopAdapterBridge()
 	for _, running := range w.stubs {
 		running.stop()
 	}

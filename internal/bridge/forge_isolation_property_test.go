@@ -13,12 +13,13 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
 
-// TestPropertyOnlyTheForgesThatFailAreNamed is the promise a second forge
-// rests on: after a tick, the status names exactly the forges the bridge could
-// not serve - in the order the configuration names them, no more and no fewer -
-// and every forge it could serve still carried its rooms, so one sick forge is
-// named on its own instead of quieting the rest.
-func TestPropertyOnlyTheForgesThatFailAreNamed(t *testing.T) {
+// TestPropertyTheForgeReportNamesEachConfiguredForge is the promise a second
+// forge rests on: after a tick, the status names exactly the forges the bridge
+// served and exactly the ones it could not - in the order the configuration
+// names them, no more and no fewer, and the two lists between them name every
+// configured forge once - while every forge it could serve still carried its
+// rooms, so one sick forge is named on its own instead of quieting the rest.
+func TestPropertyTheForgeReportNamesEachConfiguredForge(t *testing.T) {
 	roots := []string{"/forges/forge-a", "/forges/forge-b", "/forges/forge-c"}
 	property := func(sick []bool) bool {
 		rooms := &fakeRooms{}
@@ -32,10 +33,12 @@ func TestPropertyOnlyTheForgesThatFailAreNamed(t *testing.T) {
 		}
 		built, cfg := newTestBridge(t, rooms, stores, roots...)
 
-		var want []string
+		var wantReached, wantUnhappy []string
 		for i, root := range roots {
 			if sick[i] {
-				want = append(want, cfg.ForgeName(root))
+				wantUnhappy = append(wantUnhappy, cfg.ForgeName(root))
+			} else {
+				wantReached = append(wantReached, cfg.ForgeName(root))
 			}
 		}
 
@@ -43,12 +46,15 @@ func TestPropertyOnlyTheForgesThatFailAreNamed(t *testing.T) {
 			return false
 		}
 		status := statusOf(t, built)
-		if !reflect.DeepEqual(status.UnhappyForges, want) {
+		if !reflect.DeepEqual(status.ReachedForges, wantReached) {
+			return false
+		}
+		if !reflect.DeepEqual(status.UnhappyForges, wantUnhappy) {
 			return false
 		}
 		// A named forge is a reason to report; a served one leaves nothing to
 		// report.
-		if (len(want) > 0) != (status.LastError != "") {
+		if (len(wantUnhappy) > 0) != (status.LastError != "") {
 			return false
 		}
 		for i, root := range roots {

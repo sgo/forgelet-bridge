@@ -191,25 +191,30 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		DeviceFingerprint: b.device.Fingerprint,
 		Pending:           b.pendingCount(),
 	}
-	status.UnhappyForges, status.LastError = b.unhappyForges()
+	status.ReachedForges, status.UnhappyForges, status.LastError = b.forgeReport()
+	if b.tick == 1 {
+		// What the bridge carries is the first thing an operator or a script
+		// adding a forge wants to know, so it is said out loud once, at
+		// startup, rather than left to a guess about the log.
+		b.log.Info("the forges the bridge serves", "reached", status.ReachedForges, "unreached", status.UnhappyForges)
+	}
 	return b.writeStatus(status)
 }
 
-// unhappyForges is the forges the tick could not serve, in the order the
-// configuration names them, and the last of the reasons why. A tick that
-// serves a forge again is a tick that stops naming it.
-func (b *Bridge) unhappyForges() ([]string, string) {
-	var names []string
-	last := ""
+// forgeReport is the forges the tick served and the forges it could not, in
+// the order the configuration names them, and the last of the reasons why. A
+// tick that serves a forge again is a tick that stops naming it unhappy.
+func (b *Bridge) forgeReport() (reached, unhappy []string, last string) {
 	for _, forge := range b.cfg.Forges {
-		why, unhappy := b.unhappy[forge.Root]
-		if !unhappy {
+		why, skipped := b.unhappy[forge.Root]
+		if skipped {
+			unhappy = append(unhappy, b.cfg.ForgeName(forge.Root))
+			last = why
 			continue
 		}
-		names = append(names, b.cfg.ForgeName(forge.Root))
-		last = why
+		reached = append(reached, b.cfg.ForgeName(forge.Root))
 	}
-	return names, last
+	return reached, unhappy, last
 }
 
 // pendingFor is the work one forge still owes the rooms.
