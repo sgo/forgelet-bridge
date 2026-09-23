@@ -41,3 +41,7 @@ func run(forgeRoot, kitDir string, out io.Writer) error {
 	}
 	return nil
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T21:32:52+02:00","module_hash":"967754e354fa5e4625f5262067db094d931cb70f1625084ccd0d313ef8ccfc13","functions":[{"id":"func/main","name":"main","line":15,"end_line":24,"hash":"426581e140b9eaa2740f4d956112718011cb1556c057b715e710b0728e8ab53e"},{"id":"func/run","name":"run","line":30,"end_line":43,"hash":"86b81ca74af5cbc975770a8c6f9ad5440ed5dfd701e424eef0133d27b31b9776"}]}
+// mutate4go-manifest-end

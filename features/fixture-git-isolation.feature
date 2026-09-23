@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=634760d90ebbaf6a358d3f47d5316279aa7ea146e7ad3f4448815faca1d615a9
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-23T18:58:24.305535Z","feature_name":"Fixture Git Isolation","feature_path":"features/fixture-git-isolation.feature","background_hash":"eab7aa60fba1e7d473a61d2dcd406e9dd2270c7c6fb84be07f7fc1f02b1af052","implementation_hash":"sha256:8bd0d2175babca61ac0091b78cbd9eec054952030f0a7e14f331dc35582a50da","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-23T19:33:06.919057Z","feature_name":"Fixture Git Isolation","feature_path":"features/fixture-git-isolation.feature","background_hash":"eab7aa60fba1e7d473a61d2dcd406e9dd2270c7c6fb84be07f7fc1f02b1af052","implementation_hash":"sha256:8bd0d2175babca61ac0091b78cbd9eec054952030f0a7e14f331dc35582a50da","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Fixture Git Isolation
