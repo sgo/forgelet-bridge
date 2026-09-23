@@ -125,24 +125,33 @@ func TestInstallFileReplacesWhatTheKitDoesNotShipAndKeepsWhatItDoes(t *testing.T
 }
 
 func TestPolicyNamesTheWordingItLeftWhereItWas(t *testing.T) {
-	forgeRoot := t.TempDir()
-	prompt := filepath.Join(forgeRoot, "swarmforge", "roles", "lieutenant.prompt")
-	if err := os.MkdirAll(filepath.Dir(prompt), 0o755); err != nil {
-		t.Fatal(err)
+	cases := map[string]struct {
+		prompt string
+		want   string
+	}{
+		"the wording the forge wrote": {"Ask the operator before a card is created.\n", "Ask the operator before a card is created."},
+		"a prompt with nothing in it": {"\n   \n", "(written down, but empty)"},
 	}
-	if err := os.WriteFile(prompt, []byte("Ask the operator before a card is created.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var report Report
+	for what, testCase := range cases {
+		forgeRoot := t.TempDir()
+		prompt := filepath.Join(forgeRoot, "swarmforge", "roles", "lieutenant.prompt")
+		if err := os.MkdirAll(filepath.Dir(prompt), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(prompt, []byte(testCase.prompt), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var report Report
 
-	policy(&report, forgeRoot)
+		policy(&report, forgeRoot)
 
-	line := report.String()
-	if !strings.Contains(line, "left the gate policy in the lieutenant prompt alone") {
-		t.Errorf("the report does not say it left the policy alone:\n%s", line)
-	}
-	if !strings.Contains(line, "Ask the operator before a card is created.") {
-		t.Errorf("the report does not name the policy it found:\n%s", line)
+		line := report.String()
+		if !strings.Contains(line, "left the gate policy in the lieutenant prompt alone") {
+			t.Errorf("%s: the report does not say it left the policy alone:\n%s", what, line)
+		}
+		if !strings.Contains(line, testCase.want) {
+			t.Errorf("%s: the report does not name %q:\n%s", what, testCase.want, line)
+		}
 	}
 }
 
@@ -153,5 +162,99 @@ func TestPolicySaysWhenTheForgeHasNotWrittenItsGateDown(t *testing.T) {
 
 	if line := report.String(); !strings.Contains(line, "left the gate policy alone") || !strings.Contains(line, "is not there") {
 		t.Errorf("the report does not say the prompt is missing:\n%s", line)
+	}
+}
+
+func TestParseIdlerReportSkipsLinesThatAreNotReadings(t *testing.T) {
+	notRunning, readings := parseIdlerReport("forgelet-bridge\n\ncoder idle-holding-card refund-card new=0 in_process=1\n")
+
+	if notRunning {
+		t.Error("a forge with a reading was read as not running")
+	}
+	if len(readings) != 1 || readings[0].Role != "coder" {
+		t.Errorf("readings = %+v, want only the role's line", readings)
+	}
+
+	// A line with two columns is a reading: the role and the verdict it
+	// reached. Dropping it would lose a role the check did report.
+	if _, two := parseIdlerReport("coder idle-holding-card\n"); len(two) != 1 || two[0].Verdict != "idle-holding-card" {
+		t.Errorf("readings = %+v, want the role and its verdict read from a two-column line", two)
+	}
+}
+
+func TestReadingFromReadsACardOnlyWhereACardSits(t *testing.T) {
+	// A third column that is a count is not a card, and a line with no third
+	// column has none either: reading either as a card is the self-check
+	// seeing something the check never said.
+	counts := readingFrom(strings.Fields("coder idle-holding-card new=2 in_process=0"))
+	if counts.Card != "-" {
+		t.Errorf("card = %q, want no card read from a count", counts.Card)
+	}
+	short := readingFrom(strings.Fields("coder idle-nothing-assigned"))
+	if short.Card != "-" {
+		t.Errorf("card = %q, want no card read from a two-column line", short.Card)
+	}
+}
+
+func TestMailOfReadsTheMailALineNames(t *testing.T) {
+	cases := map[string]struct {
+		line string
+		mail string
+	}{
+		"a new handoff":            {"coder idle-holding-card refund-card new=2 in_process=0", "new=2"},
+		"a handoff in process":     {"coder idle-holding-card refund-card new=0 in_process=3", "in_process=3"},
+		"new wins over in process": {"coder idle-holding-card refund-card new=1 in_process=2", "new=1"},
+		"nothing waiting":          {"coder idle-nothing-assigned - new=0 in_process=0", ""},
+	}
+	for what, testCase := range cases {
+		mail, count := mailOf(strings.Fields(testCase.line))
+		if mail != testCase.mail || (testCase.mail == "") != (count == 0) {
+			t.Errorf("%s: mailOf = (%q, %d), want %q", what, mail, count, testCase.mail)
+		}
+	}
+}
+
+func TestCountOfReadsOnlyItsOwnCount(t *testing.T) {
+	if got, ok := countOf("in_process=2", "new="); ok || got != 0 {
+		t.Errorf("countOf(in_process=2) as new = (%d, %v), want nothing read", got, ok)
+	}
+	if _, ok := countOf("new=two", "new="); ok {
+		t.Error("countOf read a count that is not a number")
+	}
+	if got, ok := countOf("new=2", "new="); !ok || got != 2 {
+		t.Errorf("countOf(new=2) = (%d, %v), want 2", got, ok)
+	}
+}
+
+func TestPaneOfReadsTheRoleRowAndNothingElse(t *testing.T) {
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The way a forge writes its roles file: the role and the lane it works in
+	// are two fields, and the lane is not always the role's own name - this
+	// forge's specifier works in the master lane. A row too short to name a
+	// pane names none, and no row is read past the columns it has.
+	roles := "specifier\tmaster\t" + project + "\tfixture-specifier\tSpecifier\tcodex\ttask\tforward-only\n" +
+		"master\tmaster\tfixture-master\n" +
+		"coder\tcoder\t" + project + "\tfixture-coder\n"
+	if err := os.WriteFile(filepath.Join(project, ".swarmforge", "roles.tsv"), []byte(roles), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := paneOf(project, "specifier"); got != "fixture-specifier" {
+		t.Errorf("paneOf(specifier) = %q, want the pane its row records, not the lane it works in", got)
+	}
+	if got := paneOf(project, "master"); got != "-" {
+		t.Errorf("paneOf(master) = %q, want nothing: no role row is named master", got)
+	}
+	if got := paneOf(project, "coder"); got != "fixture-coder" {
+		t.Errorf("paneOf(coder) = %q, want the pane its four-column row records", got)
+	}
+}
+
+func TestPaneOfSaysNothingWhenTheProjectHasNoRolesFile(t *testing.T) {
+	if got := paneOf(t.TempDir(), "coder"); got != "-" {
+		t.Errorf("paneOf = %q, want nothing read from a project with no roles file", got)
 	}
 }

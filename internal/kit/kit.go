@@ -24,18 +24,20 @@ import (
 const kitName = "the route gate, the idler check and the stall watch"
 
 // Tool is one tool the kit ships: the files it is made of, and the name the
-// report uses for it.
+// report uses for it. The self-check travels with the tool, so a tool the kit
+// ships is a tool the installer checks.
 type Tool struct {
 	Subject string
 	Files   []string
+	Check   func(scripts, forgeRoot string) (string, bool)
 }
 
 // Tools is the kit, in the order the report names it.
 func Tools() []Tool {
 	return []Tool{
-		{Subject: "route gate", Files: []string{"route_card.sh", "route_card.bb"}},
-		{Subject: "idler check", Files: []string{"role_health.sh", "role_health.bb"}},
-		{Subject: "stall watch", Files: []string{"stall_watch.sh"}},
+		{Subject: "route gate", Files: []string{"route_card.sh", "route_card.bb"}, Check: gateSelfCheck},
+		{Subject: "idler check", Files: []string{"role_health.sh", "role_health.bb"}, Check: idlerSelfCheck},
+		{Subject: "stall watch", Files: []string{"stall_watch.sh"}, Check: watchSelfCheck},
 	}
 }
 
@@ -180,17 +182,8 @@ func installAgent(report *Report, scripts, forgeRoot string) error {
 // ran and what it looked for. A reading that does not fit is a failure in the
 // report, not silence.
 func selfChecks(report *Report, scripts, forgeRoot string) {
-	for _, subject := range []string{"route gate", "idler check", "stall watch"} {
-		var line string
-		var ok bool
-		switch subject {
-		case "route gate":
-			line, ok = gateSelfCheck(scripts, forgeRoot)
-		case "idler check":
-			line, ok = idlerSelfCheck(scripts, forgeRoot)
-		default:
-			line, ok = watchSelfCheck(scripts, forgeRoot)
-		}
+	for _, tool := range Tools() {
+		line, ok := tool.Check(scripts, forgeRoot)
 		report.line(line)
 		report.failed = report.failed || !ok
 	}
@@ -409,3 +402,7 @@ func run(command string, args ...string) (string, error) {
 	out, err := exec.Command(command, args...).CombinedOutput()
 	return string(out), err
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T21:36:44+02:00","module_hash":"84d19d1ab6ebbe948701f280fcbf927f5aed3b76a11e89c380950c97bfb3e8d3","functions":[{"id":"func/Tools","name":"Tools","line":36,"end_line":42,"hash":"e04178bc850c9e20648be62d7e984d0c2498989ee72be4daf19c90453d4620b0"},{"id":"func/Report.String","name":"Report.String","line":51,"end_line":51,"hash":"863e712f9451c5c9557839b1f63d51b90cbca25f344ed8be78f4bb1db698109d"},{"id":"func/Report.Failed","name":"Report.Failed","line":54,"end_line":54,"hash":"6571c27262847925ba3f9d9228894e28a4e8f64e756fd26f5a9fe2dedeca6219"},{"id":"func/Report.line","name":"Report.line","line":56,"end_line":56,"hash":"f139de20d2b5e0c47987f48ff54a63a8fd8abfef4ee9f0f72709daeca5b4fb77"},{"id":"func/Install","name":"Install","line":60,"end_line":86,"hash":"2cb72b6421c7585c406a13ad8f40ee7a5c817a5da9ad37f7b029b7caf937629c"},{"id":"func/forgeDir","name":"forgeDir","line":92,"end_line":105,"hash":"3201b616212bcf7f5a30837dec2b783d9659270662cb1db0f7ac25a6ad3d2f64"},{"id":"func/installTools","name":"installTools","line":109,"end_line":122,"hash":"e44299b0e64ad015e26023a978f63d25a36ce7e77b1a03c3e53cd8b0d2e5b814"},{"id":"func/installFile","name":"installFile","line":133,"end_line":156,"hash":"9b58bb5480e63c7f14ffb5eb27be651e9641336c60044d95ff8678d3f6cdf188"},{"id":"func/installAgent","name":"installAgent","line":161,"end_line":179,"hash":"53718d85a8f28a22c9ee2214d32751afaf26d55ea889f20db7265d8610516640"},{"id":"func/selfChecks","name":"selfChecks","line":184,"end_line":190,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":199,"end_line":207,"hash":"1e619c76e525fca762a817046990f848b0debe2aa7fbc215f84bde379a0a3976"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":212,"end_line":230,"hash":"871972403f17e874d6ac62b5d04963ad3c1ab2dbf89056a2c520655422fefb87"},{"id":"func/idlerEvidence","name":"idlerEvidence","line":235,"end_line":260,"hash":"e0f88a851e413a6ea124a74048d4cffd192e57b8d36e1eb63ece375e4f8b83d6"},{"id":"func/parseIdlerReport","name":"parseIdlerReport","line":274,"end_line":289,"hash":"d1317252a05b64fbc31b286c504434c8d4c16a6096260f00597f947e6c8408ef"},{"id":"func/readingFrom","name":"readingFrom","line":293,"end_line":300,"hash":"02e45455e68fbaff4be2de1912ed5ad454512d5e11df952143b056157fe0c7e9"},{"id":"func/mailOf","name":"mailOf","line":304,"end_line":316,"hash":"0ec62c2244e0e2727d0d4e98dbc61f786a1e014bdeb01f39a01966b2c3a2f93c"},{"id":"func/countOf","name":"countOf","line":319,"end_line":325,"hash":"0d2f4363a3d949886a923f10779ae39233aa333ebce3c1e23437cf0cbc090ed5"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":330,"end_line":338,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/policy","name":"policy","line":341,"end_line":349,"hash":"0c82487d751f8aa51afd36223b39b7b5e7dc093624363312b499929f3be2eb83"},{"id":"func/firstLine","name":"firstLine","line":352,"end_line":359,"hash":"55405d13f50d5c0b8bed4113c52ff9d3314748ddade7e4dc38afc668638a0cae"},{"id":"func/projects","name":"projects","line":362,"end_line":380,"hash":"7c4517b40f84cd057b6fe50d69cca68cf19ec7baeada4860a4ebae2e489315b1"},{"id":"func/paneOf","name":"paneOf","line":384,"end_line":396,"hash":"dbb60542d466b85f6528d132ec38702d9715958b37e117f38eefb9c0cb950043"},{"id":"func/run","name":"run","line":401,"end_line":404,"hash":"b0ba526783b3c7b75bbd753ee0cc95ab7a15ecd7af00ccd08a10f9bd95c098ae"}]}
+// mutate4go-manifest-end
