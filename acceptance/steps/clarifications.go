@@ -171,7 +171,7 @@ func operatorRepliesToClarification(_ context.Context, world any, captures []str
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-	return oneUserRepliesToClarification(ctx, w, w.operatorID, captures[2], captures[1])
+	return oneUserRepliesToClarification(ctx, w, w.operatorID, captures[1], captures[2])
 }
 
 // someoneRepliesToClarification sends a reply from any fixture client, so the

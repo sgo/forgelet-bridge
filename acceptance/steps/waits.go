@@ -12,19 +12,30 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 )
 
-// caughtUp waits for the bridge to finish a tick with nothing left to do.
+// caughtUp waits for the bridge to finish a tick with nothing left to do,
+// counting only ticks it began after this step looked at the status: what a
+// step has just written to the forge is only known handled once a tick that
+// started afterwards has come round and found nothing left.
 func (w *World) caughtUp(ctx context.Context) error {
 	path := filepath.Join(w.stateDir, bridge.StatusName)
 	before, _ := readStatus(path)
 	for {
 		status, err := readStatus(path)
-		if err == nil && status.Tick > before.Tick && status.Idle {
+		if err == nil && settledSince(status, before.Tick) {
 			return nil
 		}
 		if err := fixtures.Sleep(ctx, 100*time.Millisecond); err != nil {
 			return fmt.Errorf("the bridge never caught up: %w", err)
 		}
 	}
+}
+
+// settledSince reports whether a status is one a step can trust: a tick the
+// bridge began after the step looked - never the tick it was already running
+// then, which may have read the forge before the step wrote to it - that it
+// finished with nothing left to do.
+func settledSince(status bridge.Status, seen uint64) bool {
+	return status.Tick >= seen+2 && status.Idle
 }
 
 // readStatus reads the progress the bridge reports, in the shape the bridge
