@@ -63,6 +63,30 @@ func TestPlanThreadsTheAnswerUnderTheThreadTheOperatorQuotedIn(t *testing.T) {
 	}
 }
 
+func TestPlanThreadsTheAnswerUnderAQuotedMessageFromAnEarlierTick(t *testing.T) {
+	// The room only carries what was said since the last drain, so a quoted
+	// message the bridge posted earlier is known from its own bookkeeping.
+	state := State{Threads: map[string]string{"req-1": "$forge-message"}}
+	events := []RoomEvent{{
+		EventID: "$operator-message",
+		Sender:  operator,
+		Body:    "> is the build green?\n\nand is the deploy green?",
+		ReplyTo: "$forge-message",
+	}}
+
+	actions := Plan(operator, state, nil, events)
+
+	want := []Action{{
+		Kind:          CreateForgeRequest,
+		Body:          "and is the deploy green?",
+		SourceEventID: "$operator-message",
+		SourceThread:  "$forge-message",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the answer in the quoted message's thread %+v", actions, want)
+	}
+}
+
 func TestPlanSaysNothingForAQuoteTheOperatorDidNotAnswer(t *testing.T) {
 	events := []RoomEvent{{
 		EventID: "$operator-message",

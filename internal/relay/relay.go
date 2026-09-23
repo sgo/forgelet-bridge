@@ -137,7 +137,7 @@ func operatorRequests(operator string, st State, events []RoomEvent) []Action {
 			Kind:          CreateForgeRequest,
 			Body:          OwnWords(event.Body),
 			SourceEventID: event.EventID,
-			SourceThread:  askedInThread(event, events),
+			SourceThread:  askedInThread(st, event, events),
 		})
 	}
 	return actions
@@ -147,7 +147,7 @@ func operatorRequests(operator string, st State, events []RoomEvent) []Action {
 // wrote in a thread stays there; a message that quotes another one belongs in
 // the thread the quoted message sits in, which is where the answer to it
 // belongs.
-func askedInThread(event RoomEvent, events []RoomEvent) string {
+func askedInThread(st State, event RoomEvent, events []RoomEvent) string {
 	if event.ThreadRoot != "" {
 		return event.ThreadRoot
 	}
@@ -162,6 +162,13 @@ func askedInThread(event RoomEvent, events []RoomEvent) string {
 			return quoted.ThreadRoot
 		}
 		return quoted.EventID
+	}
+	// The room only carries what was said since the last drain, so a message
+	// the bridge posted earlier is known from the bookkeeping instead.
+	for _, messageID := range st.Threads {
+		if messageID == event.ReplyTo {
+			return event.ReplyTo
+		}
 	}
 	return ""
 }
