@@ -4,6 +4,7 @@
 #
 #   matrix-bridge.sh start | stop | status | logs
 #   matrix-bridge.sh add-forge <forge-root> <name>
+#   matrix-bridge.sh install-rules
 #
 # This is the forge's own copy of the adapter: it works out the forge it serves
 # from where the script itself lives, so it is run from the forge rather than
@@ -21,12 +22,21 @@
 # bridge whether the configuration would serve before anything replaces the
 # good file, keeps a copy of what it replaced, restarts the bridge, and prints
 # the line the bridge logged naming the forge it reached.
+#
+# install-rules installs the prompt rules the bridge's rooms rely on into this
+# forge's own constitution and the packs its projects are scaffolded from. It
+# owns one marked block per rule, so running it again is safe, what drifted is
+# refreshed, and the forge keeps every word it wrote itself. A project's own
+# tracked copy is never touched: a project picks a rule up through its
+# specifier, like any other change.
 set -euo pipefail
 
 SCRIPT_FILE="${(%):-%x}"
 FORGE_ROOT="${MATRIX_BRIDGE_FORGE_ROOT:-$(cd "$(dirname "$SCRIPT_FILE")/../.." && pwd)}"
 CONFIG="${MATRIX_BRIDGE_CONFIG:-$FORGE_ROOT/.swarmforge/matrix-bridge.json}"
 BINARY="${MATRIX_BRIDGE_BINARY:-$FORGE_ROOT/projects/forgelet-bridge/build/acceptance/bin/forgelet-bridge}"
+RULES_BINARY="${MATRIX_BRIDGE_RULES_BINARY:-$FORGE_ROOT/projects/forgelet-bridge/build/acceptance/bin/install-rules}"
+RULES_DIR="${MATRIX_BRIDGE_RULES:-$FORGE_ROOT/projects/forgelet-bridge/rules}"
 SESSION="${MATRIX_BRIDGE_SESSION:-matrix-bridge}"
 LOG="$FORGE_ROOT/.swarmforge/matrix-bridge.log"
 # The socket sits beside the forge, unless the forge's path is too deep for one
@@ -45,7 +55,7 @@ SOCKET="$(socket_path)"
 die() { print -u2 -- "matrix-bridge: $*"; exit 1 }
 
 usage() {
-  sed -n '2,21p' "$SCRIPT_FILE" | sed 's/^# \{0,1\}//'
+  sed -n '2,32p' "$SCRIPT_FILE" | sed 's/^# \{0,1\}//'
 }
 
 running() { tmux -S "$SOCKET" has-session -t "$SESSION" 2>/dev/null }
@@ -140,6 +150,12 @@ PY
   die "the bridge never reported reaching $name; see $LOG"
 }
 
+cmd_install_rules() {
+  [[ -x "$RULES_BINARY" ]] || die "installer not found or not executable: $RULES_BINARY (build it with the project's scripts/build.sh)"
+  [[ -d "$RULES_DIR" ]] || die "rules not found: $RULES_DIR"
+  "$RULES_BINARY" --forge-root "$FORGE_ROOT" --rules "$RULES_DIR"
+}
+
 cmd_add_forge() {
   local root="${1:-}" name="${2:-}"
   [[ -n "$root" && -n "$name" ]] || die "add-forge needs a forge root and the name the operator knows it by"
@@ -172,6 +188,7 @@ case "${1:-}" in
   status) cmd_status ;;
   logs) [[ -f "$LOG" ]] && tail -f "$LOG" || die "no log at $LOG" ;;
   add-forge) shift; cmd_add_forge "$@" ;;
+  install-rules) cmd_install_rules ;;
   ""|-h|--help) usage ;;
   *) usage; exit 1 ;;
 esac
