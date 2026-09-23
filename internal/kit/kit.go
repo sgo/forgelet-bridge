@@ -57,35 +57,17 @@ func (r *Report) line(text string) { r.lines = append(r.lines, text) }
 // agent the watch would run, and self-checks every tool against the forge.
 func Install(forgeRoot, kitDir string) (Report, error) {
 	var report Report
-	// Everything the report names, and every tool this runs, reads the forge by
-	// its full path: a tool that resolves the root itself would otherwise name
-	// a different place in the report than the one the installer worked on.
-	absolute, err := filepath.Abs(forgeRoot)
+	forgeRoot, err := forgeDir(forgeRoot)
 	if err != nil {
 		return report, err
-	}
-	forgeRoot = absolute
-	info, err := os.Stat(forgeRoot)
-	if err != nil {
-		return report, fmt.Errorf("the forge %s is not there: %w", forgeRoot, err)
-	}
-	if !info.IsDir() {
-		return report, fmt.Errorf("the forge %s is not a directory", forgeRoot)
 	}
 	scripts := filepath.Join(forgeRoot, "swarmforge", "scripts")
 	if err := os.MkdirAll(scripts, 0o755); err != nil {
 		return report, err
 	}
-	changed := false
-	for _, tool := range Tools() {
-		for _, file := range tool.Files {
-			outcome, err := installFile(tool.Subject, filepath.Join(kitDir, file), filepath.Join(scripts, file))
-			if err != nil {
-				return report, err
-			}
-			report.line(outcome.line)
-			changed = changed || outcome.changed
-		}
+	changed, err := installTools(&report, kitDir, scripts)
+	if err != nil {
+		return report, err
 	}
 	if changed {
 		report.line("installed " + kitName + " in " + scripts)
@@ -99,6 +81,42 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 	selfChecks(&report, scripts, forgeRoot)
 	policy(&report, forgeRoot)
 	return report, nil
+}
+
+// forgeDir is the forge root as a full path that is a directory. Everything the
+// report names, and every tool the installer runs, reads the forge by its full
+// path: a tool that resolves the root itself would otherwise name a different
+// place in the report than the one the installer worked on.
+func forgeDir(forgeRoot string) (string, error) {
+	absolute, err := filepath.Abs(forgeRoot)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return "", fmt.Errorf("the forge %s is not there: %w", absolute, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("the forge %s is not a directory", absolute)
+	}
+	return absolute, nil
+}
+
+// installTools copies every file of the kit into the forge's scripts, and says
+// whether any of them changed.
+func installTools(report *Report, kitDir, scripts string) (bool, error) {
+	changed := false
+	for _, tool := range Tools() {
+		for _, file := range tool.Files {
+			outcome, err := installFile(tool.Subject, filepath.Join(kitDir, file), filepath.Join(scripts, file))
+			if err != nil {
+				return changed, err
+			}
+			report.line(outcome.line)
+			changed = changed || outcome.changed
+		}
+	}
+	return changed, nil
 }
 
 // installOutcome is what copying one file did.
@@ -272,24 +290,36 @@ func parseIdlerReport(output string) (bool, []reading) {
 			notRunning = true
 			continue
 		}
-		found := reading{Role: columns[0], Verdict: columns[1], Card: "-"}
-		if len(columns) > 2 && !strings.Contains(columns[2], "=") {
-			found.Card = columns[2]
-		}
-		for _, column := range columns {
-			count, ok := countOf(column, "new=")
-			if ok && count > 0 {
-				found.Mail, found.MailCount = "new="+strconv.Itoa(count), count
-				continue
-			}
-			count, ok = countOf(column, "in_process=")
-			if ok && count > 0 && found.MailCount == 0 {
-				found.Mail, found.MailCount = "in_process="+strconv.Itoa(count), count
-			}
-		}
-		readings = append(readings, found)
+		readings = append(readings, readingFrom(columns))
 	}
 	return notRunning, readings
+}
+
+// readingFrom is one role's line of the check's report: the role, its verdict,
+// the card the board showed, and the mail.
+func readingFrom(columns []string) reading {
+	found := reading{Role: columns[0], Verdict: columns[1], Card: "-"}
+	if len(columns) > 2 && !strings.Contains(columns[2], "=") {
+		found.Card = columns[2]
+	}
+	found.Mail, found.MailCount = mailOf(columns)
+	return found
+}
+
+// mailOf is the mail a report line names: a new one first, then the one still
+// in process.
+func mailOf(columns []string) (string, int) {
+	mail, count := "", 0
+	for _, column := range columns {
+		if got, ok := countOf(column, "new="); ok && got > 0 {
+			mail, count = "new="+strconv.Itoa(got), got
+			continue
+		}
+		if got, ok := countOf(column, "in_process="); ok && got > 0 && count == 0 {
+			mail, count = "in_process="+strconv.Itoa(got), got
+		}
+	}
+	return mail, count
 }
 
 // countOf reads one count column of a report line.
