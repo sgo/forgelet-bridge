@@ -8,7 +8,9 @@ Feature: Chat Channel Relay
   # The operator's chat channel in the forge is one conversation in the chat
   # room: what the forge holds appears in the room, what the operator sends
   # becomes a chat request for the lieutenant, and the lieutenant's answer
-  # arrives as a reply in that message's thread.
+  # arrives as a reply in that message's thread. A reply the phone makes by
+  # quoting a message sends the operator's own words, with the quote the phone
+  # writes into the body left out of the request.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -43,3 +45,9 @@ Feature: Chat Channel Relay
     And the lieutenant answers the chat request "please retry the invoice card" with "retried, the card is queued"
     Then the operator decrypts the thread reply "yes, the build is green" to the chat message "is the build green?"
     And the operator decrypts the thread reply "retried, the card is queued" to the chat message "please retry the invoice card"
+
+  # Chat Channel Relay 5: a reply that quotes a message reaches the lieutenant as the operator's own words
+  Scenario: Chat Channel Relay 5: a reply that quotes a message reaches the lieutenant as the operator's own words
+    Given the forge's dashboard already holds the chat request "is the build green?"
+    When the operator swipes a reply "yes, the build is green" to the chat message "is the build green?"
+    Then the forge holds the chat request "yes, the build is green" the dashboard took and typed into the lieutenant's pane

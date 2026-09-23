@@ -13,6 +13,9 @@ Feature: Phone Approvals
   # reacting, sends the approval back by replying in its thread, and the room
   # shows the outcome once the approval is resolved from either device.
   # Deleting work and tearing projects down stay on the desktop.
+  # A reply the phone makes by quoting the approval message counts as a reply
+  # too: it sends the work back unless its own words approve, and the quote the
+  # phone writes into the body is not read as the operator's words.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -45,7 +48,7 @@ Feature: Phone Approvals
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator replies "the timesheet total is still wrong" in the approval message's thread for the card phone-approvals
-    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with "the timesheet total is still wrong"
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "the timesheet total is still wrong"
     And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
 
   # Phone Approvals 4: only the operator's ✅ reaction acts on the approval
@@ -73,3 +76,19 @@ Feature: Phone Approvals
     When the operator taps ✅ on the approval message for the card phone-approvals
     Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
     And the approval message's thread holds exactly one reply
+
+  # Phone Approvals 6: the operator sends the approval back by quoting it in a reply
+  Scenario: Phone Approvals 6: the operator sends the approval back by quoting it in a reply
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator swipes a reply "refund figures do not add up" to the approval message for the card phone-approvals
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "refund figures do not add up"
+    And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
+
+  # Phone Approvals 7: a reply that quotes the approval is decided by its own words
+  Scenario: Phone Approvals 7: a reply that quotes the approval is decided by its own words
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator swipes a reply "approve" to the approval message for the card phone-approvals
+    Then the forge's dashboard recorded the approval for the card phone-approvals as approved
+    And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals

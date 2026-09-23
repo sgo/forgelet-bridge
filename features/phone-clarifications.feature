@@ -4,12 +4,17 @@ Feature: Phone Clarifications
   # dashboard holds the clarification, and nothing carries it to the operator's
   # space. The clarifications room carries each pending clarification - the
   # project it belongs to, the role that is blocked, and the question itself -
-  # and the operator's reply in its thread is the answer: the reply is carried
-  # back as the answer through the forge's own dashboard, so the blocked agent
-  # wakes with it. A clarification answered from the desktop is reported in the
-  # room rather than left looking open. What a reply means is what the room
-  # says: in an approval's thread a reply sends the work back, in a
-  # clarification's thread a reply is the answer.
+  # and the operator's reply is the answer: the reply is carried back as the
+  # answer through the forge's own dashboard, so the blocked agent wakes with
+  # it. A reply counts whether it is written in the message's thread or made by
+  # quoting the message, which is the gesture the phone actually offers: swiping
+  # right quotes the message and sends a reply that carries no thread relation
+  # at all. The phone writes that quote into the reply's body, and it comes out
+  # again before the words are read, so the answer is what the operator said and
+  # not the question they quoted back. A clarification answered from the desktop
+  # is reported in the room rather than left looking open. What a reply means is
+  # what the room says: in an approval's thread a reply sends the work back, in
+  # a clarification's thread a reply is the answer.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -31,7 +36,7 @@ Feature: Phone Clarifications
     Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
     And the bridge has caught up with the forge
     When the operator replies "yes" in the clarification message's thread for the project forgelet-bridge
-    Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with "yes"
+    Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with exactly "yes"
     And the blocked role coder is woken with the answer "yes"
     And the operator decrypts the clarification reply "Answered" in the clarification message for the project forgelet-bridge
 
@@ -59,10 +64,19 @@ Feature: Phone Clarifications
     When the matrix client @stranger:example.org replies "yes, very" in the clarification message's thread for the project forgelet-bridge
     Then the clarification for the project forgelet-bridge is still pending in the forge
 
-  # Phone Clarifications 6: a message outside the clarification's thread answers nothing
-  Scenario: Phone Clarifications 6: a message outside the clarification's thread answers nothing
+  # Phone Clarifications 6: a plain message in the room answers nothing
+  Scenario: Phone Clarifications 6: a plain message in the room answers nothing
     Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "can I skip the fixture snapshot?"
     And the bridge has caught up with the forge
     When the operator sends the message "yes, skip it" into the clarifications room
     Then the clarification for the project forgelet-bridge is still pending in the forge
     And the forge holds 0 chat requests
+
+  # Phone Clarifications 7: a reply made by quoting the message is the answer, quote and all
+  Scenario: Phone Clarifications 7: a reply made by quoting the message is the answer, quote and all
+    Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
+    And the bridge has caught up with the forge
+    When the operator swipes a reply "yes" to the clarification message for the project forgelet-bridge
+    Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with exactly "yes"
+    And the blocked role coder is woken with the answer "yes"
+    And the operator decrypts the clarification reply "Answered" in the clarification message for the project forgelet-bridge
