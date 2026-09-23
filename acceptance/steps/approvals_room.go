@@ -22,13 +22,18 @@ func (w *World) forgeSpace() (string, error) {
 	return filepath.Base(root), nil
 }
 
-// approvalsRoom is the approvals room of the configured forge.
-func (w *World) approvalsRoom(ctx context.Context) (string, error) {
+// roomNamed is the named room inside the configured forge's space.
+func (w *World) roomNamed(ctx context.Context, name string) (string, error) {
 	space, err := w.forgeSpace()
 	if err != nil {
 		return "", err
 	}
-	return w.waitForSpaceChild(ctx, space, config.ApprovalsRoomName)
+	return w.waitForSpaceChild(ctx, space, name)
+}
+
+// approvalsRoom is the approvals room of the configured forge.
+func (w *World) approvalsRoom(ctx context.Context) (string, error) {
+	return w.roomNamed(ctx, config.ApprovalsRoomName)
 }
 
 // approvalMessageStart is the opening line of the bridge's approval message.
@@ -163,8 +168,8 @@ func approvalThreadReplies(operator *fixtures.User, roomID, messageID, bridgeUse
 	return found
 }
 
-// spaceHoldsApprovalsRoom checks the forge space holds the approvals room.
-func spaceHoldsApprovalsRoom(_ context.Context, world any, captures []string) error {
+// spaceHoldsNamedRoom checks the forge space holds the named room.
+func spaceHoldsNamedRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
@@ -172,9 +177,8 @@ func spaceHoldsApprovalsRoom(_ context.Context, world any, captures []string) er
 	return err
 }
 
-// invitedToApprovalsRoom checks the bridge invited the operator to the
-// approvals room.
-func invitedToApprovalsRoom(_ context.Context, world any, captures []string) error {
+// invitedToNamedRoom checks the bridge invited the operator to the named room.
+func invitedToNamedRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
@@ -191,4 +195,21 @@ func approvalsRoomEncrypted(_ context.Context, world any, captures []string) err
 		return err
 	}
 	return w.encryptedRoom(ctx, roomID, "the approvals room "+captures[1])
+}
+
+// approvalSaysWhatAReplyMeans checks the approval message says a reply sends
+// the approval back, so the two rooms cannot be told apart only in the code.
+func approvalSaysWhatAReplyMeans(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	_, _, body, err := w.approvalMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	text := strings.ToLower(body)
+	if !strings.Contains(text, "reply") || !strings.Contains(text, "send it back") {
+		return fmt.Errorf("the approval message does not tell the operator a reply sends it back:\n%s", body)
+	}
+	return nil
 }

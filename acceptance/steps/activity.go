@@ -16,11 +16,7 @@ const quietTicks = 10
 
 // activityRoom is the activity room of the configured forge.
 func (w *World) activityRoom(ctx context.Context) (string, error) {
-	space, err := w.forgeSpace()
-	if err != nil {
-		return "", err
-	}
-	return w.waitForSpaceChild(ctx, space, config.ActivityRoomName)
+	return w.roomNamed(ctx, config.ActivityRoomName)
 }
 
 // cardAppearedSeen waits for the update that says a card appeared.
