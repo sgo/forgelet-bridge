@@ -44,20 +44,26 @@ func forgeHoldsProject(ctx context.Context, world any, captures []string) error 
 	if err != nil {
 		return err
 	}
-	root := store.Root()
-	project := filepath.Join(root, "projects", captures[2])
-	for _, dir := range []string{root, project} {
-		if err := writeFile(filepath.Join(dir, ".swarmforge", "roles.tsv"), strings.Join([]string{
-			"master\tmaster\t" + dir + "\tfixture-master\tMaster\tcodex\ttask\tforward-only",
-			"coder\tcoder\t" + filepath.Join(dir, "worktrees", "coder") + "\tfixture-coder\tCoder\tcodex\ttask\tforward-only",
+	return setUpProject(store.Root(), captures[2])
+}
+
+// setUpProject gives a fixture forge root a project of its own: the roles it
+// serves with their panes, the board a card would land on, and the forge's own
+// scripts beside it.
+func setUpProject(root, project string) error {
+	dir := filepath.Join(root, "projects", project)
+	for _, where := range []string{root, dir} {
+		if err := writeFile(filepath.Join(where, ".swarmforge", "roles.tsv"), strings.Join([]string{
+			"master\tmaster\t" + where + "\tfixture-master\tMaster\tcodex\ttask\tforward-only",
+			"coder\tcoder\t" + filepath.Join(where, "worktrees", "coder") + "\tfixture-coder\tCoder\tcodex\ttask\tforward-only",
 		}, "\n")+"\n"); err != nil {
 			return err
 		}
-		if err := writeFile(filepath.Join(dir, ".swarmforge", "board", "tasks.tsv"), ""); err != nil {
+		if err := writeFile(filepath.Join(where, ".swarmforge", "board", "tasks.tsv"), ""); err != nil {
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(project, "swarmforge"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "swarmforge"), 0o755); err != nil {
 		return err
 	}
 	return markProjectOpen(root)

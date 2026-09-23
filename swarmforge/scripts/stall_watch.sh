@@ -84,10 +84,12 @@ PLIST
 
 cmd_run() {
   local roots; roots=(${(f)"$(forge_roots "$@")"})
-  local root
+  # Declared once, outside the loops: in zsh a repeat `local name` inside a loop
+  # prints the value it already has, which would put a stray path in the log on
+  # every root after the first.
+  local root project
   local checked=0
   for root in "${roots[@]}"; do
-    local project
     for project in "$root"/projects/*; do
       [[ -f "$project/.swarmforge/roles.tsv" ]] || continue
       "$SCRIPT_DIR/role_health.sh" "$project" --notify || true
