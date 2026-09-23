@@ -181,3 +181,189 @@ func TestLoadRefusesABlockThatIsNotMarked(t *testing.T) {
 		t.Fatal("Load accepted a rule with no markers")
 	}
 }
+
+func TestLoadIgnoresWhatIsNotARuleFile(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "stopping-without-finishing.md"), ruleText)
+	// A note beside the rules, and a directory whose name merely ends in .md:
+	// neither is a rule, and neither may stop the installer.
+	write(t, filepath.Join(dir, "notes.txt"), "not a rule\n")
+	if err := os.MkdirAll(filepath.Join(dir, "old.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded) != 1 || loaded[0].Subject != "stopping-without-finishing" {
+		t.Errorf("loaded = %+v, want the one rule file", loaded)
+	}
+}
+
+func TestInstallLeavesAHalfMarkedFileAlone(t *testing.T) {
+	root := forge(t)
+	half := filepath.Join(root, "swarmforge", "constitution", "articles", "stopping-without-finishing.prompt")
+	// The forge started from the block and wrote its own wording into it: the
+	// installer owns a block it can recognise end to end, and nothing else.
+	write(t, half, "<!-- bridge-rule: stopping-without-finishing -->\nThe forge's own wording from here.\n")
+
+	if _, err := Install(root, load(t)); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if got := read(t, half); got != "<!-- bridge-rule: stopping-without-finishing -->\nThe forge's own wording from here.\n" {
+		t.Errorf("%s = %q, want the forge's own file left as it was", half, got)
+	}
+}
+
+func TestInstallReportsARuleItCannotWrite(t *testing.T) {
+	root := forge(t)
+	if _, err := Install(root, load(t)); err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+	drifted := filepath.Join(root, "swarmforge", "constitution", "articles", "stopping-without-finishing.prompt")
+	write(t, drifted, strings.Replace(ruleText, "raise a clarification first", "go quiet", 1))
+	if err := os.Chmod(drifted, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(drifted, 0o644) })
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for a rule it could not write")
+	}
+}
+
+func TestInstallRefusesAForgeRootThatIsNotThere(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "typo")
+
+	if _, err := Install(missing, load(t)); err == nil {
+		t.Error("Install reported success for a forge root that is not there")
+	}
+	if _, err := os.Stat(filepath.Join(missing, "swarmforge")); !os.IsNotExist(err) {
+		t.Errorf("Install left a tree behind at %s: %v", missing, err)
+	}
+}
+
+func TestInstallRefusesAForgeRootThatIsNotADirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "forge")
+	write(t, root, "not a forge\n")
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for a forge root that is a file")
+	}
+}
+
+func TestLoadReadsTheRulesInSubjectOrder(t *testing.T) {
+	dir := t.TempDir()
+	// The files are named the other way round, so only their subjects can put
+	// them in this order.
+	write(t, filepath.Join(dir, "aaa.md"), "<!-- bridge-rule: work-holds-you -->\n## Work holds you\n<!-- end: work-holds-you -->\n")
+	write(t, filepath.Join(dir, "zzz.md"), ruleText)
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded) != 2 || loaded[0].Subject != "stopping-without-finishing" || loaded[1].Subject != "work-holds-you" {
+		t.Errorf("loaded = %+v, want the rules in subject order", loaded)
+	}
+}
+
+func TestLoadReportsWhatItCannotRead(t *testing.T) {
+	notADirectory := filepath.Join(t.TempDir(), "rules")
+	write(t, notADirectory, "not a directory\n")
+	if _, err := Load(notADirectory); err == nil {
+		t.Error("Load reported success for a rules path that is not a directory")
+	}
+
+	dir := t.TempDir()
+	unreadable := filepath.Join(dir, "stopping-without-finishing.md")
+	write(t, unreadable, ruleText)
+	if err := os.Chmod(unreadable, 0o200); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o644) })
+	if _, err := Load(dir); err == nil {
+		t.Error("Load reported success for a rule file it could not read")
+	}
+}
+
+func TestParseRefusesABlockItCannotRead(t *testing.T) {
+	cases := map[string]string{
+		"a block that names no subject":     "<!-- bridge-rule:  -->\n## Nothing named\n<!-- end:  -->\n",
+		"an end marker for another subject": "<!-- bridge-rule: a-subject -->\n## A subject\n<!-- end: another-subject -->\n",
+	}
+	for what, block := range cases {
+		if _, err := Parse(block); err == nil {
+			t.Errorf("Parse accepted %s", what)
+		}
+	}
+}
+
+func TestInstallReportsAPacksPathItCannotRead(t *testing.T) {
+	root := forge(t)
+	packs := filepath.Join(root, "packs")
+	if err := os.RemoveAll(packs); err != nil {
+		t.Fatal(err)
+	}
+	write(t, packs, "not a directory\n")
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for a forge whose packs cannot be read")
+	}
+}
+
+func TestInstallIgnoresWhatIsNotAPack(t *testing.T) {
+	root := forge(t)
+	write(t, filepath.Join(root, "packs", "a-note.txt"), "not a pack\n")
+
+	report, err := Install(root, load(t))
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if len(report.Changed) != 3 {
+		t.Errorf("changed = %v, want the constitution and the two packs", report.Changed)
+	}
+}
+
+func TestInstallReportsAnArticlePathItCannotCreate(t *testing.T) {
+	root := forge(t)
+	constitution := filepath.Join(root, "swarmforge", "constitution")
+	if err := os.RemoveAll(constitution); err != nil {
+		t.Fatal(err)
+	}
+	write(t, constitution, "not a directory\n")
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for an articles path it could not create")
+	}
+}
+
+func TestInstallReportsARulePathItCannotRead(t *testing.T) {
+	root := forge(t)
+	// A directory where the rule file goes is not a rule the installer can
+	// read or overwrite.
+	if err := os.MkdirAll(filepath.Join(root, "swarmforge", "constitution", "articles", "stopping-without-finishing.prompt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for a rule path it could not read")
+	}
+}
+
+func TestInstallReportsAnArticleDirectoryItCannotMake(t *testing.T) {
+	root := forge(t)
+	constitution := filepath.Join(root, "swarmforge", "constitution")
+	if err := os.RemoveAll(filepath.Join(constitution, "articles")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(constitution, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(constitution, 0o755) })
+
+	if _, err := Install(root, load(t)); err == nil {
+		t.Error("Install reported success for an article directory it could not make")
+	}
+}
