@@ -134,6 +134,29 @@ func userJoinedChatRoom(_ context.Context, world any, captures []string) error {
 	return w.addUserToRoom(ctx, captures[1], roomID, captures[2])
 }
 
+// operatorSwipesReplyToChatMessage sends the operator's message the way a phone
+// does: by quoting the chat message, which carries the words back to the forge
+// without the quote the phone wrote into the body.
+func operatorSwipesReplyToChatMessage(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	anchor, err := w.chatMessageAnchor(ctx, captures[2])
+	if err != nil {
+		return err
+	}
+	roomID, err := w.chatRoom(ctx, "Chat")
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = operator.SwipeReply(ctx, roomID, anchor, captures[1])
+	return err
+}
+
 func roomHoldsOneChatMessage(_ context.Context, world any, captures []string) error {
 	return expectMessages(world.(*World), captures[1], captures[2], false)
 }

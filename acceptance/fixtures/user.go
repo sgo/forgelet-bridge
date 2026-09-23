@@ -27,7 +27,9 @@ type Message struct {
 	Sender     string
 	Body       string
 	ThreadRoot string
-	Encrypted  bool
+	// ReplyTo is the message this one answers, empty when it answers none.
+	ReplyTo   string
+	Encrypted bool
 }
 
 // DeviceKey is one Matrix device of a user, as another client sees it. The
@@ -200,6 +202,64 @@ func (u *User) SendInThread(ctx context.Context, roomID, body, threadRoot string
 	return resp.EventID.String(), nil
 }
 
+// SwipeReply sends the reply a phone makes by quoting a message: the phone
+// writes the quoted message into the body, each of its lines marked with the
+// client's quote marker, and carries the message it quotes without carrying a
+// thread.
+func (u *User) SwipeReply(ctx context.Context, roomID, targetEventID, words string) (string, error) {
+	quoted, ok := u.messageByEvent(roomID, targetEventID)
+	if !ok {
+		return "", fmt.Errorf("%s cannot quote %s: it never saw that message", u.UserID, targetEventID)
+	}
+	body := quoteBack(quoted.Body) + "\n\n" + words
+	content := &event.MessageEventContent{
+		MsgType:   event.MsgText,
+		Body:      body,
+		RelatesTo: (&event.RelatesTo{}).SetReplyTo(id.EventID(targetEventID)),
+	}
+	encrypted, err := u.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)
+	if err != nil {
+		return "", err
+	}
+	resp, err := u.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventEncrypted, encrypted)
+	if err != nil {
+		return "", err
+	}
+	u.mu.Lock()
+	u.messages = append(u.messages, Message{
+		RoomID:    roomID,
+		EventID:   resp.EventID.String(),
+		Sender:    u.UserID,
+		Body:      body,
+		ReplyTo:   targetEventID,
+		Encrypted: true,
+	})
+	u.mu.Unlock()
+	return resp.EventID.String(), nil
+}
+
+// quoteBack is the message a phone writes into a swipe-reply's body, the way
+// Matrix clients quote it.
+func quoteBack(body string) string {
+	lines := strings.Split(body, "\n")
+	for index, line := range lines {
+		lines[index] = "> " + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+// messageByEvent is a message this client has seen in a room.
+func (u *User) messageByEvent(roomID, eventID string) (Message, bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	for _, message := range u.messages {
+		if message.RoomID == roomID && message.EventID == eventID {
+			return message, true
+		}
+	}
+	return Message{}, false
+}
+
 // JoinedRoomIDs lists the rooms this user is in.
 func (u *User) JoinedRoomIDs(ctx context.Context) ([]string, error) {
 	resp, err := u.cli.JoinedRooms(ctx)
@@ -368,6 +428,9 @@ func (u *User) captureMessage(_ context.Context, evt *event.Event) {
 	}
 	if rel := content.RelatesTo; rel != nil && rel.Type == event.RelThread {
 		message.ThreadRoot = rel.EventID.String()
+	}
+	if rel := content.RelatesTo; rel != nil {
+		message.ReplyTo = rel.GetNonFallbackReplyTo().String()
 	}
 
 	u.mu.Lock()
