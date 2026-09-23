@@ -108,6 +108,22 @@ func idlerCheckReportsForgeNotRunning(_ context.Context, world any, _ []string) 
 }
 
 // idlerLine is the check's report line for one role.
+// idlerCheckReportsTheNoteMissing checks the check says the card's note went
+// missing, which is its own verdict: the board says a role holds work and
+// nothing anywhere exists to hand it over.
+func idlerCheckReportsTheNoteMissing(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	card := captures[1]
+	for _, line := range strings.Split(strings.TrimRight(w.idlerOutput, "\n"), "\n") {
+		columns := strings.Fields(line)
+		if len(columns) >= 3 && columns[1] == "note-missing" && strings.Contains(columns[2], card) {
+			return nil
+		}
+	}
+	return fmt.Errorf("the idler check does not report the note for the card %s as missing:\n%s", card, w.idlerOutput)
+}
+
+// idlerLine is the check's report line for one role.
 func idlerLine(w *World, role string) (string, error) {
 	for _, line := range strings.Split(strings.TrimRight(w.idlerOutput, "\n"), "\n") {
 		if columns := strings.Fields(line); len(columns) > 0 && columns[0] == role {
@@ -123,9 +139,8 @@ func idlerVerdict(phrase string) (string, string, error) {
 	switch {
 	case strings.HasPrefix(phrase, "idle holding the card "):
 		return "idle-holding-card", strings.TrimPrefix(phrase, "idle holding the card "), nil
-	case strings.HasPrefix(phrase, "assigned the card ") && strings.HasSuffix(phrase, " but not yet handed over"):
-		card := strings.TrimSuffix(strings.TrimPrefix(phrase, "assigned the card "), " but not yet handed over")
-		return "assigned-not-taken", card, nil
+	case phrase == "idle with nothing to pick up":
+		return "idle-nothing-to-pick-up", "", nil
 	case phrase == "idle with nothing assigned":
 		return "idle-nothing-assigned", "", nil
 	case phrase == "working":
@@ -134,6 +149,8 @@ func idlerVerdict(phrase string) (string, string, error) {
 		return "tool-not-known", "", nil
 	case phrase == "waiting on a decision":
 		return "waiting-on-a-decision", "", nil
+	case phrase == "waiting on the operator":
+		return "waiting-on-the-operator", "", nil
 	}
 	return "", "", fmt.Errorf("the step does not know the wording %q", phrase)
 }
