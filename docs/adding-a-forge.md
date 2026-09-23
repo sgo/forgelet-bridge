@@ -112,7 +112,27 @@ is safe: it reports what it changed, what was already current and what it left
 alone. It never writes into a live project's tracked tree — a project picks a
 new rule up the way it picks up any other change, through its specifier.
 
-## 4. Check it worked
+## 4. Install the kit
+
+The rooms also need the tools that notice a role going quiet, ask before a card
+is made, and put a stall on the phone. Install them with the adapter:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" install-kit
+```
+
+It installs the route gate, the idler check and the stall watch into the forge's
+own scripts, with the watch's agent, and self-checks each one against the forge
+it was installed into — one live pane, one board row, one inbox — printing the
+command and the marker it looked for, so a tool that reads nothing fails on the
+page instead of looking quiet.
+
+It ships tools, not policy: which proposals need asking is the forge's own
+lieutenant prompt, so the gate a forge gets is the gate its prompt asks for, and
+the report says which policy it found and left alone. Running it again is safe.
+One watch covers every forge it was installed for.
+
+## 5. Check it worked
 
 ```sh
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" status
@@ -127,7 +147,7 @@ Then look at the phone: the new forge has its own space, named with the name you
 gave it, holding its chat room, approvals room, activity room and clarifications
 room, with the operator invited.
 
-## 5. Smoke test both directions
+## 6. Smoke test both directions
 
 1. **A message out and a message in.** From the phone, send a message into the
    new forge's chat room. It has to become a chat request that *that forge's*
@@ -140,7 +160,7 @@ room, with the operator invited.
    appears in its clarifications room. Replying in its thread carries the answer
    back through the dashboard, and the blocked agent wakes with it.
 
-## 6. Roll back
+## 7. Roll back
 
 ```sh
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" stop
@@ -156,5 +176,7 @@ Matrix — the bridge only adds — so remove them in Element if you want them g
 `features/adding-a-forge.feature` for the adapter's edit and its refusal,
 `features/forge-startup-report.feature` for the report the status prints,
 `features/installing-brings-the-rules.feature` for the rules, and
+`features/installing-brings-the-kit.feature`, `features/route-gate.feature`,
+`features/role-health.feature` and `features/stall-watch.feature` for the kit,
 the per-room features (`chat-channel-relay`, `phone-approvals`,
 `phone-clarifications`, `card-activity-feed`) for what the smoke test shows.
