@@ -1,5 +1,5 @@
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-23T17:09:44.874755Z","feature_name":"Phone Approvals","feature_path":"features/phone-approvals.feature","background_hash":"e11fbb1a65b036249f94bb008cdd0c50b30ce0e5c692957378a28ce82ba55d08","implementation_hash":"sha256:cc30eac780b5a6758e0c83d307311b9c3207ea09777a6ccd95063a2d5e971891","scenarios":[{"index":0,"name":"Phone Approvals 1: an approval reaches the phone with what it takes to decide","scenario_hash":"de45fd8612c8d3cf0b90541eb562ed67d4a4fd071b7b2e59ce5ddd925370241d","mutation_count":4,"result":{"Total":4,"Killed":4,"Survived":0,"Errors":0},"tested_at":"2026-09-23T11:52:50.482849Z"}]}
+# {"version":1,"tested_at":"2026-09-23T18:14:27.311975Z","feature_name":"Phone Approvals","feature_path":"features/phone-approvals.feature","background_hash":"e11fbb1a65b036249f94bb008cdd0c50b30ce0e5c692957378a28ce82ba55d08","implementation_hash":"sha256:cc30eac780b5a6758e0c83d307311b9c3207ea09777a6ccd95063a2d5e971891","scenarios":[{"index":0,"name":"Phone Approvals 1: an approval reaches the phone with what it takes to decide","scenario_hash":"de45fd8612c8d3cf0b90541eb562ed67d4a4fd071b7b2e59ce5ddd925370241d","mutation_count":4,"result":{"Total":4,"Killed":4,"Survived":0,"Errors":0},"tested_at":"2026-09-23T11:52:50.482849Z"}]}
 # acceptance-mutation-manifest-end
 
 Feature: Phone Approvals
