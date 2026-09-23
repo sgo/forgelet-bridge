@@ -24,8 +24,10 @@
        "once per stall, and it is a question to the operator, never a nudge to the\n"
        "role.\n"
        "\n"
-       "Verdicts: working, waiting for pickup (mail in new/), idle holding a card,\n"
-       "quiet (between turns), idle with nothing assigned, session gone.\n"
+       "Verdicts: working; waiting on a decision or on the operator; waiting for\n"
+       "pickup (mail in new/); idle holding a card; quiet between turns; assigned\n"
+       "but not yet handed over; idle with nothing assigned; session gone; a tool\n"
+       "the check does not know; or a forge with no role session up.\n"
        "Exit status is non-zero when any role is stalled (waiting for pickup, idle\n"
        "holding a card, or session gone).\n"))
 
@@ -150,36 +152,10 @@
       (count (remove #(str/starts-with? (fs/file-name %) ".") (fs/list-dir dir)))
       0)))
 
-;; A card in a role's lane whose note is somewhere — in its inbox, parked in
-;; `hold/` by the lieutenant, or still in the project's outbox on its way — has not
-;; been taken up yet, which is waiting rather than stalling. A card whose note
-;; exists *nowhere* is the other thing entirely: the board says the role holds work
-;; and there is nothing anywhere to hand it, which is worth an alarm.
-(defn note-task-names [dir]
-  (when (fs/directory? dir)
-    (->> (fs/list-dir dir)
-         (remove fs/directory?)
-         (mapcat (fn [file]
-                   (let [text (slurp (str file))]
-                     (keep (fn [key]
-                             (second (re-find (re-pattern (str "(?m)^" key ": (.+)$")) text)))
-                           ["task" "task_id"]))))
-         set)))
-
-(defn note-anywhere? [project worktree card]
-  (let [dirs [(fs/path worktree ".swarmforge" "handoffs" "inbox" "new")
-              (fs/path worktree ".swarmforge" "handoffs" "inbox" "in_process")
-              (fs/path worktree ".swarmforge" "handoffs" "inbox" "completed")
-              (fs/path worktree ".swarmforge" "handoffs" "inbox" "hold")
-              (fs/path worktree ".swarmforge" "handoffs" "outbox")
-              (fs/path worktree ".swarmforge" "handoffs" "sent")
-              ;; A handoff waiting for the operator's approval lives here, and a
-              ;; role whose work is waiting on the operator is not stalled.
-              (fs/path project ".swarmforge" "handoffs" "pending_approval")
-              (fs/path project ".swarmforge" "handoffs" "outbox")
-              (fs/path project ".swarmforge" "handoffs" "sent")]
-        names (set (mapcat note-task-names dirs))]
-    (contains? names card)))
+;; What says whether a card was handed over is the role's own inbox, not the
+;; board: mail in `new` is waiting for pickup, and a note already in `in_process`
+;; is work the role took up and is holding. A card in the lane whose note has not
+;; arrived is queued for later, which is not a stall.
 
 ;; A role waiting for the operator to approve a handoff is waiting on the one
 ;; thing this check must never raise an alarm about: the operator's own pace.
@@ -232,9 +208,6 @@
         in-process (inbox-count (:worktree role) "in_process")
         quiet (quiet-minutes role)
         holding (boolean (or (seq lane-cards) (pos? in-process)))
-        ;; Every card the lane holds either has a note somewhere (waiting to be
-        ;; taken up is not a stall) or has none anywhere, which is the alarm.
-        notes-anywhere (mapv #(note-anywhere? project (:worktree role) %) lane-cards)
         waiting (waiting-on-a-decision? project (:role role))
         awaiting-operator (approval-waiting-on-the-operator? project (:role role))]
     {:role (:role role)
@@ -258,13 +231,14 @@
        ;; yet: the same grace that keeps a between-turns pause quiet applies to it.
        (and (pos? new) (or (nil? quiet) (> quiet grace-minutes))) :waiting-for-pickup
        (pos? new) :mail-just-arrived
-       (and (seq lane-cards) (not (every? true? notes-anywhere))) :card-without-a-note
+       ;; A card in the lane that was never handed over is queued for later, not
+       ;; a stall; a card the role took up and then went quiet on is.
        (and holding (not (pos? in-process)) (not (pos? new))) :assigned-not-taken
        (and holding (or (nil? quiet) (> quiet grace-minutes))) :idle-holding-card
        holding :quiet-between-turns
        :else :idle-nothing-assigned)}))
 
-(def stalled? #{:waiting-for-pickup :idle-holding-card :session-gone :card-without-a-note})
+(def stalled? #{:waiting-for-pickup :idle-holding-card :session-gone})
 
 ;; A forge that is not running at all is not a stall: at login the agents do not
 ;; exist yet, and a watcher that speaks then cries wolf every morning. The forge

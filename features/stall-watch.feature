@@ -26,6 +26,7 @@ Feature: Stall Watch
     And the project forgelet-bridge of the forge root forge-a records the role coder running codex
     And the forge root forge-a gives the role coder a live session
     And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    And the project forgelet-bridge of the forge root forge-a has handed the card refund-card to the role coder
     And the bridge is started
     When the stall watch runs for the forge root forge-a
     Then the forge holds a chat request naming the role coder and the card refund-card
@@ -39,6 +40,7 @@ Feature: Stall Watch
     And the project forgelet-bridge of the forge root forge-b records the role reviewer running claude
     And the forge root forge-b gives the role reviewer a live session
     And the board of the forge root forge-b holds the card export-card in the project forgelet-bridge in the lane reviewer
+    And the project forgelet-bridge of the forge root forge-b has handed the card export-card to the role reviewer
     When the stall watch runs for the forge roots forge-a, forge-b
     Then the watch's agent runs the watch for the forge roots forge-a, forge-b
     And the forge forge-b holds a chat request naming the role reviewer and the forge it came from
@@ -57,6 +59,7 @@ Feature: Stall Watch
     And the project forgelet-bridge of the forge root forge-a records the role coder running codex
     And the forge root forge-a gives the role coder a live session
     And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    And the project forgelet-bridge of the forge root forge-a has handed the card refund-card to the role coder
     And the bridge is started
     When the stall watch runs for the forge root forge-a
     Then the forge holds a chat request naming the role coder and the card refund-card
