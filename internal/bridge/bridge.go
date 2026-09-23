@@ -191,27 +191,18 @@ func (b *Bridge) Tick(ctx context.Context) error {
 
 // pendingFor is the work one forge still owes the rooms.
 func (b *Bridge) pendingFor(root string) *pendingChat {
-	if _, ok := b.pending[root]; !ok {
-		b.pending[root] = newPendingChat()
-	}
-	return b.pending[root]
+	return pendingAt(b.pending, root, newPendingChat)
 }
 
 // pendingApprovalsFor is the approvals work one forge still owes the rooms.
 func (b *Bridge) pendingApprovalsFor(key string) *pendingApprovals {
-	if _, ok := b.pendingApprovals[key]; !ok {
-		b.pendingApprovals[key] = newPendingApprovals()
-	}
-	return b.pendingApprovals[key]
+	return pendingAt(b.pendingApprovals, key, newPendingApprovals)
 }
 
 // pendingClarificationsFor is the clarifications work one forge still owes the
 // room.
 func (b *Bridge) pendingClarificationsFor(key string) *pendingClarifications {
-	if _, ok := b.pendingClarifications[key]; !ok {
-		b.pendingClarifications[key] = newPendingClarifications()
-	}
-	return b.pendingClarifications[key]
+	return pendingAt(b.pendingClarifications, key, newPendingClarifications)
 }
 
 // refuse records an action the forge would not carry out, so the tick can carry

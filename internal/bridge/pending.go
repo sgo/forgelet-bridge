@@ -43,6 +43,16 @@ func (p *pendingWork[T]) list() []T {
 	return kept
 }
 
+// pendingAt is the work a key already holds, made on first use.
+func pendingAt[T any](work map[string]T, key string, make func() T) T {
+	item, ok := work[key]
+	if !ok {
+		item = make()
+		work[key] = item
+	}
+	return item
+}
+
 // pendingChat is the chat work one forge owes the room.
 type pendingChat = pendingWork[relay.Action]
 
