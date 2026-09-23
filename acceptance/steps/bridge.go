@@ -27,7 +27,13 @@ func configuredForgeAndOperator(_ context.Context, world any, captures []string)
 func configuredOperator(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	w.operatorID = captures[1]
-	return nil
+	// The phone is on as soon as the bridge is told who the operator is: its
+	// device has to be there, with its keys published, before the bridge posts
+	// anything into a room, or what it posts cannot be read.
+	ctx, cancel := stepContext()
+	defer cancel()
+	_, err := w.operator(ctx)
+	return err
 }
 
 func configuredForges(_ context.Context, world any, captures []string) error {
