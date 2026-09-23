@@ -58,6 +58,10 @@ The adapter does the edit, the copy and the restart in one step:
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" add-forge "<root of the forge to add>" "<name the operator knows it by>"
 ```
 
+`add-forge` is this repository's adapter; the forge's own copy has to be the
+same program, so install `scripts/matrix-bridge.sh` into
+`<forge root>/swarmforge/scripts/` if the copy there predates the command.
+
 For the Saibill forge beside this one:
 
 ```sh

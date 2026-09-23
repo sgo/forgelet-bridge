@@ -191,25 +191,30 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		DeviceFingerprint: b.device.Fingerprint,
 		Pending:           b.pendingCount(),
 	}
-	status.UnhappyForges, status.LastError = b.unhappyForges()
+	status.ReachedForges, status.UnhappyForges, status.LastError = b.forgeReport()
+	if b.tick == 1 {
+		// What the bridge carries is the first thing an operator or a script
+		// adding a forge wants to know, so it is said out loud once, at
+		// startup, rather than left to a guess about the log.
+		b.log.Info("the forges the bridge serves", "reached", status.ReachedForges, "unreached", status.UnhappyForges)
+	}
 	return b.writeStatus(status)
 }
 
-// unhappyForges is the forges the tick could not serve, in the order the
-// configuration names them, and the last of the reasons why. A tick that
-// serves a forge again is a tick that stops naming it.
-func (b *Bridge) unhappyForges() ([]string, string) {
-	var names []string
-	last := ""
+// forgeReport is the forges the tick served and the forges it could not, in
+// the order the configuration names them, and the last of the reasons why. A
+// tick that serves a forge again is a tick that stops naming it unhappy.
+func (b *Bridge) forgeReport() (reached, unhappy []string, last string) {
 	for _, forge := range b.cfg.Forges {
-		why, unhappy := b.unhappy[forge.Root]
-		if !unhappy {
+		why, skipped := b.unhappy[forge.Root]
+		if skipped {
+			unhappy = append(unhappy, b.cfg.ForgeName(forge.Root))
+			last = why
 			continue
 		}
-		names = append(names, b.cfg.ForgeName(forge.Root))
-		last = why
+		reached = append(reached, b.cfg.ForgeName(forge.Root))
 	}
-	return names, last
+	return reached, unhappy, last
 }
 
 // pendingFor is the work one forge still owes the rooms.
@@ -368,5 +373,5 @@ func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, ro
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T14:12:31+02:00","module_hash":"7614022afb088a021faaea22b01370cadb44b13f511dd9646295dde412ec3856","functions":[{"id":"func/New","name":"New","line":97,"end_line":123,"hash":"e8586e0ff92b2cfe628b8eb3d8720d1e2f911844113b32202bcea3594258a87a"},{"id":"func/Bridge.State","name":"Bridge.State","line":126,"end_line":128,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":131,"end_line":152,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":157,"end_line":159,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":166,"end_line":196,"hash":"b2c082fd1734357325e44bd6c6c49dced78d1cf9cedaaf5de85c14191dbea687"},{"id":"func/Bridge.unhappyForges","name":"Bridge.unhappyForges","line":201,"end_line":213,"hash":"11fbc888ef8c67fa327d2e7ca2d500e4554cec4a99f7a1321fdf7d3eede04290"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":216,"end_line":218,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":221,"end_line":223,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":227,"end_line":229,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":234,"end_line":242,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":247,"end_line":250,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":260,"end_line":278,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":282,"end_line":319,"hash":"3d2858f7cb4695f83ef67806f676bbe8905e71717872786f6c546b838d43d8f2"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":324,"end_line":348,"hash":"19f031febc9abce01cb10dfec83c320b71839f9d240a22d9e0ab45ef6e2ead65"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":350,"end_line":355,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":358,"end_line":368,"hash":"73839d70b2ed29dd317ee1a565750e233d3fd802787c531d6a98987f5a067a0c"}]}
+// {"version":1,"tested_at":"2026-09-23T14:45:43+02:00","module_hash":"15bcdffaa7dc31e1f283f0f3cdfd6f2dfb3e7ce30e838153619ea9231bed73c9","functions":[{"id":"func/New","name":"New","line":97,"end_line":123,"hash":"e8586e0ff92b2cfe628b8eb3d8720d1e2f911844113b32202bcea3594258a87a"},{"id":"func/Bridge.State","name":"Bridge.State","line":126,"end_line":128,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":131,"end_line":152,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":157,"end_line":159,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":166,"end_line":202,"hash":"6825b60f7918d03117ab7bdcdb27a98f5630dd6ea45eea35de5133e098aa8590"},{"id":"func/Bridge.forgeReport","name":"Bridge.forgeReport","line":207,"end_line":218,"hash":"ae1f631af0f579c29587141c1cc92631d2f0a11dce543cf99bb4a3464505a046"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":221,"end_line":223,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":226,"end_line":228,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":232,"end_line":234,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":239,"end_line":247,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":252,"end_line":255,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":265,"end_line":283,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":287,"end_line":324,"hash":"3d2858f7cb4695f83ef67806f676bbe8905e71717872786f6c546b838d43d8f2"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":329,"end_line":353,"hash":"19f031febc9abce01cb10dfec83c320b71839f9d240a22d9e0ab45ef6e2ead65"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":355,"end_line":360,"hash":"1be31d1a552df16d85d903a2d19730345bef233dc0c774af992cf9771631039e"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":363,"end_line":373,"hash":"73839d70b2ed29dd317ee1a565750e233d3fd802787c531d6a98987f5a067a0c"}]}
 // mutate4go-manifest-end

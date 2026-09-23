@@ -23,9 +23,17 @@ import (
 func main() {
 	configPath := flag.String("config", "forgelet-bridge.json", "path to the bridge configuration")
 	interval := flag.Duration("interval", time.Second, "how often the bridge checks the forge and its chat room")
+	validate := flag.Bool("validate", false, "check the configuration and exit, without serving anything")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if *validate {
+		if err := check(*configPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -33,6 +41,14 @@ func main() {
 		log.Error("bridge stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// check reports whether a configuration would serve. The adapter that edits a
+// forge's configuration asks the bridge itself, so the rule for a good
+// configuration lives in one place.
+func check(configPath string) error {
+	_, err := config.Load(configPath)
+	return err
 }
 
 func run(ctx context.Context, configPath string, interval time.Duration, log *slog.Logger) error {
@@ -96,5 +112,5 @@ func openAdapters(cfg config.Config) adapters {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T14:25:51+02:00","module_hash":"66649580f2232db22155905a6644a76e3e7efefa6eae1bc422325f6d62e6cc1d","functions":[{"id":"func/main","name":"main","line":23,"end_line":36,"hash":"5066fd9e175ab9e6c5e67a472b92bb8efcc47a63d1edbc09eb0cb1f0ba67bfae"},{"id":"func/run","name":"run","line":38,"end_line":44,"hash":"6e71599705ecb1059bc12818e5e38148a22f6e81349cdf5f0cc1d40affe65b92"},{"id":"func/serve","name":"serve","line":48,"end_line":66,"hash":"c7e9a80d2a9a430bbbfbab9b2b96bf2120ed25f3722cde767d21e2660a37cfa3"},{"id":"func/openAdapters","name":"openAdapters","line":82,"end_line":96,"hash":"6e21d5f90f800ddfb28bae524ab997a15fd460bf16b5c41d8c1ca8e87f61a3ed"}]}
+// {"version":1,"tested_at":"2026-09-23T14:45:13+02:00","module_hash":"718857d533613a887fc25ca07bc6076cd20ab024eec4465cc78a0f09a0cd85b3","functions":[{"id":"func/main","name":"main","line":23,"end_line":44,"hash":"e50e2b3ccc9ae92f7f11acaced6ffe2a267e03a95978d9ace9e489352e736c69"},{"id":"func/check","name":"check","line":49,"end_line":52,"hash":"7fa3fcce96796b1dc102e9596b4d00b54b5a21b4b3f49ad1b2dbe8009823f421"},{"id":"func/run","name":"run","line":54,"end_line":60,"hash":"6e71599705ecb1059bc12818e5e38148a22f6e81349cdf5f0cc1d40affe65b92"},{"id":"func/serve","name":"serve","line":64,"end_line":82,"hash":"c7e9a80d2a9a430bbbfbab9b2b96bf2120ed25f3722cde767d21e2660a37cfa3"},{"id":"func/openAdapters","name":"openAdapters","line":98,"end_line":112,"hash":"6e21d5f90f800ddfb28bae524ab997a15fd460bf16b5c41d8c1ca8e87f61a3ed"}]}
 // mutate4go-manifest-end

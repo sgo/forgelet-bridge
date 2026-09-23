@@ -1,9 +1,11 @@
 package bridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +55,9 @@ func TestAForgeThatCannotBeReachedDoesNotQuietTheOthers(t *testing.T) {
 	if len(status.UnhappyForges) != 1 || status.UnhappyForges[0] != "forge-b" {
 		t.Errorf("unhappy forges = %v, want only the forge that could not be reached", status.UnhappyForges)
 	}
+	if len(status.ReachedForges) != 1 || status.ReachedForges[0] != "forge-a" {
+		t.Errorf("reached forges = %v, want the forge still being carried", status.ReachedForges)
+	}
 	if !strings.Contains(status.LastError, "the forge is not there") {
 		t.Errorf("last error = %q, want the reason the sick forge is unhappy", status.LastError)
 	}
@@ -77,6 +82,9 @@ func TestAForgeThatIsServedAgainStopsBeingNamed(t *testing.T) {
 	}
 	if status := statusOf(t, built); len(status.UnhappyForges) != 0 {
 		t.Errorf("unhappy forges = %v, want none once the forge is served again", status.UnhappyForges)
+	}
+	if status := statusOf(t, built); len(status.ReachedForges) != 2 {
+		t.Errorf("reached forges = %v, want every configured forge once both are served", status.ReachedForges)
 	}
 }
 
@@ -136,4 +144,35 @@ func sentBodyTo(rooms *fakeRooms, roomID, body string) bool {
 		}
 	}
 	return false
+}
+
+func TestTheStartupReportIsWrittenOnce(t *testing.T) {
+	// The report belongs to startup: a tick that named the forges again every
+	// time would fill the log the operator and the adapter read.
+	var logged bytes.Buffer
+	rooms := &fakeRooms{}
+	cfg := newTestConfig(t, "/forges/forge-a")
+	built, err := New(cfg, rooms,
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}},
+		slog.New(slog.NewTextHandler(&logged, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	report := "the forges the bridge serves"
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	if got := strings.Count(logged.String(), report); got != 1 {
+		t.Errorf("the startup report was written %d times on the first tick, want once", got)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	if got := strings.Count(logged.String(), report); got != 1 {
+		t.Errorf("the startup report was written %d times over two ticks, want once", got)
+	}
 }
