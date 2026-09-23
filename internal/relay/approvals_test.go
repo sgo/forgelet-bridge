@@ -169,6 +169,25 @@ func TestPlanApprovalsKeepsAReplyThatSaysMoreAsASendBack(t *testing.T) {
 	}
 }
 
+func TestPlanApprovalsApprovesOnAReplyThatNamesTheCard(t *testing.T) {
+	replies := []RoomEvent{{EventID: "$reply", Sender: operator, Body: card, ThreadRoot: "$approval-message"}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(), Resolution: ResolutionApproved,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the approval the reply named", actions)
+	}
+}
+
+func TestAffirmativeNeedsWords(t *testing.T) {
+	if affirmative("", approval()) {
+		t.Error("affirmative approved on a message that says nothing")
+	}
+}
+
 func TestPlanApprovalsSendsTheApprovalBackWithAQuotedReply(t *testing.T) {
 	replies := []RoomEvent{{
 		EventID: "$reply",
@@ -238,6 +257,34 @@ func TestPlanApprovalsDecidesOnlyOnce(t *testing.T) {
 
 	if actions := PlanApprovals(operator, state, []Approval{approval()}, reactions, replies); len(actions) != 0 {
 		t.Errorf("actions = %+v, want nothing after the approval is decided", actions)
+	}
+}
+
+func TestPlanApprovalsDoesNotDecideAPlainMessageTwice(t *testing.T) {
+	state := posted()
+	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
+		MessageID:  "$approval-message",
+		Resolution: ResolutionApproved,
+	}
+	// A plain message in the room that names the card, after the approval is
+	// already decided, must not decide it a second time.
+	replies := []RoomEvent{{EventID: "$plain", Sender: operator, Body: card}}
+
+	actions := PlanApprovals(operator, state, []Approval{approval()}, nil, replies)
+	for _, action := range actions {
+		if action.Kind == ResolveApproval {
+			t.Errorf("actions = %+v, want no second decision for a decided approval", actions)
+		}
+	}
+}
+
+func TestApprovalForTextFindsNothingWhenTheTextNamesNoApproval(t *testing.T) {
+	if _, _, matched := approvalForText([]Approval{approval()}, "the timesheet is still wrong"); matched {
+		t.Error("approvalForText matched a message that names no approval")
+	}
+	other := Approval{Key: "forgelet-bridge/approval-2", Project: "forgelet-bridge", ID: "approval-2", Card: "another-card"}
+	if _, _, matched := approvalForText([]Approval{approval(), other}, "approve"); matched {
+		t.Error("approvalForText matched an affirmative with two approvals waiting")
 	}
 }
 

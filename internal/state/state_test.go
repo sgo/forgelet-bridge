@@ -79,6 +79,17 @@ func TestForgeForRejectsHalfRecordedForge(t *testing.T) {
 	saved.Forges["/forges/forge-b"] = Forge{SpaceID: "!space", RoomID: "!room"}
 	// The same for a state file written before the activity room.
 	saved.Forges["/forges/forge-c"] = Forge{SpaceID: "!space", RoomID: "!room", ApprovalsRoomID: "!approvals"}
+	// A forge missing only the activity room, which the clarifications room
+	// being present must not stand in for.
+	saved.Forges["/forges/forge-d"] = Forge{
+		SpaceID: "!space", RoomID: "!room",
+		ApprovalsRoomID: "!approvals", ClarificationsRoomID: "!clarifications",
+	}
+	// The same for a state file written before the clarifications room.
+	saved.Forges["/forges/forge-e"] = Forge{
+		SpaceID: "!space", RoomID: "!room",
+		ApprovalsRoomID: "!approvals", ActivityRoomID: "!activity",
+	}
 
 	if _, ok := saved.ForgeFor("/forges/forge-a"); ok {
 		t.Error("a forge without a chat room was reported as known")
@@ -88,5 +99,11 @@ func TestForgeForRejectsHalfRecordedForge(t *testing.T) {
 	}
 	if _, ok := saved.ForgeFor("/forges/forge-c"); ok {
 		t.Error("a forge without an activity room was reported as known")
+	}
+	if _, ok := saved.ForgeFor("/forges/forge-d"); ok {
+		t.Error("a forge without an activity room was reported as known")
+	}
+	if _, ok := saved.ForgeFor("/forges/forge-e"); ok {
+		t.Error("a forge without a clarifications room was reported as known")
 	}
 }

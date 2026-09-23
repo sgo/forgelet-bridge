@@ -179,17 +179,6 @@ func oneClarificationMessage(ctx context.Context, operator *fixtures.User, roomI
 	return messageID, err
 }
 
-// threadRepliesBy counts the messages one sender has in a thread.
-func threadRepliesBy(operator *fixtures.User, roomID, messageID, sender string) int {
-	found := 0
-	for _, message := range operator.Messages(roomID) {
-		if message.ThreadRoot == messageID && message.Sender == sender {
-			found++
-		}
-	}
-	return found
-}
-
 // clarificationSaysWhatAReplyMeans checks the clarification message says a
 // reply is the answer.
 func clarificationSaysWhatAReplyMeans(_ context.Context, world any, captures []string) error {
