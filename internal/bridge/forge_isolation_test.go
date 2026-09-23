@@ -1,9 +1,11 @@
 package bridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,4 +144,35 @@ func sentBodyTo(rooms *fakeRooms, roomID, body string) bool {
 		}
 	}
 	return false
+}
+
+func TestTheStartupReportIsWrittenOnce(t *testing.T) {
+	// The report belongs to startup: a tick that named the forges again every
+	// time would fill the log the operator and the adapter read.
+	var logged bytes.Buffer
+	rooms := &fakeRooms{}
+	cfg := newTestConfig(t, "/forges/forge-a")
+	built, err := New(cfg, rooms,
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}},
+		slog.New(slog.NewTextHandler(&logged, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	report := "the forges the bridge serves"
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	if got := strings.Count(logged.String(), report); got != 1 {
+		t.Errorf("the startup report was written %d times on the first tick, want once", got)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	if got := strings.Count(logged.String(), report); got != 1 {
+		t.Errorf("the startup report was written %d times over two ticks, want once", got)
+	}
 }
