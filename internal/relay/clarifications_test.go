@@ -120,6 +120,19 @@ func TestPlanClarificationsAnswersOnceAndReportsOnce(t *testing.T) {
 	}
 }
 
+func TestPlanClarificationsDoesNotReportAnAnswerTwice(t *testing.T) {
+	// The clarification was answered and the answer reported; the forge no
+	// longer waits for it. A later tick must leave the thread alone rather than
+	// report the same answer again.
+	state := State{Clarifications: map[string]ClarificationState{
+		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReplyID: "$bridge-reply"},
+	}}
+
+	if actions := PlanClarifications(operator, state, nil, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want no second report for an answer already reported", actions)
+	}
+}
+
 func TestPlanClarificationsAnswersOnlyOnce(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{
 		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes"},

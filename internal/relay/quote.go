@@ -48,3 +48,7 @@ func repliedTo(reply RoomEvent) string {
 	}
 	return reply.ReplyTo
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T13:23:32+02:00","module_hash":"003fe037ca4146c8cd76c77358f722ec87dcfd0bf819bff7ca718d21f8ab0b8a","functions":[{"id":"func/OwnWords","name":"OwnWords","line":10,"end_line":27,"hash":"31cd39627783eecb08354b90202a754a28aca2ed0a2617e2b7806280213d5434"},{"id":"func/quoteLine","name":"quoteLine","line":31,"end_line":36,"hash":"cc1dc1fe95a4fc6e70789429ba606fbd220795aab6f696b002afe9c72410fd99"},{"id":"func/normalized","name":"normalized","line":39,"end_line":41,"hash":"097d5fff55eba5993d7676fdf87979ffc6e9bf9055235f997914acff673e77af"},{"id":"func/repliedTo","name":"repliedTo","line":45,"end_line":50,"hash":"a811cffb639aa6f32bac3df8df95d8d1cb08ac075ed0918a8bec95d787272f8e"}]}
+// mutate4go-manifest-end
