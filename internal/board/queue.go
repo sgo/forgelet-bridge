@@ -9,6 +9,10 @@ import (
 // Queue is a forge's boards seen the way the bridge's relay needs them.
 type Queue struct {
 	Store *Store
+	// Forge is the forge these boards belong to. The bridge remembers what it
+	// said about a card per forge, so two forges holding the same project and
+	// card are two cards, not one.
+	Forge string
 }
 
 // Cards lists the cards every open project holds.
@@ -20,7 +24,7 @@ func (q Queue) Cards() ([]relay.Card, error) {
 	relayed := make([]relay.Card, 0, len(cards))
 	for _, card := range cards {
 		relayed = append(relayed, relay.Card{
-			Key:     Key(card.Project, card.Name),
+			Key:     Key(q.Forge, card.Project, card.Name),
 			Project: card.Project,
 			Name:    card.Name,
 			Lane:    card.Lane,
@@ -30,10 +34,10 @@ func (q Queue) Cards() ([]relay.Card, error) {
 	return relayed, nil
 }
 
-// Key names a card across the bridge: project and card, so two projects cannot
-// be confused.
-func Key(project, name string) string {
-	return fmt.Sprintf("%s/%s", project, name)
+// Key names a card across the bridge: the forge, the project and the card, so
+// neither two projects nor two forges can be confused.
+func Key(forge, project, name string) string {
+	return fmt.Sprintf("%s/%s/%s", forge, project, name)
 }
 
 // mutate4go-manifest-begin

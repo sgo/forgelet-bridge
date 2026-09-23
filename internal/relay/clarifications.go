@@ -12,6 +12,9 @@ type Clarification struct {
 
 // ClarificationState is what the bridge remembers about one clarification.
 type ClarificationState struct {
+	// RoomID is the room the clarification's message was posted in, so a room
+	// reports on its own clarifications and no other forge's.
+	RoomID string `json:"room_id,omitempty"`
 	// MessageID is the chat message that carries the clarification.
 	MessageID string `json:"message_id,omitempty"`
 	// Answer is the answer the bridge carried back, empty when the
@@ -20,6 +23,9 @@ type ClarificationState struct {
 	// ReplyID is the thread reply that reported the answer.
 	ReplyID string `json:"reply_id,omitempty"`
 }
+
+// Room is the room this clarification's message is in.
+func (s ClarificationState) Room() string { return s.RoomID }
 
 // ClarificationKind names the work a clarification action asks for.
 type ClarificationKind string

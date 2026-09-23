@@ -15,6 +15,9 @@ type Approval struct {
 
 // ApprovalState is what the bridge remembers about one approval.
 type ApprovalState struct {
+	// RoomID is the room the approval's message was posted in, so a room
+	// reports on its own approvals and no other forge's.
+	RoomID string `json:"room_id,omitempty"`
 	// MessageID is the chat message that carries the approval.
 	MessageID string `json:"message_id,omitempty"`
 	// Resolution is how the approval was resolved: approved, sent_back, or
@@ -23,6 +26,9 @@ type ApprovalState struct {
 	// ReplyID is the thread reply that reported the resolution.
 	ReplyID string `json:"reply_id,omitempty"`
 }
+
+// Room is the room this approval's message is in.
+func (s ApprovalState) Room() string { return s.RoomID }
 
 // Resolutions an approval can end up with.
 const (

@@ -33,7 +33,7 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, room R
 	}
 
 	waiting := b.pendingClarificationsFor(root)
-	for _, action := range relay.PlanClarifications(b.cfg.Operator, b.state.Relay, pending, replies) {
+	for _, action := range relay.PlanClarifications(b.cfg.Operator, b.clarificationState(room), pending, replies) {
 		waiting.keep(action)
 	}
 
@@ -80,10 +80,20 @@ func (b *Bridge) postClarification(ctx context.Context, room Room, action relay.
 		return fmt.Errorf("post clarification %s: %w", action.Key, err)
 	}
 	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+		state.RoomID = room.ClarificationsRoomID
 		state.MessageID = eventID
 		return state
 	})
 	return nil
+}
+
+// clarificationState is the share of the bridge's bookkeeping this forge's
+// clarifications room reports on: what it carries itself, never what another
+// forge's room carries.
+func (b *Bridge) clarificationState(room Room) relay.State {
+	scoped := b.state.Relay
+	scoped.Clarifications = scopedToRoom(b.state.Relay.Clarifications, relay.ClarificationState.Room, room.ClarificationsRoomID)
+	return scoped
 }
 
 // answerClarification carries the operator's answer back through the forge's

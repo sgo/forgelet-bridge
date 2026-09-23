@@ -21,8 +21,11 @@ type Status struct {
 	// Pending is how many actions the forge has not carried out yet, and
 	// LastError is the most recent refusal: a bridge that is stuck says so
 	// instead of looking quiet.
-	Pending   int    `json:"pending,omitempty"`
-	LastError string `json:"last_error,omitempty"`
+	Pending int `json:"pending,omitempty"`
+	// UnhappyForges names the forges this tick could not serve, so one forge
+	// that cannot be reached is neither silent nor the whole bridge's problem.
+	UnhappyForges []string `json:"unhappy_forges,omitempty"`
+	LastError     string   `json:"last_error,omitempty"`
 }
 
 // Device is the Matrix device the bridge is using.
