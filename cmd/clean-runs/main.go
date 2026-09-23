@@ -75,3 +75,7 @@ func countFrom(env func(string) string, name string, fallback int) (int, error) 
 	}
 	return count, nil
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T22:24:28+02:00","module_hash":"61d1430711327e06d02a7bd1c4db75c94a7e640589de7ff1bedb5ffcc03b7c06","functions":[{"id":"func/main","name":"main","line":27,"end_line":35,"hash":"1e3d16e87bb8509b62ee70ab718c929316493469b1f6f9948a7859a28569b959"},{"id":"func/run","name":"run","line":40,"end_line":51,"hash":"3d4bef8efc73e49bd5a81187b29d9223541a1f4267689403cabae6189ebac8d9"},{"id":"func/limitsFrom","name":"limitsFrom","line":54,"end_line":64,"hash":"2de5ffac4388bc120157a67a05793264d70ffa7455c01b1fa24ced381a64c667"},{"id":"func/countFrom","name":"countFrom","line":67,"end_line":77,"hash":"65865a3531d44982cf95bee875f45f9a1edd3c8dd08b81d6916cefb9f57f0350"}]}
+// mutate4go-manifest-end
