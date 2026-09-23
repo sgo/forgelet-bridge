@@ -13,9 +13,12 @@
        "  route_card.sh propose <project-root> <task-name> <note-file>\n"
        "  route_card.sh commit <proposal-id> [--approval <record-id>]\n"
        "\n"
-       "propose writes the proposal into the forge's dashboard clarifications\n"
-       "and records it; commit creates the card only when the operator's own\n"
-       "words in that record are affirmative. Each approval is single-use.\n"
+       "propose records the proposal; commit creates the card only when the\n"
+       "operator's own words are affirmative. Each approval is single-use.\n"
+       "\n"
+       "The proposal is never written to the clarification store: that channel\n"
+       "belongs to the pack's agents asking to be unblocked. Ask the operator\n"
+       "yourself — in the chat channel, in this pane, or on the phone.\n"
        "\n"
        "Run both commands with the forge root as the working directory. The\n"
        "forge root defaults to $PWD and can be overridden with --forge-root.\n"
@@ -23,11 +26,11 @@
        "Approval forms: answering \"approve\" (or yes/ok/go ahead) is enough,\n"
        "because the answer is tied to this one proposal; replying with the\n"
        "card's name works too, and a negation anywhere in the answer refuses.\n"
-       "Any other answer declines. --approval lets an approval left in the\n"
-       "chat channel stand in for the clarification, and --operator-said\n"
-       "records approval the operator gave in a channel that leaves no file\n"
-       "(the pane). Either one passed to propose records the proposal without\n"
-       "asking again in the dashboard.\n"))
+       "Any other answer declines. --approval names the dashboard request that\n"
+       "recorded their answer, which is what a reply on the phone leaves;\n"
+       "--operator-said records words from a channel that leaves no file (this\n"
+       "pane). Either one passed to propose records the proposal without\n"
+       "asking again.\n"))
 
 (def affirmative-re #"(?i)\b(approve|approved|yes|ok|okay|go ahead|go)\b")
 
@@ -198,23 +201,12 @@
                         "\" — nothing recorded.")))))
     (let [note (str/trimr (slurp (str note-file)))
           lane (master-lane project)
-          role (or (not-empty (System/getenv "SWARMFORGE_ROLE")) "lieutenant")
-          body (str "Route a new card?\n\n"
-                    "Project: " (fs/file-name project) "\n"
-                    "Card: " name "\n"
-                    "Lane: " lane "\n\n"
-                    note "\n\n"
-                    "Reply \"approve\" (or the card name) to approve; any other answer declines.")
-          ;; With an approval already in hand the question would be redundant,
-          ;; so the proposal is recorded under a timestamp id instead.
-          id (if pre-approved
-               (str "proposal-" (str/replace (now) #"[^0-9A-Za-z]" ""))
-               ;; The question goes into the project's store: the forge
-               ;; dashboard aggregates clarifications from open projects, so a
-               ;; question left at the forge root would never be shown.
-               (do (require-package "pack_dashboard_request.bb" 'pack-dashboard-request)
-                   ((requiring-resolve 'pack-dashboard-request/create-clarification!)
-                    (str project) role body)))
+          ;; The proposal is only ever a record here. The clarification store
+          ;; belongs to the pack's agents asking the operator to unblock a card;
+          ;; a card proposal is the lieutenant's own question to the operator,
+          ;; asked in the chat channel (this pane) or on the phone, never by
+          ;; borrowing the agents' channel.
+          id (str "proposal-" (str/replace (now) #"[^0-9A-Za-z]" ""))
           record {:id id :project (str project) :name name :note note
                   :lane lane :created-at (now)
                   :approval-id approval-id
@@ -224,8 +216,11 @@
       (println "PROPOSED:" id "card" name "in" (str project) "lane" lane)
       (if pre-approved
         (println "Approval already in hand; run: route_card.sh commit" id)
-        (do (println "Awaiting the operator's answer in the dashboard.")
-            (println "Then run: route_card.sh commit" id)))
+        (do (println "Ask the operator directly — in this chat, or on the phone where")
+            (println "their message arrives as a chat request. Nothing was written to")
+            (println "the clarification store, which is the agents' channel.")
+            (println "Then run: route_card.sh commit" id "--operator-said \"<their exact words>\"")
+            (println "or, when their answer left a record: route_card.sh commit" id "--approval <request-id>")))
       id)))
 
 (defn commit! [args]
@@ -240,6 +235,11 @@
         (exit! 1 (str "No proposal record for " id " at " file)))
       (let [proposal (edn/read-string (slurp (str file)))
             {:keys [project name note lane consumed-at task-id]} proposal
+            _ (when (every? str/blank? [explicit said (:approval-id proposal) (:operator-said proposal)])
+                (exit! 1 (str "No approval source. Pass --operator-said \"<their exact words>\""
+                              " for approval given in this chat, or --approval <request-id>"
+                              " for one that left a record. A card proposal is never"
+                              " answered through the clarification store.")))
             record (approval-from [(fs/absolutize project) forge] proposal explicit said)]
         (when consumed-at
           (exit! 1 (str "Approval " id " was already used to create " task-id " — nothing created.")))
