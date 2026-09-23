@@ -228,3 +228,18 @@ func lastMessageIn(rooms *fakeRooms, roomID string) *sentMessage {
 	}
 	return nil
 }
+
+func TestTickReportsAForgeWithNoClarificationsStore(t *testing.T) {
+	// A forge the bridge has no clarifications for is reported, not a tick that
+	// takes the rest of the bridge down with it.
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithClarifications(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ClarificationStore{}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if built.lastError == nil {
+		t.Error("lastError = nil, want the forge without clarifications reported")
+	}
+}

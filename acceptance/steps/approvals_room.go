@@ -129,14 +129,14 @@ func approvalThreadOneReply(_ context.Context, world any, _ []string) error {
 		return err
 	}
 	if err := waitFor(ctx, "the approval's thread never got the bridge's reply", func() (bool, error) {
-		return approvalThreadReplies(operator, roomID, messageID, w.bridgeUserID) >= 1, nil
+		return threadRepliesBy(operator, roomID, messageID, w.bridgeUserID) >= 1, nil
 	}); err != nil {
 		return err
 	}
 	if err := fixtures.Sleep(ctx, settle); err != nil {
 		return err
 	}
-	if found := approvalThreadReplies(operator, roomID, messageID, w.bridgeUserID); found != 1 {
+	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 1 {
 		return fmt.Errorf("the approval's thread holds %d replies, want exactly one", found)
 	}
 	return nil
@@ -157,11 +157,11 @@ func (w *World) oneApprovalMessage(ctx context.Context, operator *fixtures.User,
 	return messageID, err
 }
 
-// approvalThreadReplies counts the bridge's replies in an approval's thread.
-func approvalThreadReplies(operator *fixtures.User, roomID, messageID, bridgeUserID string) int {
+// threadRepliesBy counts the messages one sender has in a thread.
+func threadRepliesBy(operator *fixtures.User, roomID, messageID, sender string) int {
 	found := 0
 	for _, message := range operator.Messages(roomID) {
-		if message.ThreadRoot == messageID && message.Sender == bridgeUserID {
+		if message.ThreadRoot == messageID && message.Sender == sender {
 			found++
 		}
 	}

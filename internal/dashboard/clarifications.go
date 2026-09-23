@@ -89,3 +89,7 @@ func (a *API) AnswerClarification(ctx context.Context, project, id, answer strin
 	body := map[string]string{"id": id, "project": project, "text": answer}
 	return a.call(ctx, http.MethodPost, "/api/clarifications/"+url.PathEscape(id)+"/answer", body, nil)
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-23T13:39:14+02:00","module_hash":"5fa59e6a4a8a418232fff39b889b6c0e34c4eb8800e902f4c908975657565da4","functions":[{"id":"func/Clarifications.Pending","name":"Clarifications.Pending","line":21,"end_line":27,"hash":"39cbb6f01abc5e1dc91ca551a71c0b13d9f8a1c06cb8245557fca6d1ed2accfc"},{"id":"func/Clarifications.Answer","name":"Clarifications.Answer","line":31,"end_line":37,"hash":"d0164fc07e33793682064d65c168210257c720d6ef19c9bc797582bf0512e7bb"},{"id":"func/Clarifications.client","name":"Clarifications.client","line":41,"end_line":47,"hash":"4f7063d0149b103a239a33acc268240d8e63cd577326e7a515545701ffeb5546"},{"id":"func/API.Clarifications","name":"API.Clarifications","line":64,"end_line":83,"hash":"4b25af3232eda0ce641dfd88db4df6e2db80156d68e2fbcba5d464c290d6ac75"},{"id":"func/API.AnswerClarification","name":"API.AnswerClarification","line":88,"end_line":91,"hash":"286ecaa6aaa5f107300c4fc115d8a525c4c1dae93dd4275284438d1026887a35"}]}
+// mutate4go-manifest-end
