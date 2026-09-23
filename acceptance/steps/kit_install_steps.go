@@ -59,20 +59,14 @@ func servedForgeInstallsKit(w *World, name string) error {
 func installerInstalledTheKit(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
 	phrase := "installed the route gate, the idler check and the stall watch"
-	if !strings.Contains(w.adapterOutput, phrase) {
-		return fmt.Errorf("the installer's output does not say %q:\n%s", phrase, w.adapterOutput)
-	}
-	return nil
+	return outputSays(w.adapterOutput, phrase, fmt.Sprintf("the installer's output does not say %q", phrase))
 }
 
 // installerSaysTheKitWasAlreadyCurrent checks the second install reports the
 // kit it found rather than claiming it installed it again.
 func installerSaysTheKitWasAlreadyCurrent(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "the kit was already current") {
-		return fmt.Errorf("the installer's output does not say the kit was already current:\n%s", w.adapterOutput)
-	}
-	return nil
+	return outputSays(w.adapterOutput, "the kit was already current", "the installer's output does not say the kit was already current")
 }
 
 // forgeCarriesTheKit checks the forge's own scripts now hold every tool.
@@ -160,20 +154,14 @@ func idlerSelfCheckReportsTheForgeNotRunning(_ context.Context, world any, _ []s
 // on the page rather than a clean-looking silence.
 func installerSaysTheSelfCheckFailed(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "self-check failed") {
-		return fmt.Errorf("the installer's output never says a self-check failed:\n%s", w.adapterOutput)
-	}
-	return nil
+	return outputSays(w.adapterOutput, "self-check failed", "the installer's output never says a self-check failed")
 }
 
 // installerLeftTheGatePolicyAlone checks the report names the policy it found
 // in the forge's own lieutenant prompt and left where it was.
 func installerLeftTheGatePolicyAlone(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "left the gate policy in the lieutenant prompt alone") {
-		return fmt.Errorf("the installer's output does not say it left the gate policy alone:\n%s", w.adapterOutput)
-	}
-	return nil
+	return outputSays(w.adapterOutput, "left the gate policy in the lieutenant prompt alone", "the installer's output does not say it left the gate policy alone")
 }
 
 // kitSelfCheckLine is the installer's line about one tool's self-check, whether

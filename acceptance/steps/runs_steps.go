@@ -114,20 +114,14 @@ func theCleanUpSaysItRemoved(_ context.Context, world any, captures []string) er
 		return err
 	}
 	want := fmt.Sprintf("removed %d scenario runs and %d mutant runs", scenarios, mutants)
-	if !strings.Contains(w.runsOutput, want) {
-		return fmt.Errorf("the clean up does not say %q:\n%s", want, w.runsOutput)
-	}
-	return nil
+	return outputSays(w.runsOutput, want, fmt.Sprintf("the clean up does not say %q", want))
 }
 
 // theCleanUpSaysThereWasNothingToRemove checks a clean up with nothing to do
 // says so rather than going quiet.
 func theCleanUpSaysThereWasNothingToRemove(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.runsOutput, "there was nothing to remove") {
-		return fmt.Errorf("the clean up does not say there was nothing to remove:\n%s", w.runsOutput)
-	}
-	return nil
+	return outputSays(w.runsOutput, "there was nothing to remove", "the clean up does not say there was nothing to remove")
 }
 
 // theBuildTreeStillHoldsTheBridgeBinary checks a clean target leaves the binary
