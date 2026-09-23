@@ -180,6 +180,12 @@ func (c *Client) captureMessage(_ context.Context, evt *event.Event) {
 	if rel := content.RelatesTo; rel != nil && rel.Type == event.RelThread {
 		seen.ThreadRoot = rel.EventID.String()
 	}
+	// A phone replies by quoting the message, which carries the message it
+	// answers without carrying a thread. A thread reply's own fallback quote is
+	// not that, so it is left out.
+	if rel := content.RelatesTo; rel != nil {
+		seen.ReplyTo = rel.GetNonFallbackReplyTo().String()
+	}
 	select {
 	case c.events <- seen:
 	default:

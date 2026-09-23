@@ -66,10 +66,11 @@ func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, e
 	defer r.mu.Unlock()
 	r.ensured = append(r.ensured, forgeName)
 	return Room{
-		SpaceID:         "!space-" + forgeName,
-		RoomID:          "!room-" + forgeName,
-		ApprovalsRoomID: "!approvals-" + forgeName,
-		ActivityRoomID:  "!activity-" + forgeName,
+		SpaceID:              "!space-" + forgeName,
+		RoomID:               "!room-" + forgeName,
+		ApprovalsRoomID:      "!approvals-" + forgeName,
+		ActivityRoomID:       "!activity-" + forgeName,
+		ClarificationsRoomID: "!clarifications-" + forgeName,
 	}, nil
 }
 
@@ -177,8 +178,31 @@ func newTestBridgeWithApprovals(t *testing.T, rooms *fakeRooms, stores map[strin
 
 func newTestBridgeWithStores(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, approvalStores map[string]ApprovalStore, boardStores map[string]BoardStore, roots ...string) (*Bridge, config.Config) {
 	t.Helper()
+	clarificationStores := map[string]ClarificationStore{}
+	for _, root := range roots {
+		clarificationStores[root] = &fakeClarifications{}
+	}
 	cfg := newTestConfig(t, roots...)
-	built, err := New(cfg, rooms, stores, approvalStores, boardStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	built, err := New(cfg, rooms, stores, approvalStores, clarificationStores, boardStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return built, cfg
+}
+
+// newTestBridgeWithClarifications builds a bridge that serves the given
+// clarifications for each root, which is what the clarification scenarios
+// decide on.
+func newTestBridgeWithClarifications(t *testing.T, rooms *fakeRooms, stores map[string]ForgeStore, clarificationStores map[string]ClarificationStore, roots ...string) (*Bridge, config.Config) {
+	t.Helper()
+	approvalStores := map[string]ApprovalStore{}
+	boardStores := map[string]BoardStore{}
+	for _, root := range roots {
+		approvalStores[root] = &fakeApprovals{}
+		boardStores[root] = &fakeBoard{}
+	}
+	cfg := newTestConfig(t, roots...)
+	built, err := New(cfg, rooms, stores, approvalStores, clarificationStores, boardStores, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -188,7 +212,7 @@ func newTestBridgeWithStores(t *testing.T, rooms *fakeRooms, stores map[string]F
 func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]BoardStore{}, logger)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]ClarificationStore{}, map[string]BoardStore{}, logger)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -199,7 +223,7 @@ func TestNewKeepsTheLoggerItIsGiven(t *testing.T) {
 }
 
 func TestNewFindsALoggerWithoutOne(t *testing.T) {
-	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]BoardStore{}, nil)
+	built, err := New(newTestConfig(t, "/forges/forge-a"), &fakeRooms{}, map[string]ForgeStore{}, map[string]ApprovalStore{}, map[string]ClarificationStore{}, map[string]BoardStore{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -303,7 +327,7 @@ func TestTickRepeatsNothingWhenRestarted(t *testing.T) {
 	}
 
 	restartedRooms := &fakeRooms{}
-	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}}, map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}}, map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}}, map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
 	if err != nil {
 		t.Fatalf("New after restart: %v", err)
 	}
@@ -524,6 +548,7 @@ func newFailingBridge(t *testing.T, logs *logBuffer) *Bridge {
 	rooms := &fakeRooms{drainErr: errors.New("the homeserver is away")}
 	built, err := New(newTestConfig(t, "/forges/forge-a"), rooms,
 		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
 		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -729,7 +754,7 @@ func TestRestartAppliesTheForgesNameToRoomsItAlreadyHas(t *testing.T) {
 	cfg := newTestConfig(t, "/forges/forge-a")
 
 	first, err := New(cfg, rooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
-		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}}, map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -744,6 +769,7 @@ func TestRestartAppliesTheForgesNameToRoomsItAlreadyHas(t *testing.T) {
 	restartedCfg.Forges = []config.Forge{{Root: "/forges/forge-a", Name: "Forgelet"}}
 	restartedRooms := &fakeRooms{}
 	restarted, err := New(restartedCfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": store}, map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
 		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
 	if err != nil {
 		t.Fatalf("New after restart: %v", err)

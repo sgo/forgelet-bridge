@@ -15,10 +15,11 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 	}
 	if forge, ok := b.state.ForgeFor(root); ok {
 		room := Room{
-			SpaceID:         forge.SpaceID,
-			RoomID:          forge.RoomID,
-			ApprovalsRoomID: forge.ApprovalsRoomID,
-			ActivityRoomID:  forge.ActivityRoomID,
+			SpaceID:              forge.SpaceID,
+			RoomID:               forge.RoomID,
+			ApprovalsRoomID:      forge.ApprovalsRoomID,
+			ActivityRoomID:       forge.ActivityRoomID,
+			ClarificationsRoomID: forge.ClarificationsRoomID,
 		}
 		if err := b.rooms.RefreshForge(ctx, room, b.cfg.ForgeName(root), b.cfg.Operator); err != nil {
 			return Room{}, fmt.Errorf("apply the forge's name to %s: %w", root, err)
@@ -32,10 +33,11 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
 	}
 	b.state.RecordForge(root, state.Forge{
-		SpaceID:         room.SpaceID,
-		RoomID:          room.RoomID,
-		ApprovalsRoomID: room.ApprovalsRoomID,
-		ActivityRoomID:  room.ActivityRoomID,
+		SpaceID:              room.SpaceID,
+		RoomID:               room.RoomID,
+		ApprovalsRoomID:      room.ApprovalsRoomID,
+		ActivityRoomID:       room.ActivityRoomID,
+		ClarificationsRoomID: room.ClarificationsRoomID,
 	})
 	if err := b.state.Save(b.statePath); err != nil {
 		return Room{}, err
