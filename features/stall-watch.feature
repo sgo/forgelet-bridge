@@ -1,3 +1,8 @@
+# mutation-stamp: sha256=9c817a1bf597fe32990055b4820b13cd66c53d322d629e40c9da1d011f8fac78
+# acceptance-mutation-manifest-begin
+# {"version":1,"tested_at":"2026-09-23T17:09:46.647462Z","feature_name":"Stall Watch","feature_path":"features/stall-watch.feature","background_hash":"6eb52f5a96020b6037784710db5477e6f665699690ac0b411b96946309e323d6","implementation_hash":"sha256:f2071cca306c3a858f05f7f2e93a7fda738c1fb248ea6bfd5bfb4387aa3a8714","scenarios":[]}
+# acceptance-mutation-manifest-end
+
 Feature: Stall Watch
 
   # The watch is what notices a role that stopped while holding work when nobody
