@@ -51,6 +51,59 @@ func projectHandedCardToRole(_ context.Context, world any, captures []string) er
 		"task: "+card+"\n")
 }
 
+// projectNoteStillInASendersOutbox records the card's note where a sender left
+// it: handed over to nobody yet, which is work waiting to be taken up.
+func projectNoteStillInASendersOutbox(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	projectDir, err := w.pathOf(captures[2], captures[1])
+	if err != nil {
+		return err
+	}
+	return writeFile(filepath.Join(projectDir, ".swarmforge", "handoffs", "outbox", "50_"+captures[3]+".handoff"),
+		"task: "+captures[3]+"\n")
+}
+
+// projectHandoffWaitingForTheOperator records the handoff for a card the
+// operator has yet to decide, in the place the forge parks one. The check reads
+// the role that raised it out of the file, so every role the project serves
+// gets its own: the scenario says the handoff is waiting, not which role raised
+// it, and a role waiting on the operator is not stalled.
+func projectHandoffWaitingForTheOperator(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	projectDir, err := w.pathOf(captures[2], captures[1])
+	if err != nil {
+		return err
+	}
+	card := captures[3]
+	roles, err := rolesOf(projectDir)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		if err := writeFile(filepath.Join(projectDir, ".swarmforge", "handoffs", "pending_approval", "50_"+role+"-"+card+".handoff"),
+			"from: "+role+"\ntask: "+card+"\n"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rolesOf lists the roles one project records, in the order its roles file
+// holds them.
+func rolesOf(projectDir string) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join(projectDir, ".swarmforge", "roles.tsv"))
+	if err != nil {
+		return nil, err
+	}
+	var roles []string
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if columns := strings.Split(line, "\t"); len(columns) > 0 && columns[0] != "" {
+			roles = append(roles, columns[0])
+		}
+	}
+	return roles, nil
+}
+
 // quietWorktree gives a role's tree a history of its own whose last commit is
 // long past, the way a role that stopped while holding a card looks: without
 // it the check would read the fixture's own fresh commit as the role's work.

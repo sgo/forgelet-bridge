@@ -20,9 +20,14 @@ Feature: Role Health
   # not running at all — no role session is a forge at login, not four dead
   # agents — is said once instead of filed as four alarms. A role with an open
   # clarification is waiting on a decision. And a card in a role's lane whose
-  # note is nowhere in its inbox has not been handed over yet: it is queued for
-  # later, and calling that a stall files an alarm about a role that is simply
-  # waiting its turn.
+  # note is somewhere — its inbox, parked by the lieutenant, still in a sender's
+  # outbox or sitting in a pending approval — is work waiting to be taken up: the
+  # role is idle with nothing to pick up, and calling that a stall files an alarm
+  # about a role that is simply waiting its turn. A card whose note exists
+  # nowhere is the other thing: the board says a role holds work and nothing
+  # anywhere exists to hand it over, so it is a note that went missing, with its
+  # own verdict and its own alarm — not the same name as an agent that genuinely
+  # stopped mid-task.
 
   Background:
     Given the fixture forge root forge-a holds the project forgelet-bridge
@@ -79,11 +84,30 @@ Feature: Role Health
     Then the idler check reports the role coder as waiting on a decision
     And the idler check passes
 
-  # Role Health 7: a card whose note has not arrived is queued, not a stall
-  Scenario: Role Health 7: a card whose note has not arrived is queued, not a stall
+  # Role Health 7: a card whose note is somewhere is waiting to be taken up
+  Scenario: Role Health 7: a card whose note is somewhere is waiting to be taken up
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    And the project forgelet-bridge of the forge root forge-a has the note for the card refund-card still in a sender's outbox
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as idle with nothing to pick up
+    And the idler check passes
+
+  # Role Health 8: a card whose note is nowhere is a missing note, and it alarms
+  Scenario: Role Health 8: a card whose note is nowhere is a missing note, and it alarms
     Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
     And the forge root forge-a gives the role coder a live session
     And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
     When the idler check runs for the project forgelet-bridge of the forge root forge-a
-    Then the idler check reports the role coder as assigned the card refund-card but not yet handed over
+    Then the idler check reports the note for the card refund-card as missing
+    And the idler check fails
+
+  # Role Health 9: a handoff sitting with the operator is waiting, not stalled
+  Scenario: Role Health 9: a handoff sitting with the operator is waiting, not stalled
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    And the project forgelet-bridge of the forge root forge-a has the handoff for the card refund-card waiting for the operator
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as waiting on the operator
     And the idler check passes
