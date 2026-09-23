@@ -157,6 +157,61 @@ func operatorSwipesReplyToChatMessage(_ context.Context, world any, captures []s
 	return err
 }
 
+// operatorRepliesInThread sends the operator's message inside the thread a chat
+// message started, the way the phone does when their message already carries a
+// relation.
+func operatorRepliesInThread(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	anchor, err := w.chatMessageAnchor(ctx, captures[2])
+	if err != nil {
+		return err
+	}
+	roomID, err := w.chatRoom(ctx, "Chat")
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = operator.SendInThread(ctx, roomID, captures[1], anchor)
+	return err
+}
+
+// chatRoomHoldsOneThreadReplyOf checks the answer arrived once and inside a
+// thread rather than at the top of the room.
+func chatRoomHoldsOneThreadReplyOf(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, err := w.chatRoom(ctx, "Chat")
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	body := captures[1]
+	if err := waitFor(ctx, fmt.Sprintf("chat room never held %q", body), func() (bool, error) {
+		return countMessages(operator, roomID, body, false) >= 1, nil
+	}); err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if copies := countMessages(operator, roomID, body, false); copies != 1 {
+		return fmt.Errorf("chat room holds %d copies of %q, want exactly one", copies, body)
+	}
+	if countMessages(operator, roomID, body, true) != 1 {
+		return fmt.Errorf("the copy of %q is not a thread reply", body)
+	}
+	return nil
+}
+
 func roomHoldsOneChatMessage(_ context.Context, world any, captures []string) error {
 	return expectMessages(world.(*World), captures[1], captures[2], false)
 }

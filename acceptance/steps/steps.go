@@ -178,6 +178,8 @@ func register(registry *runtime.Registry) error {
 		{`^the bridge sent the chat message "(.+)" encrypted$`, bridgeSentEncrypted},
 		{`^the operator decrypts the thread reply "(.+)" to the chat message "(.+)"$`, operatorDecryptsThreadReply},
 		{`^the operator swipes a reply "(.+)" to the chat message "(.+)"$`, operatorSwipesReplyToChatMessage},
+		{`^the operator replies "(.+)" in the thread of the chat message "(.+)"$`, operatorRepliesInThread},
+		{`^the chat room holds exactly one copy of "(.+)" and it is a thread reply$`, chatRoomHoldsOneThreadReplyOf},
 		{`^the operator decrypts the thread reply "(.+)" in the forge (.+)'s chat room sent under the name (.+) to the chat message "(.+)"$`, forgeSentThreadReply},
 		{`^the operator sends the message "(.+)" into chat room (.+)$`, operatorSendsMessage},
 		{`^the operator sends the message "(.+)" into the forge (\S+)'s chat room$`, operatorSendsIntoForgeChatRoom},
