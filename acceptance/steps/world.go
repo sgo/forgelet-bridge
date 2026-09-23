@@ -58,6 +58,10 @@ type World struct {
 	watchRoots  []string
 	watchOutput string
 	watchAgent  string
+	// idlerOutput and idlerErr are what the idler check last said and returned
+	// when the suite ran it against a fixture project.
+	idlerOutput string
+	idlerErr    error
 	// sockets are the tmux servers the fixture started for the roles it serves,
 	// so a scenario can take them down with everything else it started.
 	sockets    []string

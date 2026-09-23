@@ -190,19 +190,25 @@ func rolePanes(projectDir string) ([]string, error) {
 	return panes, nil
 }
 
-// paneOf is the pane one role of a project is served in.
-func paneOf(projectDir, role string) (string, error) {
+// roleColumn is one column of a project's role row, the row whose first column
+// is the role. It is how the fixture reads a role's worktree or its pane.
+func roleColumn(projectDir, role string, index int) (string, error) {
 	data, err := os.ReadFile(filepath.Join(projectDir, ".swarmforge", "roles.tsv"))
 	if err != nil {
 		return "", err
 	}
 	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 		columns := strings.Split(line, "\t")
-		if len(columns) >= 4 && columns[0] == role {
-			return columns[3], nil
+		if len(columns) > index && columns[0] == role {
+			return columns[index], nil
 		}
 	}
 	return "", fmt.Errorf("the project %s records no role %s", projectDir, role)
+}
+
+// paneOf is the pane one role of a project is served in.
+func paneOf(projectDir, role string) (string, error) {
+	return roleColumn(projectDir, role, 3)
 }
 
 // startPane brings up one quiet session on a socket: a session that is up,
