@@ -8,10 +8,14 @@ somebody who has never done it can.
 
 The operator's entry point is the forge's own adapter,
 `<forge root>/swarmforge/scripts/matrix-bridge.sh`, which serves the forge root
-it lives in. The commands below are this repository's adapter; call it the same
-way, naming the forge root it serves with `MATRIX_BRIDGE_FORGE_ROOT`, which is
-the directory that holds `.swarmforge/matrix-bridge.json`. The adapter never
-assumes it is running from its own repository's directory.
+it lives in. The commands below are this repository's adapter, called the same
+way for the forge root it serves; the adapter never assumes it is running from
+its own repository's directory. Set the two names the rest of this runbook uses:
+
+```sh
+root="<forge root this bridge serves>"          # the directory holding .swarmforge/matrix-bridge.json
+adapter="<this repository>/scripts/matrix-bridge.sh"
+```
 
 ## 1. What the target forge must have
 
@@ -32,7 +36,7 @@ assumes it is running from its own repository's directory.
   | `POST /api/clarifications/<id>/answer` | a clarification the operator answered, which wakes the blocked role |
 
   ```sh
-  url="$(cat .swarmforge/dashboard-url)"
+  url="$(cat "$root/.swarmforge/dashboard-url")"
   curl -sS "$url/api/state" >/dev/null && echo "state is there"
   ```
 - **Older tooling.** A forge whose dashboard does not carry one of these
@@ -51,15 +55,13 @@ assumes it is running from its own repository's directory.
 The adapter does the edit, the copy and the restart in one step:
 
 ```sh
-MATRIX_BRIDGE_FORGE_ROOT="<forge root this bridge serves>" \
-  scripts/matrix-bridge.sh add-forge "<root of the forge to add>" "<name the operator knows it by>"
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" add-forge "<root of the forge to add>" "<name the operator knows it by>"
 ```
 
 For the Saibill forge beside this one:
 
 ```sh
-MATRIX_BRIDGE_FORGE_ROOT=/Users/sgo/forgelet-forge \
-  scripts/matrix-bridge.sh add-forge /Users/sgo/sgo Saibill
+MATRIX_BRIDGE_FORGE_ROOT=/Users/sgo/forgelet-forge "$adapter" add-forge /Users/sgo/sgo Saibill
 ```
 
 What it does, in this order:
@@ -82,7 +84,7 @@ hand and restart.
 ## 3. Check it worked
 
 ```sh
-scripts/matrix-bridge.sh status
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" status
 ```
 
 The status carries the bridge's startup report: every configured forge it
@@ -110,9 +112,9 @@ room, with the operator invited.
 ## 5. Roll back
 
 ```sh
-MATRIX_BRIDGE_FORGE_ROOT="<forge root this bridge serves>" scripts/matrix-bridge.sh stop
-cp "<the copy add-forge named>" .swarmforge/matrix-bridge.json
-MATRIX_BRIDGE_FORGE_ROOT="<forge root this bridge serves>" scripts/matrix-bridge.sh start
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" stop
+cp "<the copy add-forge named>" "$root/.swarmforge/matrix-bridge.json"
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" start
 ```
 
 The bridge stops carrying that forge. The space and rooms it provisioned stay in
