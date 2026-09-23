@@ -14,9 +14,9 @@ import (
 )
 
 // EnsureForge finds or creates the forge's space and the rooms inside it: the
-// chat channel, the approvals room and the activity room. Encryption is on
-// from room creation, the operator is invited to all of them, and the bridge
-// posts under the forge's own name.
+// chat channel, the approvals room, the activity room and the clarifications
+// room. Encryption is on from room creation, the operator is invited to all of
+// them, and the bridge posts under the forge's own name.
 func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (bridge.Room, error) {
 	spaceID, err := c.findSpace(ctx, forgeName)
 	if err != nil {
@@ -45,11 +45,16 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 	if err != nil {
 		return bridge.Room{}, err
 	}
+	clarificationsRoomID, err := c.ensureRoom(ctx, spaceID, operator, forgeName, config.ClarificationsRoomName)
+	if err != nil {
+		return bridge.Room{}, err
+	}
 	return bridge.Room{
-		SpaceID:         spaceID,
-		RoomID:          roomID,
-		ApprovalsRoomID: approvalsRoomID,
-		ActivityRoomID:  activityRoomID,
+		SpaceID:              spaceID,
+		RoomID:               roomID,
+		ApprovalsRoomID:      approvalsRoomID,
+		ActivityRoomID:       activityRoomID,
+		ClarificationsRoomID: clarificationsRoomID,
 	}, nil
 }
 
@@ -87,6 +92,7 @@ func (c *Client) RefreshForge(ctx context.Context, room bridge.Room, forgeName, 
 		{room.RoomID, config.RoomName},
 		{room.ApprovalsRoomID, config.ApprovalsRoomName},
 		{room.ActivityRoomID, config.ActivityRoomName},
+		{room.ClarificationsRoomID, config.ClarificationsRoomName},
 	} {
 		if named.id == "" {
 			continue

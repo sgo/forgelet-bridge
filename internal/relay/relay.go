@@ -21,6 +21,9 @@ type RoomEvent struct {
 	// ThreadRoot is the message a reply is threaded under, empty when the
 	// message starts its own thread.
 	ThreadRoot string
+	// ReplyTo is the message this one answers, empty when it answers none. A
+	// phone replies by quoting the message, which carries this and no thread.
+	ReplyTo string
 }
 
 // State is the bridge's durable bookkeeping. Every map is keyed by the Matrix
@@ -44,6 +47,9 @@ type State struct {
 	PendingThreads map[string]string `json:"pendingthreads,omitempty"`
 	// Approvals maps an approval to what the bridge has done about it.
 	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
+	// Clarifications maps a clarification to what the bridge has done about
+	// it.
+	Clarifications map[string]ClarificationState `json:"clarifications,omitempty"`
 	// Activity maps a card to the last thing the bridge said about it.
 	Activity map[string]CardState `json:"activity,omitempty"`
 }
@@ -97,6 +103,9 @@ func (s *State) EnsureMaps() {
 	if s.Approvals == nil {
 		s.Approvals = map[string]ApprovalState{}
 	}
+	if s.Clarifications == nil {
+		s.Clarifications = map[string]ClarificationState{}
+	}
 	if s.Activity == nil {
 		s.Activity = map[string]CardState{}
 	}
@@ -126,18 +135,48 @@ func operatorRequests(operator string, st State, events []RoomEvent) []Action {
 		}
 		actions = append(actions, Action{
 			Kind:          CreateForgeRequest,
-			Body:          event.Body,
+			Body:          OwnWords(event.Body),
 			SourceEventID: event.EventID,
-			SourceThread:  event.ThreadRoot,
+			SourceThread:  askedInThread(st, event, events),
 		})
 	}
 	return actions
 }
 
+// askedInThread is the thread the operator's answer belongs in. A message they
+// wrote in a thread stays there; a message that quotes another one belongs in
+// the thread the quoted message sits in, which is where the answer to it
+// belongs.
+func askedInThread(st State, event RoomEvent, events []RoomEvent) string {
+	if event.ThreadRoot != "" {
+		return event.ThreadRoot
+	}
+	if event.ReplyTo == "" {
+		return ""
+	}
+	for _, quoted := range events {
+		if quoted.EventID != event.ReplyTo {
+			continue
+		}
+		if quoted.ThreadRoot != "" {
+			return quoted.ThreadRoot
+		}
+		return quoted.EventID
+	}
+	// The room only carries what was said since the last drain, so a message
+	// the bridge posted earlier is known from the bookkeeping instead.
+	for _, messageID := range st.Threads {
+		if messageID == event.ReplyTo {
+			return event.ReplyTo
+		}
+	}
+	return ""
+}
+
 // operatorAsked reports whether a room event is an operator message the forge
 // has not seen the request for yet.
 func operatorAsked(st State, operator string, event RoomEvent) bool {
-	if event.Sender != operator || strings.TrimSpace(event.Body) == "" {
+	if event.Sender != operator || OwnWords(event.Body) == "" {
 		return false
 	}
 	if _, relayed := st.Relayed[event.EventID]; relayed {
@@ -193,5 +232,5 @@ func relayedOrigins(st State) map[string]string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T16:14:29+02:00","module_hash":"3c4f68e3bcd9f5081e7d0e3bc0d7f4113f6b89fc5cceb367e35007ce9f94e7ea","functions":[{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":70,"end_line":86,"hash":"d9ce47d316e5fc7b531fb6370e4a118684c6ec149eb3699490d1fa74cb794e20"},{"id":"func/State.Anchor","name":"State.Anchor","line":89,"end_line":92,"hash":"abf97d6be5138314460256860c7bdf0359f0ecd87e8387fd92f8ca81367796ee"},{"id":"func/Plan","name":"Plan","line":96,"end_line":99,"hash":"e8e1aa7566af7251d7b0b643670813af18620a1c90fec9d9e577c2236675b68c"},{"id":"func/operatorRequests","name":"operatorRequests","line":104,"end_line":117,"hash":"f24eeab31329761ff25c41c4e268db78c5f6e86bfb2da0c9450234046a19f5d5"},{"id":"func/operatorAsked","name":"operatorAsked","line":121,"end_line":127,"hash":"5875abf7e769ff976933527c8e644dc3c303e6acd48a1c4062db5c83b766a884"},{"id":"func/forgeRequests","name":"forgeRequests","line":131,"end_line":162,"hash":"e398aed1cf014ef832770002d1a7009f0429769ff6c49454832b2485f3948d2b"},{"id":"func/relayedOrigins","name":"relayedOrigins","line":166,"end_line":172,"hash":"69ffcaa8aacd4a23072cfed3d3a0f2d1464007173f7e1a6d1bcc644bd9c38fb4"}]}
+// {"version":1,"tested_at":"2026-09-23T13:26:59+02:00","module_hash":"0c58e2f431811a07578706568ba3f3c9b324f362c4c6c0cb8594d843a77a4a5d","functions":[{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":87,"end_line":112,"hash":"46ba92a69300c001204fee38a1dfbac08c991f7dbcb170cb6100d9d956a6d22d"},{"id":"func/State.Anchor","name":"State.Anchor","line":115,"end_line":118,"hash":"abf97d6be5138314460256860c7bdf0359f0ecd87e8387fd92f8ca81367796ee"},{"id":"func/Plan","name":"Plan","line":122,"end_line":125,"hash":"e8e1aa7566af7251d7b0b643670813af18620a1c90fec9d9e577c2236675b68c"},{"id":"func/operatorRequests","name":"operatorRequests","line":130,"end_line":144,"hash":"18373dd942f49714d460f67728ae9ccac9cc2593998a4c7037ae8fa5a9f2a164"},{"id":"func/askedInThread","name":"askedInThread","line":150,"end_line":174,"hash":"fdb0bff1b4ac1fccbb8b861b21b2a84ef258429ebaee1c394bfab1754fc8048e"},{"id":"func/operatorAsked","name":"operatorAsked","line":178,"end_line":187,"hash":"cd911834c75727b082d685cadf37ce7d90ea75687e72ce42004c9f39b848b7f3"},{"id":"func/forgeRequests","name":"forgeRequests","line":191,"end_line":222,"hash":"e398aed1cf014ef832770002d1a7009f0429769ff6c49454832b2485f3948d2b"},{"id":"func/relayedOrigins","name":"relayedOrigins","line":226,"end_line":232,"hash":"69ffcaa8aacd4a23072cfed3d3a0f2d1464007173f7e1a6d1bcc644bd9c38fb4"}]}
 // mutate4go-manifest-end

@@ -15,10 +15,11 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 	}
 	if forge, ok := b.state.ForgeFor(root); ok {
 		room := Room{
-			SpaceID:         forge.SpaceID,
-			RoomID:          forge.RoomID,
-			ApprovalsRoomID: forge.ApprovalsRoomID,
-			ActivityRoomID:  forge.ActivityRoomID,
+			SpaceID:              forge.SpaceID,
+			RoomID:               forge.RoomID,
+			ApprovalsRoomID:      forge.ApprovalsRoomID,
+			ActivityRoomID:       forge.ActivityRoomID,
+			ClarificationsRoomID: forge.ClarificationsRoomID,
 		}
 		if err := b.rooms.RefreshForge(ctx, room, b.cfg.ForgeName(root), b.cfg.Operator); err != nil {
 			return Room{}, fmt.Errorf("apply the forge's name to %s: %w", root, err)
@@ -32,10 +33,11 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 		return Room{}, fmt.Errorf("provision forge %s: %w", root, err)
 	}
 	b.state.RecordForge(root, state.Forge{
-		SpaceID:         room.SpaceID,
-		RoomID:          room.RoomID,
-		ApprovalsRoomID: room.ApprovalsRoomID,
-		ActivityRoomID:  room.ActivityRoomID,
+		SpaceID:              room.SpaceID,
+		RoomID:               room.RoomID,
+		ApprovalsRoomID:      room.ApprovalsRoomID,
+		ActivityRoomID:       room.ActivityRoomID,
+		ClarificationsRoomID: room.ClarificationsRoomID,
 	})
 	if err := b.state.Save(b.statePath); err != nil {
 		return Room{}, err
@@ -46,5 +48,5 @@ func (b *Bridge) roomFor(ctx context.Context, root string) (Room, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T21:33:18+02:00","module_hash":"59ef2d62d3bf4c0e89a54c4b75b922e2337ea293846b0921c3183fe0bf9096e7","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":12,"end_line":46,"hash":"39bc446b316019f97fd51935cea22d3e2e645d2137baab4c01ea0dd067c5859f"}]}
+// {"version":1,"tested_at":"2026-09-23T13:34:17+02:00","module_hash":"93598fd9aff958246c26d571e74a42bf8ab075bbcb8a795a2dbf28f2cb47405b","functions":[{"id":"func/Bridge.roomFor","name":"Bridge.roomFor","line":12,"end_line":48,"hash":"9a21cd2bad53702f176f5bb2caa20f9388453645e9437bbfe2eabb6bcdcd1e84"}]}
 // mutate4go-manifest-end

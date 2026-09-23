@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -180,7 +181,8 @@ func approvalApproved(_ context.Context, world any, captures []string) error {
 	})
 }
 
-// approvalSentBack checks the forge recorded the operator's feedback.
+// approvalSentBack checks the forge recorded the operator's feedback exactly:
+// what the operator said is what the forge was told, quote and all.
 func approvalSentBack(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	root, err := singleForge(w)
@@ -196,8 +198,35 @@ func approvalSentBack(_ context.Context, world any, captures []string) error {
 		if err != nil {
 			return false, nil
 		}
-		return strings.Contains(string(data), feedback), nil
+		recorded, err := recordedFeedback(data)
+		if err != nil {
+			return false, err
+		}
+		for _, text := range recorded {
+			if text == feedback {
+				return true, nil
+			}
+		}
+		return false, nil
 	})
+}
+
+// recordedFeedback is the feedback the forge's review history holds, one entry
+// per document the approval was sent back with.
+func recordedFeedback(data []byte) ([]string, error) {
+	var history map[string][]struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(data, &history); err != nil {
+		return nil, fmt.Errorf("read the forge's review history: %w", err)
+	}
+	var feedback []string
+	for _, entries := range history {
+		for _, entry := range entries {
+			feedback = append(feedback, entry.Text)
+		}
+	}
+	return feedback, nil
 }
 
 // approvalStillPending checks the forge is still waiting for the decision.

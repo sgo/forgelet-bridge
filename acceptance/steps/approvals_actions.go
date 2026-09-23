@@ -78,6 +78,25 @@ func operatorTalksInApprovalsRoom(_ context.Context, world any, captures []strin
 	return err
 }
 
+// operatorSwipesReplyToApproval sends the operator's decision the way a phone
+// does: by quoting the approval message, which counts as a reply in its thread
+// once the quote the phone wrote into the body is left out.
+func operatorSwipesReplyToApproval(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, messageID, _, err := w.approvalMessage(ctx, captures[2])
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = operator.SwipeReply(ctx, roomID, messageID, captures[1])
+	return err
+}
+
 // userJoinedApprovalsRoom brings a fixture client into the approvals room, the
 // way the operator would add someone.
 func userJoinedApprovalsRoom(_ context.Context, world any, captures []string) error {

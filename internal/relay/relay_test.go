@@ -154,10 +154,25 @@ func TestStateAnchorReportsOnlyKnownThreads(t *testing.T) {
 func TestEnsureMapsMakesStateWritable(t *testing.T) {
 	var state State
 	state.EnsureMaps()
-	state.Threads["req-1"] = "$message"
 
-	if state.Threads["req-1"] != "$message" {
-		t.Errorf("threads = %+v, want the recorded anchor", state.Threads)
+	state.Threads["req-1"] = "$message"
+	state.Replied["req-1"] = "$reply"
+	state.Relayed["$operator-message"] = "req-1"
+	state.Pending["req-1"] = "waiting"
+	state.PendingThreads["req-1"] = "$thread"
+	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{MessageID: "$approval"}
+	state.Clarifications["forgelet-bridge/clar-1"] = ClarificationState{MessageID: "$message"}
+	state.Activity["forgelet-bridge/card-activity-feed"] = CardState{Lane: "coder"}
+
+	if state.Threads["req-1"] != "$message" ||
+		state.Replied["req-1"] != "$reply" ||
+		state.Relayed["$operator-message"] != "req-1" ||
+		state.Pending["req-1"] != "waiting" ||
+		state.PendingThreads["req-1"] != "$thread" ||
+		state.Approvals["forgelet-bridge/approval-1"].MessageID != "$approval" ||
+		state.Clarifications["forgelet-bridge/clar-1"].MessageID != "$message" ||
+		state.Activity["forgelet-bridge/card-activity-feed"].Lane != "coder" {
+		t.Errorf("state = %+v, want every map writable after EnsureMaps", state)
 	}
 }
 

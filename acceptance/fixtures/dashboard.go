@@ -158,6 +158,17 @@ func wakeLog(root string) string {
 // into. The repository is the fixture's own, so the snapshots and resets the
 // dashboard performs on a worktree it is handed stay inside the fixture.
 func prepareForgeRoot(root string) error {
+	if err := PrepareSwarmRoot(root); err != nil {
+		return err
+	}
+	return initFixtureRepo(root)
+}
+
+// PrepareSwarmRoot gives a root the layout the forge's dashboard serves it
+// with: the roles it serves, each with a worktree and a pane to wake, and the
+// tmux socket the dashboard types into. A project is a swarm root of its own,
+// so a dashboard serving a project resolves all of this inside the project.
+func PrepareSwarmRoot(root string) error {
 	stateDir := filepath.Join(root, ".swarmforge")
 	if err := os.MkdirAll(filepath.Join(stateDir, "board"), 0o755); err != nil {
 		return err
@@ -180,7 +191,7 @@ func prepareForgeRoot(root string) error {
 	if err := os.WriteFile(filepath.Join(stateDir, "tmux-socket"), []byte(filepath.Join(stateDir, "tmux.sock")+"\n"), 0o644); err != nil {
 		return err
 	}
-	return initFixtureRepo(root)
+	return nil
 }
 
 // initFixtureRepo gives the fixture forge root a repository of its own, with
@@ -238,5 +249,5 @@ func FixtureHead(root string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T20:52:50+02:00","module_hash":"d70b89443878ff5766d3f1ea3367c80b61a214f4b00559000adb16df0b4e76f4","functions":[{"id":"func/StartDashboard","name":"StartDashboard","line":32,"end_line":67,"hash":"e74bba90a1ed7c5ee21f290ac3036c1fbfb4bb4e81a62d6e29ce0fa0f635d292"},{"id":"func/Dashboard.Stop","name":"Dashboard.Stop","line":70,"end_line":75,"hash":"ed128aeacb0ef763b4e0d775f38ccc937f48a6257e8b123fa30a79479da80a05"},{"id":"func/Dashboard.Typed","name":"Dashboard.Typed","line":78,"end_line":93,"hash":"49e3a082d1956dedd3c1a757fe01f94f068f9badadc5514417aca3848a538c2e"},{"id":"func/Dashboard.WokeWith","name":"Dashboard.WokeWith","line":96,"end_line":107,"hash":"a4965612d5f6cc27d347ea342717c06e300fff6cac17f703ffb046fe193a6b68"},{"id":"func/Dashboard.Ask","name":"Dashboard.Ask","line":110,"end_line":130,"hash":"535e219d03091f22bc5503f53681f013c1ee1d53de83a1c39d5674a836b9dcd4"},{"id":"func/Dashboard.waitForURL","name":"Dashboard.waitForURL","line":132,"end_line":149,"hash":"8e68da3f655708e3207a978452aa49e945bdc48cd5e80ab628a98cd1dc1cdc5b"},{"id":"func/wakeLog","name":"wakeLog","line":152,"end_line":154,"hash":"8af29ced2d7b72874cbe4c007a95721799351c8ad5b114586ef8b42cc4fe640b"},{"id":"func/prepareForgeRoot","name":"prepareForgeRoot","line":160,"end_line":184,"hash":"c1c7dbea56db7a1ff97f9622036fddc08abc8c628f591ddc6803ea52a2170093"},{"id":"func/initFixtureRepo","name":"initFixtureRepo","line":189,"end_line":208,"hash":"df550d3c6859848b1c9e5ed2d46e38d3c756c1b9673bded60a467cdb137151c1"},{"id":"func/Dashboard.FixtureSnapshots","name":"Dashboard.FixtureSnapshots","line":212,"end_line":225,"hash":"f0c4c64523099bcd2c6cb94e4cf2f11a7489e4b63afd995942d1763f207a4c80"},{"id":"func/FixtureHead","name":"FixtureHead","line":231,"end_line":238,"hash":"96aee472035f5167658178286621c52d3509e6542c8ec38366632a081b180135"}]}
+// {"version":1,"tested_at":"2026-09-23T13:46:01+02:00","module_hash":"d4ff84bf529bd1f6330107d2a2dff41e38438103794a4081438538ab9441a8ee","functions":[{"id":"func/StartDashboard","name":"StartDashboard","line":32,"end_line":67,"hash":"e74bba90a1ed7c5ee21f290ac3036c1fbfb4bb4e81a62d6e29ce0fa0f635d292"},{"id":"func/Dashboard.Stop","name":"Dashboard.Stop","line":70,"end_line":75,"hash":"ed128aeacb0ef763b4e0d775f38ccc937f48a6257e8b123fa30a79479da80a05"},{"id":"func/Dashboard.Typed","name":"Dashboard.Typed","line":78,"end_line":93,"hash":"49e3a082d1956dedd3c1a757fe01f94f068f9badadc5514417aca3848a538c2e"},{"id":"func/Dashboard.WokeWith","name":"Dashboard.WokeWith","line":96,"end_line":107,"hash":"a4965612d5f6cc27d347ea342717c06e300fff6cac17f703ffb046fe193a6b68"},{"id":"func/Dashboard.Ask","name":"Dashboard.Ask","line":110,"end_line":130,"hash":"535e219d03091f22bc5503f53681f013c1ee1d53de83a1c39d5674a836b9dcd4"},{"id":"func/Dashboard.waitForURL","name":"Dashboard.waitForURL","line":132,"end_line":149,"hash":"8e68da3f655708e3207a978452aa49e945bdc48cd5e80ab628a98cd1dc1cdc5b"},{"id":"func/wakeLog","name":"wakeLog","line":152,"end_line":154,"hash":"8af29ced2d7b72874cbe4c007a95721799351c8ad5b114586ef8b42cc4fe640b"},{"id":"func/prepareForgeRoot","name":"prepareForgeRoot","line":160,"end_line":165,"hash":"216ade16d35c250b73ee83d71b25af3ed551d27326fa2907cdbca87c8c2c164a"},{"id":"func/PrepareSwarmRoot","name":"PrepareSwarmRoot","line":171,"end_line":195,"hash":"5b48265772e09bd8db401eed77bb979260d4bab9e78cfe5014b73b90048afbcf"},{"id":"func/initFixtureRepo","name":"initFixtureRepo","line":200,"end_line":219,"hash":"df550d3c6859848b1c9e5ed2d46e38d3c756c1b9673bded60a467cdb137151c1"},{"id":"func/Dashboard.FixtureSnapshots","name":"Dashboard.FixtureSnapshots","line":223,"end_line":236,"hash":"f0c4c64523099bcd2c6cb94e4cf2f11a7489e4b63afd995942d1763f207a4c80"},{"id":"func/FixtureHead","name":"FixtureHead","line":242,"end_line":249,"hash":"96aee472035f5167658178286621c52d3509e6542c8ec38366632a081b180135"}]}
 // mutate4go-manifest-end

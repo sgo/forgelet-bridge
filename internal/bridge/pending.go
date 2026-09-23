@@ -43,6 +43,16 @@ func (p *pendingWork[T]) list() []T {
 	return kept
 }
 
+// pendingAt is the work a key already holds, made on first use.
+func pendingAt[T any](work map[string]T, key string, make func() T) T {
+	item, ok := work[key]
+	if !ok {
+		item = make()
+		work[key] = item
+	}
+	return item
+}
+
 // pendingChat is the chat work one forge owes the room.
 type pendingChat = pendingWork[relay.Action]
 
@@ -80,6 +90,17 @@ func approvalActionKey(action relay.ApprovalAction) string {
 	return fmt.Sprintf("%s/%s/%s", action.Kind, action.Key, action.Resolution)
 }
 
+// pendingClarifications is the clarifications room's share of that work.
+type pendingClarifications = pendingWork[relay.ClarificationAction]
+
+func newPendingClarifications() *pendingClarifications {
+	return newPendingWork[relay.ClarificationAction](clarificationActionKey)
+}
+
+func clarificationActionKey(action relay.ClarificationAction) string {
+	return fmt.Sprintf("%s/%s/%s", action.Kind, action.Key, action.Answer)
+}
+
 // count is how much work is waiting for the forge.
 func (b *Bridge) pendingCount() int {
 	count := 0
@@ -87,6 +108,9 @@ func (b *Bridge) pendingCount() int {
 		count += pending.count()
 	}
 	for _, pending := range b.pendingApprovals {
+		count += pending.count()
+	}
+	for _, pending := range b.pendingClarifications {
 		count += pending.count()
 	}
 	return count
@@ -122,5 +146,5 @@ func approvalFailureVerb(action relay.ApprovalAction) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T22:58:51+02:00","module_hash":"91f5ad2ab4e91eaa2f83cd76e7b4932e5b2d84511d246d68ac8357e3d553dc18","functions":[{"id":"func/newPendingWork","name":"newPendingWork","line":21,"end_line":23,"hash":"993ed0c1d553f17d08a7a6d0ab6d1336281c179b5618c1dd66bf5cd798d58cfc"},{"id":"func/pendingWork.keep","name":"pendingWork.keep","line":25,"end_line":25,"hash":"e5b1359da5680095132730eb4af61965fbacf484e87b8c432ab12280b7842acd"},{"id":"func/pendingWork.done","name":"pendingWork.done","line":27,"end_line":27,"hash":"d9559e93d28f1b42b86b342e790e3a1a4d8dd638829b33f3e31ff4756545c94f"},{"id":"func/pendingWork.count","name":"pendingWork.count","line":29,"end_line":29,"hash":"6a6436ee5977eb656905d6d5b004e2e0acdfaaf9aba68716227764e837c7af81"},{"id":"func/pendingWork.list","name":"pendingWork.list","line":33,"end_line":44,"hash":"8cabe7fc0afeb395434372b797590d9764a271cad4fba44db2e279253eb4c17c"},{"id":"func/newPendingChat","name":"newPendingChat","line":49,"end_line":51,"hash":"aa801fbffe2e10e1e050c9cd7d68f7760430df7c712990e492fb313e8b89f6c0"},{"id":"func/chatActionKey","name":"chatActionKey","line":53,"end_line":55,"hash":"14eb4a05db96be7325b7fe1a28cc1af721524202f6673d988b7029805ba55dc2"},{"id":"func/newPendingApprovals","name":"newPendingApprovals","line":64,"end_line":66,"hash":"b74b4f4f264893b0b42f369962363995b10fbdaf150c4b21bb9c0bb1acc25af8"},{"id":"func/pendingApprovals.keep","name":"pendingApprovals.keep","line":68,"end_line":68,"hash":"c777f0d5fb5733a676294c1d72e0e4f45fa55e41da9818eac3b4518ac258271e"},{"id":"func/pendingApprovals.count","name":"pendingApprovals.count","line":70,"end_line":70,"hash":"be8324cc70885657853e13feeabdc59d8b530e6f26c9e61579288fdd4fa0df90"},{"id":"func/pendingApprovals.done","name":"pendingApprovals.done","line":72,"end_line":75,"hash":"f21b41751f1779334a9772d010ad8a206995ba150025f1386bbae4e4dd7cb594"},{"id":"func/pendingApprovals.list","name":"pendingApprovals.list","line":77,"end_line":77,"hash":"58d81754397baf178c384c893ab96a42543e37541b33d73b95bcd8ef01e74e46"},{"id":"func/approvalActionKey","name":"approvalActionKey","line":79,"end_line":81,"hash":"b672a745e53515e387382e596c9e10fc83f9127fad3339ff4275f78100f27727"},{"id":"func/Bridge.pendingCount","name":"Bridge.pendingCount","line":84,"end_line":93,"hash":"1a5d3cfbaa5020a5e35e8f1aa1870c88ade4d4c5c6bb4f5fc487fc2a264c7f56"},{"id":"func/Bridge.reportApprovalFailure","name":"Bridge.reportApprovalFailure","line":97,"end_line":113,"hash":"61989b95a28c6e43274a259d499480f3bd40648b0a45d241130fc5f8341e386d"},{"id":"func/approvalFailureVerb","name":"approvalFailureVerb","line":115,"end_line":122,"hash":"24c96b2aadaaa899e8ab907eb2e70d2b05b2292129085ee53f30f635bb79b134"}]}
+// {"version":1,"tested_at":"2026-09-23T13:34:12+02:00","module_hash":"cecd77a3c40ab8d5f55097c2541065be0461565e95309827c1d941e9f3ec0de2","functions":[{"id":"func/newPendingWork","name":"newPendingWork","line":21,"end_line":23,"hash":"993ed0c1d553f17d08a7a6d0ab6d1336281c179b5618c1dd66bf5cd798d58cfc"},{"id":"func/pendingWork.keep","name":"pendingWork.keep","line":25,"end_line":25,"hash":"e5b1359da5680095132730eb4af61965fbacf484e87b8c432ab12280b7842acd"},{"id":"func/pendingWork.done","name":"pendingWork.done","line":27,"end_line":27,"hash":"d9559e93d28f1b42b86b342e790e3a1a4d8dd638829b33f3e31ff4756545c94f"},{"id":"func/pendingWork.count","name":"pendingWork.count","line":29,"end_line":29,"hash":"6a6436ee5977eb656905d6d5b004e2e0acdfaaf9aba68716227764e837c7af81"},{"id":"func/pendingWork.list","name":"pendingWork.list","line":33,"end_line":44,"hash":"8cabe7fc0afeb395434372b797590d9764a271cad4fba44db2e279253eb4c17c"},{"id":"func/pendingAt","name":"pendingAt","line":47,"end_line":54,"hash":"1ba4453c9463503d362c90db1a166ee4f961a506a4dbf3f273f0a9911d1b7b83"},{"id":"func/newPendingChat","name":"newPendingChat","line":59,"end_line":61,"hash":"aa801fbffe2e10e1e050c9cd7d68f7760430df7c712990e492fb313e8b89f6c0"},{"id":"func/chatActionKey","name":"chatActionKey","line":63,"end_line":65,"hash":"14eb4a05db96be7325b7fe1a28cc1af721524202f6673d988b7029805ba55dc2"},{"id":"func/newPendingApprovals","name":"newPendingApprovals","line":74,"end_line":76,"hash":"b74b4f4f264893b0b42f369962363995b10fbdaf150c4b21bb9c0bb1acc25af8"},{"id":"func/pendingApprovals.keep","name":"pendingApprovals.keep","line":78,"end_line":78,"hash":"c777f0d5fb5733a676294c1d72e0e4f45fa55e41da9818eac3b4518ac258271e"},{"id":"func/pendingApprovals.count","name":"pendingApprovals.count","line":80,"end_line":80,"hash":"be8324cc70885657853e13feeabdc59d8b530e6f26c9e61579288fdd4fa0df90"},{"id":"func/pendingApprovals.done","name":"pendingApprovals.done","line":82,"end_line":85,"hash":"f21b41751f1779334a9772d010ad8a206995ba150025f1386bbae4e4dd7cb594"},{"id":"func/pendingApprovals.list","name":"pendingApprovals.list","line":87,"end_line":87,"hash":"58d81754397baf178c384c893ab96a42543e37541b33d73b95bcd8ef01e74e46"},{"id":"func/approvalActionKey","name":"approvalActionKey","line":89,"end_line":91,"hash":"b672a745e53515e387382e596c9e10fc83f9127fad3339ff4275f78100f27727"},{"id":"func/newPendingClarifications","name":"newPendingClarifications","line":96,"end_line":98,"hash":"5498542d4d688efbaa32e26ee847fc845889a6972adad0a94b3709973798b34b"},{"id":"func/clarificationActionKey","name":"clarificationActionKey","line":100,"end_line":102,"hash":"38c43e84dc97b62b51031ad021d9c7f5e53e5d9ad7fc14a73ef24c90c2497cdf"},{"id":"func/Bridge.pendingCount","name":"Bridge.pendingCount","line":105,"end_line":117,"hash":"5c8620e6128b3178c31a0f5c74bd544e11907ec68b1e63beea65c84271ec695a"},{"id":"func/Bridge.reportApprovalFailure","name":"Bridge.reportApprovalFailure","line":121,"end_line":137,"hash":"61989b95a28c6e43274a259d499480f3bd40648b0a45d241130fc5f8341e386d"},{"id":"func/approvalFailureVerb","name":"approvalFailureVerb","line":139,"end_line":146,"hash":"24c96b2aadaaa899e8ab907eb2e70d2b05b2292129085ee53f30f635bb79b134"}]}
 // mutate4go-manifest-end

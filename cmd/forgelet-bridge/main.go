@@ -53,7 +53,7 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	defer client.Close()
 
 	opened := openAdapters(cfg)
-	relay, err := bridge.New(cfg, client, opened.chat, opened.approvals, opened.boards, log)
+	relay, err := bridge.New(cfg, client, opened.chat, opened.approvals, opened.clarifications, opened.boards, log)
 	if err != nil {
 		return err
 	}
@@ -66,12 +66,13 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 }
 
 // adapters are the forge-side adapters the bridge serves the configured forges
-// through: each forge's dashboard chat-request queue, its approvals, and its
-// project boards.
+// through: each forge's dashboard chat-request queue, its approvals, its
+// clarifications, and its project boards.
 type adapters struct {
-	chat      map[string]bridge.ForgeStore
-	approvals map[string]bridge.ApprovalStore
-	boards    map[string]bridge.BoardStore
+	chat           map[string]bridge.ForgeStore
+	approvals      map[string]bridge.ApprovalStore
+	clarifications map[string]bridge.ClarificationStore
+	boards         map[string]bridge.BoardStore
 }
 
 // openAdapters opens the chat queue, the approvals and the boards of every
@@ -80,18 +81,20 @@ type adapters struct {
 // when it gives none, the one the dashboard announces in the forge.
 func openAdapters(cfg config.Config) adapters {
 	opened := adapters{
-		chat:      make(map[string]bridge.ForgeStore, len(cfg.Forges)),
-		approvals: make(map[string]bridge.ApprovalStore, len(cfg.Forges)),
-		boards:    make(map[string]bridge.BoardStore, len(cfg.Forges)),
+		chat:           make(map[string]bridge.ForgeStore, len(cfg.Forges)),
+		approvals:      make(map[string]bridge.ApprovalStore, len(cfg.Forges)),
+		clarifications: make(map[string]bridge.ClarificationStore, len(cfg.Forges)),
+		boards:         make(map[string]bridge.BoardStore, len(cfg.Forges)),
 	}
 	for _, forge := range cfg.Forges {
 		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root), Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.approvals[forge.Root] = dashboard.Approvals{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
+		opened.clarifications[forge.Root] = dashboard.Clarifications{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root)}
 	}
 	return opened
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-21T23:18:32+02:00","module_hash":"62f93dab599792b55d7395e27014e148e6edcabda045a05375c7fc677964f36b","functions":[{"id":"func/main","name":"main","line":22,"end_line":35,"hash":"5066fd9e175ab9e6c5e67a472b92bb8efcc47a63d1edbc09eb0cb1f0ba67bfae"},{"id":"func/run","name":"run","line":37,"end_line":43,"hash":"6e71599705ecb1059bc12818e5e38148a22f6e81349cdf5f0cc1d40affe65b92"},{"id":"func/serve","name":"serve","line":47,"end_line":62,"hash":"f7638e66e2ee40dc9647f24c878555bb73961f3596816718e002499976984024"},{"id":"func/stores","name":"stores","line":65,"end_line":71,"hash":"2dfbfa985e246e245fc7c58c5061b59d98c56d25880917c593868c3751c5de55"}]}
+// {"version":1,"tested_at":"2026-09-23T13:46:00+02:00","module_hash":"6874ee79f34e6c83eeb91749afeda0334bc326800861d3e0bad933c00b5d1f6b","functions":[{"id":"func/main","name":"main","line":23,"end_line":36,"hash":"5066fd9e175ab9e6c5e67a472b92bb8efcc47a63d1edbc09eb0cb1f0ba67bfae"},{"id":"func/run","name":"run","line":38,"end_line":44,"hash":"6e71599705ecb1059bc12818e5e38148a22f6e81349cdf5f0cc1d40affe65b92"},{"id":"func/serve","name":"serve","line":48,"end_line":66,"hash":"c7e9a80d2a9a430bbbfbab9b2b96bf2120ed25f3722cde767d21e2660a37cfa3"},{"id":"func/openAdapters","name":"openAdapters","line":82,"end_line":96,"hash":"4230a79a02592682d3b03daa40772d255fedbfa060758b33d7a19eff62cb8a46"}]}
 // mutate4go-manifest-end

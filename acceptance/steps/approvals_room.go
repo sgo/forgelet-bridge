@@ -22,13 +22,18 @@ func (w *World) forgeSpace() (string, error) {
 	return filepath.Base(root), nil
 }
 
-// approvalsRoom is the approvals room of the configured forge.
-func (w *World) approvalsRoom(ctx context.Context) (string, error) {
+// roomNamed is the named room inside the configured forge's space.
+func (w *World) roomNamed(ctx context.Context, name string) (string, error) {
 	space, err := w.forgeSpace()
 	if err != nil {
 		return "", err
 	}
-	return w.waitForSpaceChild(ctx, space, config.ApprovalsRoomName)
+	return w.waitForSpaceChild(ctx, space, name)
+}
+
+// approvalsRoom is the approvals room of the configured forge.
+func (w *World) approvalsRoom(ctx context.Context) (string, error) {
+	return w.roomNamed(ctx, config.ApprovalsRoomName)
 }
 
 // approvalMessageStart is the opening line of the bridge's approval message.
@@ -124,14 +129,14 @@ func approvalThreadOneReply(_ context.Context, world any, _ []string) error {
 		return err
 	}
 	if err := waitFor(ctx, "the approval's thread never got the bridge's reply", func() (bool, error) {
-		return approvalThreadReplies(operator, roomID, messageID, w.bridgeUserID) >= 1, nil
+		return threadRepliesBy(operator, roomID, messageID, w.bridgeUserID) >= 1, nil
 	}); err != nil {
 		return err
 	}
 	if err := fixtures.Sleep(ctx, settle); err != nil {
 		return err
 	}
-	if found := approvalThreadReplies(operator, roomID, messageID, w.bridgeUserID); found != 1 {
+	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 1 {
 		return fmt.Errorf("the approval's thread holds %d replies, want exactly one", found)
 	}
 	return nil
@@ -152,19 +157,19 @@ func (w *World) oneApprovalMessage(ctx context.Context, operator *fixtures.User,
 	return messageID, err
 }
 
-// approvalThreadReplies counts the bridge's replies in an approval's thread.
-func approvalThreadReplies(operator *fixtures.User, roomID, messageID, bridgeUserID string) int {
+// threadRepliesBy counts the messages one sender has in a thread.
+func threadRepliesBy(operator *fixtures.User, roomID, messageID, sender string) int {
 	found := 0
 	for _, message := range operator.Messages(roomID) {
-		if message.ThreadRoot == messageID && message.Sender == bridgeUserID {
+		if message.ThreadRoot == messageID && message.Sender == sender {
 			found++
 		}
 	}
 	return found
 }
 
-// spaceHoldsApprovalsRoom checks the forge space holds the approvals room.
-func spaceHoldsApprovalsRoom(_ context.Context, world any, captures []string) error {
+// spaceHoldsNamedRoom checks the forge space holds the named room.
+func spaceHoldsNamedRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
@@ -172,9 +177,8 @@ func spaceHoldsApprovalsRoom(_ context.Context, world any, captures []string) er
 	return err
 }
 
-// invitedToApprovalsRoom checks the bridge invited the operator to the
-// approvals room.
-func invitedToApprovalsRoom(_ context.Context, world any, captures []string) error {
+// invitedToNamedRoom checks the bridge invited the operator to the named room.
+func invitedToNamedRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
@@ -191,4 +195,21 @@ func approvalsRoomEncrypted(_ context.Context, world any, captures []string) err
 		return err
 	}
 	return w.encryptedRoom(ctx, roomID, "the approvals room "+captures[1])
+}
+
+// approvalSaysWhatAReplyMeans checks the approval message says a reply sends
+// the approval back, so the two rooms cannot be told apart only in the code.
+func approvalSaysWhatAReplyMeans(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	_, _, body, err := w.approvalMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	text := strings.ToLower(body)
+	if !strings.Contains(text, "reply") || !strings.Contains(text, "send it back") {
+		return fmt.Errorf("the approval message does not tell the operator a reply sends it back:\n%s", body)
+	}
+	return nil
 }
