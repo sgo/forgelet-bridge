@@ -5,6 +5,7 @@
 #   matrix-bridge.sh start | stop | status | logs
 #   matrix-bridge.sh add-forge <forge-root> <name>
 #   matrix-bridge.sh install-rules
+#   matrix-bridge.sh install-kit
 #
 # This is the forge's own copy of the adapter: it works out the forge it serves
 # from where the script itself lives, so it is run from the forge rather than
@@ -29,6 +30,14 @@
 # refreshed, and the forge keeps every word it wrote itself. A project's own
 # tracked copy is never touched: a project picks a rule up through its
 # specifier, like any other change.
+#
+# install-kit installs the tools that make this forge behave - the route gate,
+# the idler check and the stall watch - into the forge's own scripts, with the
+# watch's agent, and self-checks each one against this forge: one live pane, one
+# board row, one inbox. A tool that reads nothing is a failure on the page
+# rather than a clean-looking silence. It ships tools, not policy: how strict
+# the gate is stays in this forge's own lieutenant prompt, and the report says
+# which wording it found and left alone.
 set -euo pipefail
 
 SCRIPT_FILE="${(%):-%x}"
@@ -37,6 +46,8 @@ CONFIG="${MATRIX_BRIDGE_CONFIG:-$FORGE_ROOT/.swarmforge/matrix-bridge.json}"
 BINARY="${MATRIX_BRIDGE_BINARY:-$FORGE_ROOT/projects/forgelet-bridge/build/acceptance/bin/forgelet-bridge}"
 RULES_BINARY="${MATRIX_BRIDGE_RULES_BINARY:-$FORGE_ROOT/projects/forgelet-bridge/build/acceptance/bin/install-rules}"
 RULES_DIR="${MATRIX_BRIDGE_RULES:-$FORGE_ROOT/projects/forgelet-bridge/rules}"
+KIT_BINARY="${MATRIX_BRIDGE_KIT_BINARY:-$FORGE_ROOT/projects/forgelet-bridge/build/acceptance/bin/install-kit}"
+KIT_DIR="${MATRIX_BRIDGE_KIT:-$FORGE_ROOT/projects/forgelet-bridge/swarmforge/scripts}"
 SESSION="${MATRIX_BRIDGE_SESSION:-matrix-bridge}"
 LOG="$FORGE_ROOT/.swarmforge/matrix-bridge.log"
 # The socket sits beside the forge, unless the forge's path is too deep for one
@@ -55,7 +66,7 @@ SOCKET="$(socket_path)"
 die() { print -u2 -- "matrix-bridge: $*"; exit 1 }
 
 usage() {
-  sed -n '2,32p' "$SCRIPT_FILE" | sed 's/^# \{0,1\}//'
+  sed -n '2,40p' "$SCRIPT_FILE" | sed 's/^# \{0,1\}//'
 }
 
 running() { tmux -S "$SOCKET" has-session -t "$SESSION" 2>/dev/null }
@@ -156,6 +167,12 @@ cmd_install_rules() {
   "$RULES_BINARY" --forge-root "$FORGE_ROOT" --rules "$RULES_DIR"
 }
 
+cmd_install_kit() {
+  [[ -x "$KIT_BINARY" ]] || die "kit installer not found or not executable: $KIT_BINARY (build it with the project's scripts/build.sh)"
+  [[ -d "$KIT_DIR" ]] || die "the tools the kit ships are not found: $KIT_DIR"
+  "$KIT_BINARY" --forge-root "$FORGE_ROOT" --kit "$KIT_DIR"
+}
+
 cmd_add_forge() {
   local root="${1:-}" name="${2:-}"
   [[ -n "$root" && -n "$name" ]] || die "add-forge needs a forge root and the name the operator knows it by"
@@ -189,6 +206,7 @@ case "${1:-}" in
   logs) [[ -f "$LOG" ]] && tail -f "$LOG" || die "no log at $LOG" ;;
   add-forge) shift; cmd_add_forge "$@" ;;
   install-rules) cmd_install_rules ;;
+  install-kit) cmd_install_kit ;;
   ""|-h|--help) usage ;;
   *) usage; exit 1 ;;
 esac
