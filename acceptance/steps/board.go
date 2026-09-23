@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ import (
 func boardHoldsCard(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	card, project, lane := captures[1], captures[2], captures[3]
-	root, err := singleForge(w)
+	root, err := boardForge(w)
 	if err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func boardHoldsCard(_ context.Context, world any, captures []string) error {
 // forgeMovesCard moves a card to another lane.
 func forgeMovesCard(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	root, err := singleForge(w)
+	root, err := boardForge(w)
 	if err != nil {
 		return err
 	}
@@ -39,11 +40,25 @@ func forgeMovesCard(_ context.Context, world any, captures []string) error {
 // records that a card finished.
 func forgeFinishesCard(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	root, err := singleForge(w)
+	root, err := boardForge(w)
 	if err != nil {
 		return err
 	}
 	return setCardLane(root, approvalProject, captures[1], board.DoneLane)
+}
+
+// boardForge is the one forge a board step works with: the forge the bridge
+// serves when it serves one, and otherwise the one fixture forge the scenario
+// declared. A scenario about a forge's own board need not run the bridge.
+func boardForge(w *World) (string, error) {
+	if len(w.configured) == 1 {
+		return w.configured[0], nil
+	}
+	if len(w.forgeRoots) == 1 {
+		return w.forgeRoots[0], nil
+	}
+	return "", fmt.Errorf("the scenario works with %d configured and %d declared forge roots, want exactly one for a board",
+		len(w.configured), len(w.forgeRoots))
 }
 
 // setCardLane writes one card into a project's board in the lane it is in,
