@@ -277,7 +277,7 @@ func (w *World) runWatch(roots []string) error {
 	// Claude Code's own transcript is what says a claude session is working;
 	// the fixture keeps that record inside itself so no developer's machine
 	// decides what the scenario sees.
-	command.Env = append(os.Environ(), "ROLE_HEALTH_CLAUDE_PROJECTS="+filepath.Join(w.workDir, "claude-projects"))
+	command.Env = append(os.Environ(), "ROLE_HEALTH_CLAUDE_PROJECTS="+w.claudeProjects())
 	out, err := command.CombinedOutput()
 	w.watchOutput = string(out)
 	w.watchRoots = roots
