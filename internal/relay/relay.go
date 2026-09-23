@@ -21,6 +21,9 @@ type RoomEvent struct {
 	// ThreadRoot is the message a reply is threaded under, empty when the
 	// message starts its own thread.
 	ThreadRoot string
+	// ReplyTo is the message this one answers, empty when it answers none. A
+	// phone replies by quoting the message, which carries this and no thread.
+	ReplyTo string
 }
 
 // State is the bridge's durable bookkeeping. Every map is keyed by the Matrix
@@ -44,6 +47,9 @@ type State struct {
 	PendingThreads map[string]string `json:"pendingthreads,omitempty"`
 	// Approvals maps an approval to what the bridge has done about it.
 	Approvals map[string]ApprovalState `json:"approvals,omitempty"`
+	// Clarifications maps a clarification to what the bridge has done about
+	// it.
+	Clarifications map[string]ClarificationState `json:"clarifications,omitempty"`
 	// Activity maps a card to the last thing the bridge said about it.
 	Activity map[string]CardState `json:"activity,omitempty"`
 }
@@ -97,6 +103,9 @@ func (s *State) EnsureMaps() {
 	if s.Approvals == nil {
 		s.Approvals = map[string]ApprovalState{}
 	}
+	if s.Clarifications == nil {
+		s.Clarifications = map[string]ClarificationState{}
+	}
 	if s.Activity == nil {
 		s.Activity = map[string]CardState{}
 	}
@@ -126,18 +135,48 @@ func operatorRequests(operator string, st State, events []RoomEvent) []Action {
 		}
 		actions = append(actions, Action{
 			Kind:          CreateForgeRequest,
-			Body:          event.Body,
+			Body:          OwnWords(event.Body),
 			SourceEventID: event.EventID,
-			SourceThread:  event.ThreadRoot,
+			SourceThread:  askedInThread(st, event, events),
 		})
 	}
 	return actions
 }
 
+// askedInThread is the thread the operator's answer belongs in. A message they
+// wrote in a thread stays there; a message that quotes another one belongs in
+// the thread the quoted message sits in, which is where the answer to it
+// belongs.
+func askedInThread(st State, event RoomEvent, events []RoomEvent) string {
+	if event.ThreadRoot != "" {
+		return event.ThreadRoot
+	}
+	if event.ReplyTo == "" {
+		return ""
+	}
+	for _, quoted := range events {
+		if quoted.EventID != event.ReplyTo {
+			continue
+		}
+		if quoted.ThreadRoot != "" {
+			return quoted.ThreadRoot
+		}
+		return quoted.EventID
+	}
+	// The room only carries what was said since the last drain, so a message
+	// the bridge posted earlier is known from the bookkeeping instead.
+	for _, messageID := range st.Threads {
+		if messageID == event.ReplyTo {
+			return event.ReplyTo
+		}
+	}
+	return ""
+}
+
 // operatorAsked reports whether a room event is an operator message the forge
 // has not seen the request for yet.
 func operatorAsked(st State, operator string, event RoomEvent) bool {
-	if event.Sender != operator || strings.TrimSpace(event.Body) == "" {
+	if event.Sender != operator || OwnWords(event.Body) == "" {
 		return false
 	}
 	if _, relayed := st.Relayed[event.EventID]; relayed {

@@ -80,6 +80,17 @@ func approvalActionKey(action relay.ApprovalAction) string {
 	return fmt.Sprintf("%s/%s/%s", action.Kind, action.Key, action.Resolution)
 }
 
+// pendingClarifications is the clarifications room's share of that work.
+type pendingClarifications = pendingWork[relay.ClarificationAction]
+
+func newPendingClarifications() *pendingClarifications {
+	return newPendingWork[relay.ClarificationAction](clarificationActionKey)
+}
+
+func clarificationActionKey(action relay.ClarificationAction) string {
+	return fmt.Sprintf("%s/%s/%s", action.Kind, action.Key, action.Answer)
+}
+
 // count is how much work is waiting for the forge.
 func (b *Bridge) pendingCount() int {
 	count := 0
@@ -87,6 +98,9 @@ func (b *Bridge) pendingCount() int {
 		count += pending.count()
 	}
 	for _, pending := range b.pendingApprovals {
+		count += pending.count()
+	}
+	for _, pending := range b.pendingClarifications {
 		count += pending.count()
 	}
 	return count

@@ -33,6 +33,13 @@ type ApprovalStore interface {
 	SendBack(ctx context.Context, project, id, feedback string) error
 }
 
+// ClarificationStore is the forge side of one root's clarifications: the
+// questions its agents are blocked on.
+type ClarificationStore interface {
+	Pending(ctx context.Context) ([]relay.Clarification, error)
+	Answer(ctx context.Context, project, id, answer string) error
+}
+
 // BoardStore is the forge side of one root's boards: the cards its projects
 // hold and the lanes they are in.
 type BoardStore interface {
@@ -41,10 +48,11 @@ type BoardStore interface {
 
 // Room is the Matrix side the bridge created for a forge.
 type Room struct {
-	SpaceID         string
-	RoomID          string
-	ApprovalsRoomID string
-	ActivityRoomID  string
+	SpaceID              string
+	RoomID               string
+	ApprovalsRoomID      string
+	ActivityRoomID       string
+	ClarificationsRoomID string
 }
 
 // Rooms is the Matrix side of the bridge: spaces, chat rooms, and the messages
@@ -62,27 +70,29 @@ type Rooms interface {
 
 // Bridge is the running relay.
 type Bridge struct {
-	cfg         config.Config
-	rooms       Rooms
-	stores      map[string]ForgeStore
-	approvals   map[string]ApprovalStore
-	boards      map[string]BoardStore
-	statePath   string
-	statusDir   string
-	state       *state.State
-	log         *slog.Logger
-	tick        uint64
-	provisioned map[string]Room
-	device      Device
+	cfg            config.Config
+	rooms          Rooms
+	stores         map[string]ForgeStore
+	approvals      map[string]ApprovalStore
+	clarifications map[string]ClarificationStore
+	boards         map[string]BoardStore
+	statePath      string
+	statusDir      string
+	state          *state.State
+	log            *slog.Logger
+	tick           uint64
+	provisioned    map[string]Room
+	device         Device
 	// Work the forge refused, kept so it is tried again rather than lost.
-	pending          map[string]*pendingChat
-	pendingApprovals map[string]*pendingApprovals
-	lastError        error
+	pending               map[string]*pendingChat
+	pendingApprovals      map[string]*pendingApprovals
+	pendingClarifications map[string]*pendingClarifications
+	lastError             error
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
 // root. The state file keeps restarts from repeating work.
-func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, boards map[string]BoardStore, log *slog.Logger) (*Bridge, error) {
+func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals map[string]ApprovalStore, clarifications map[string]ClarificationStore, boards map[string]BoardStore, log *slog.Logger) (*Bridge, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -92,18 +102,20 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		return nil, fmt.Errorf("load bridge state: %w", err)
 	}
 	return &Bridge{
-		cfg:              cfg,
-		rooms:            rooms,
-		stores:           stores,
-		approvals:        approvals,
-		boards:           boards,
-		statePath:        statePath,
-		statusDir:        cfg.StateDir,
-		state:            loaded,
-		log:              log,
-		provisioned:      map[string]Room{},
-		pending:          map[string]*pendingChat{},
-		pendingApprovals: map[string]*pendingApprovals{},
+		cfg:                   cfg,
+		rooms:                 rooms,
+		stores:                stores,
+		approvals:             approvals,
+		clarifications:        clarifications,
+		boards:                boards,
+		statePath:             statePath,
+		statusDir:             cfg.StateDir,
+		state:                 loaded,
+		log:                   log,
+		provisioned:           map[string]Room{},
+		pending:               map[string]*pendingChat{},
+		pendingApprovals:      map[string]*pendingApprovals{},
+		pendingClarifications: map[string]*pendingClarifications{},
 	}, nil
 }
 
@@ -193,6 +205,15 @@ func (b *Bridge) pendingApprovalsFor(key string) *pendingApprovals {
 	return b.pendingApprovals[key]
 }
 
+// pendingClarificationsFor is the clarifications work one forge still owes the
+// room.
+func (b *Bridge) pendingClarificationsFor(key string) *pendingClarifications {
+	if _, ok := b.pendingClarifications[key]; !ok {
+		b.pendingClarifications[key] = newPendingClarifications()
+	}
+	return b.pendingClarifications[key]
+}
+
 // refuse records an action the forge would not carry out, so the tick can carry
 // on and the action can be tried again.
 func (b *Bridge) refuse(err error, root string) {
@@ -258,6 +279,13 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		b.refuse(err, root)
 	} else {
 		carriedOut += activity
+	}
+
+	clarifications, err := b.carryOutClarifications(ctx, root, room, seen.messages[room.ClarificationsRoomID])
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += clarifications
 	}
 	return carriedOut, nil
 }

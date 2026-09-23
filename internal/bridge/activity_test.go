@@ -190,6 +190,7 @@ func TestTickDoesNotRepeatUpdatesAfterARestart(t *testing.T) {
 	restartedRooms := &fakeRooms{}
 	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
 		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
 		map[string]BoardStore{"/forges/forge-a": board}, nil)
 	if err != nil {
 		t.Fatalf("New after restart: %v", err)

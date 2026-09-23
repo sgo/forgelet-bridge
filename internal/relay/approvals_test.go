@@ -169,6 +169,43 @@ func TestPlanApprovalsKeepsAReplyThatSaysMoreAsASendBack(t *testing.T) {
 	}
 }
 
+func TestPlanApprovalsSendsTheApprovalBackWithAQuotedReply(t *testing.T) {
+	replies := []RoomEvent{{
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Approval for phone-approvals in forgelet-bridge\n> Gate: coder → refactorer\n\nrefund figures do not add up",
+		ReplyTo: "$approval-message",
+	}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(),
+		Resolution: ResolutionSentBack, Feedback: "refund figures do not add up",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the quoted approval sent back with the operator's own words %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsApprovesOnAQuotedReplyThatOnlyApproves(t *testing.T) {
+	replies := []RoomEvent{{
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Approval for phone-approvals in forgelet-bridge\n> Gate: coder → refactorer\n\napprove",
+		ReplyTo: "$approval-message",
+	}}
+
+	actions := PlanApprovals(operator, posted(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(), Resolution: ResolutionApproved,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the quoted word to approve %+v", actions, want)
+	}
+}
+
 func TestPlanApprovalsApprovesOnAPlainReply(t *testing.T) {
 	replies := []RoomEvent{{EventID: "$reply", Sender: operator, Body: "approve", ThreadRoot: "$approval-message"}}
 

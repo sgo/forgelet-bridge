@@ -158,6 +158,17 @@ func wakeLog(root string) string {
 // into. The repository is the fixture's own, so the snapshots and resets the
 // dashboard performs on a worktree it is handed stay inside the fixture.
 func prepareForgeRoot(root string) error {
+	if err := PrepareSwarmRoot(root); err != nil {
+		return err
+	}
+	return initFixtureRepo(root)
+}
+
+// PrepareSwarmRoot gives a root the layout the forge's dashboard serves it
+// with: the roles it serves, each with a worktree and a pane to wake, and the
+// tmux socket the dashboard types into. A project is a swarm root of its own,
+// so a dashboard serving a project resolves all of this inside the project.
+func PrepareSwarmRoot(root string) error {
 	stateDir := filepath.Join(root, ".swarmforge")
 	if err := os.MkdirAll(filepath.Join(stateDir, "board"), 0o755); err != nil {
 		return err
@@ -180,7 +191,7 @@ func prepareForgeRoot(root string) error {
 	if err := os.WriteFile(filepath.Join(stateDir, "tmux-socket"), []byte(filepath.Join(stateDir, "tmux.sock")+"\n"), 0o644); err != nil {
 		return err
 	}
-	return initFixtureRepo(root)
+	return nil
 }
 
 // initFixtureRepo gives the fixture forge root a repository of its own, with

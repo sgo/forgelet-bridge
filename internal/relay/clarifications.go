@@ -1,0 +1,158 @@
+package relay
+
+// Clarification is one question a forge's agent is blocked on, as the forge's
+// dashboard holds it.
+type Clarification struct {
+	Key      string
+	ID       string
+	Project  string
+	Role     string
+	Question string
+}
+
+// ClarificationState is what the bridge remembers about one clarification.
+type ClarificationState struct {
+	// MessageID is the chat message that carries the clarification.
+	MessageID string `json:"message_id,omitempty"`
+	// Answer is the answer the bridge carried back, empty when the
+	// clarification was answered somewhere else.
+	Answer string `json:"answer,omitempty"`
+	// ReplyID is the thread reply that reported the answer.
+	ReplyID string `json:"reply_id,omitempty"`
+}
+
+// ClarificationKind names the work a clarification action asks for.
+type ClarificationKind string
+
+const (
+	// PostClarification posts a pending clarification into the room.
+	PostClarification ClarificationKind = "post_clarification"
+	// AnswerClarification carries the operator's answer back to the forge,
+	// which is what wakes the blocked role.
+	AnswerClarification ClarificationKind = "answer_clarification"
+	// ReplyClarification reports in the clarification's thread how it was
+	// answered.
+	ReplyClarification ClarificationKind = "reply_clarification"
+)
+
+// ClarificationAction is one piece of clarifications work for the bridge to
+// carry out.
+type ClarificationAction struct {
+	Kind          ClarificationKind
+	Key           string
+	Clarification Clarification
+	Answer        string
+	MessageID     string
+	Text          string
+}
+
+// PlanClarifications works out what the clarifications room needs: a message
+// for every clarification the forge is waiting for, the operator's answer
+// carried back to the forge, and a reply in the thread once a clarification is
+// answered however it was answered.
+//
+// A clarification's answer is free text, so a reply is what the room takes
+// rather than a gesture: any reply of the operator's in the clarification's
+// thread, written there or made by quoting the message, is the answer.
+func PlanClarifications(operator string, st State, pending []Clarification, replies []RoomEvent) []ClarificationAction {
+	byMessage, byKey := clarificationsByMessage(st, pending)
+
+	actions := answeredByReply(operator, st, byMessage, replies)
+	actions = append(actions, unpostedClarifications(st, pending)...)
+	return append(actions, answersToReport(st, byKey)...)
+}
+
+// clarificationsByMessage indexes the clarifications two ways: by the message
+// the room holds for them, and by their key, so a lookup can answer both "which
+// clarification is this reply about" and "is this clarification still waiting".
+func clarificationsByMessage(st State, pending []Clarification) (map[string]Clarification, map[string]Clarification) {
+	byMessage := map[string]Clarification{}
+	byKey := map[string]Clarification{}
+	for _, clarification := range pending {
+		byKey[clarification.Key] = clarification
+		if messageID := st.Clarifications[clarification.Key].MessageID; messageID != "" {
+			byMessage[messageID] = clarification
+		}
+	}
+	return byMessage, byKey
+}
+
+// answeredByReply plans the answers the operator gave in a clarification's
+// thread.
+func answeredByReply(operator string, st State, byMessage map[string]Clarification, replies []RoomEvent) []ClarificationAction {
+	var actions []ClarificationAction
+	for _, reply := range replies {
+		if reply.Sender != operator {
+			continue
+		}
+		clarification, known := byMessage[repliedTo(reply)]
+		if !known || !awaitingAnswer(st, clarification.Key) {
+			continue
+		}
+		actions = append(actions, ClarificationAction{
+			Kind:          AnswerClarification,
+			Key:           clarification.Key,
+			Clarification: clarification,
+			Answer:        OwnWords(reply.Body),
+		})
+	}
+	return actions
+}
+
+// awaitingAnswer reports whether the room has the clarification and neither
+// device has answered it yet.
+func awaitingAnswer(st State, key string) bool {
+	state, known := st.Clarifications[key]
+	return known && state.MessageID != "" && state.Answer == ""
+}
+
+// unpostedClarifications plans the messages for the clarifications the room
+// has not seen yet.
+func unpostedClarifications(st State, pending []Clarification) []ClarificationAction {
+	var actions []ClarificationAction
+	for _, clarification := range pending {
+		if st.Clarifications[clarification.Key].MessageID == "" {
+			actions = append(actions, ClarificationAction{Kind: PostClarification, Key: clarification.Key, Clarification: clarification})
+		}
+	}
+	return actions
+}
+
+// answersToReport plans the replies for the clarifications that are no longer
+// waiting - answered on the desktop, or by the answer just carried back - and
+// have not been reported in their thread yet.
+func answersToReport(st State, byKey map[string]Clarification) []ClarificationAction {
+	var actions []ClarificationAction
+	for key, state := range st.Clarifications {
+		if !unreportedAnswer(state, key, byKey) {
+			continue
+		}
+		actions = append(actions, ClarificationAction{
+			Kind:      ReplyClarification,
+			Key:       key,
+			MessageID: state.MessageID,
+			Text:      ClarificationsReply(state.Answer),
+		})
+	}
+	return actions
+}
+
+// unreportedAnswer reports whether a clarification the room has seen still
+// needs its answer reported in its thread: it is no longer one the forge waits
+// for, and the thread has not been told yet.
+func unreportedAnswer(state ClarificationState, key string, byKey map[string]Clarification) bool {
+	if state.MessageID == "" || state.ReplyID != "" {
+		return false
+	}
+	_, stillWaiting := byKey[key]
+	return !stillWaiting
+}
+
+// ClarificationsReply is the text the bridge reports an answer with: the answer
+// that was carried back, or the desktop's when it was answered there.
+func ClarificationsReply(answer string) string {
+	if answer != "" {
+		return "Answered"
+	}
+	return "Resolved on the desktop"
+}

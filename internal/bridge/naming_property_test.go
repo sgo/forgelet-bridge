@@ -30,6 +30,7 @@ func TestPropertyEveryStartAppliesTheNameAndProvisionsNothingAgain(t *testing.T)
 		for range starts - 1 {
 			restarted, err := New(cfg, rooms, stores,
 				map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+				map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
 				map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
 			if err != nil {
 				return false

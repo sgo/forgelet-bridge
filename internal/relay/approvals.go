@@ -145,17 +145,17 @@ func approvedByReaction(operator string, st State, byMessage map[string]Approval
 func textGestures(operator string, st State, pending []Approval, byMessage map[string]Approval, messages []RoomEvent) []ApprovalAction {
 	var actions []ApprovalAction
 	for _, message := range messages {
-		if message.Sender != operator || strings.TrimSpace(message.Body) == "" {
+		if message.Sender != operator || OwnWords(message.Body) == "" {
 			continue
 		}
 		if approval, replied := repliedApproval(byMessage, message); replied {
 			if !undecided(st, approval.Key) {
 				continue // already decided: a later reply in its thread says nothing
 			}
-			actions = append(actions, decisionFor(approval, message.Body))
+			actions = append(actions, decisionFor(approval, OwnWords(message.Body)))
 			continue
 		}
-		if key, approval, matched := approvalForText(pending, message.Body); matched && undecided(st, key) {
+		if key, approval, matched := approvalForText(pending, OwnWords(message.Body)); matched && undecided(st, key) {
 			actions = append(actions, ApprovalAction{
 				Kind: ResolveApproval, Key: key, Approval: approval, Resolution: ResolutionApproved,
 			})
@@ -167,12 +167,13 @@ func textGestures(operator string, st State, pending []Approval, byMessage map[s
 }
 
 // repliedApproval is the approval a message replies under, when the room knows
-// that approval's message.
+// that approval's message. A reply is written in the approval's thread, or made
+// by quoting the approval message, which is the reply a phone sends.
 func repliedApproval(byMessage map[string]Approval, message RoomEvent) (Approval, bool) {
-	if message.ThreadRoot == "" {
+	if repliedTo(message) == "" {
 		return Approval{}, false
 	}
-	approval, known := byMessage[message.ThreadRoot]
+	approval, known := byMessage[repliedTo(message)]
 	return approval, known
 }
 
