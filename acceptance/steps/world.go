@@ -51,6 +51,14 @@ type World struct {
 	// kitErr is what the kit installer returned: a self-check that read
 	// nothing leaves it non-zero while the report still says why.
 	kitErr error
+	// keepScenarios and keepMutants are how many runs of each kind the fixture
+	// keeps; scenarioRuns and mutantRuns are the ones it made, oldest first,
+	// and runsOutput is what a clean up said.
+	keepScenarios int
+	keepMutants   int
+	scenarioRuns  []string
+	mutantRuns    []string
+	runsOutput    string
 	// gateProposal is the proposal the route gate is holding, and gateOutput
 	// and gateErr are what its last run said.
 	gateProposal string

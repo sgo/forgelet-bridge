@@ -61,4 +61,9 @@ export FORGELET_BRIDGE_BIN="$project_root/build/acceptance/bin/forgelet-bridge"
 # The suite starts a homeserver and runs every feature end to end, so it takes
 # several minutes; the default ten-minute go test timeout cuts it off mid-run.
 # A caller can still pass its own -timeout, which comes last and wins.
-go test -tags goolm -count=1 -timeout=20m -v ./build/acceptance/generated "${test_args[@]+"${test_args[@]}"}"
+status=0
+go test -tags goolm -count=1 -timeout=20m -v ./build/acceptance/generated "${test_args[@]+"${test_args[@]}"}" || status=$?
+# The pass left a run of its own under the build tree for every scenario. Keep
+# the newest few so a failure can still be looked at, and say what went.
+"$project_root/scripts/clean.sh" "$project_root/build" || true
+exit "$status"
