@@ -70,11 +70,16 @@ func operatorTalksInApprovalsRoom(_ context.Context, world any, captures []strin
 	if err != nil {
 		return err
 	}
+	return operatorSendsInto(ctx, w, roomID, captures[1])
+}
+
+// operatorSendsInto has the operator send a plain message into a room.
+func operatorSendsInto(ctx context.Context, w *World, roomID, body string) error {
 	operator, err := w.operator(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = operator.Send(ctx, roomID, captures[1])
+	_, err = operator.Send(ctx, roomID, body)
 	return err
 }
 

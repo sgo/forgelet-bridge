@@ -134,12 +134,7 @@ func operatorTalksInActivityRoom(_ context.Context, world any, captures []string
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = operator.Send(ctx, roomID, captures[1])
-	return err
+	return operatorSendsInto(ctx, w, roomID, captures[1])
 }
 
 // quietStretch lets the bridge run on with nothing changing. A heartbeat would
