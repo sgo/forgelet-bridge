@@ -22,6 +22,9 @@ type Status struct {
 	// LastError is the most recent refusal: a bridge that is stuck says so
 	// instead of looking quiet.
 	Pending int `json:"pending,omitempty"`
+	// ReachedForges names the configured forges this tick served, so "which
+	// forges is the bridge carrying?" is answered by reading the status.
+	ReachedForges []string `json:"reached_forges,omitempty"`
 	// UnhappyForges names the forges this tick could not serve, so one forge
 	// that cannot be reached is neither silent nor the whole bridge's problem.
 	UnhappyForges []string `json:"unhappy_forges,omitempty"`

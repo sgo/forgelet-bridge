@@ -53,6 +53,9 @@ func TestAForgeThatCannotBeReachedDoesNotQuietTheOthers(t *testing.T) {
 	if len(status.UnhappyForges) != 1 || status.UnhappyForges[0] != "forge-b" {
 		t.Errorf("unhappy forges = %v, want only the forge that could not be reached", status.UnhappyForges)
 	}
+	if len(status.ReachedForges) != 1 || status.ReachedForges[0] != "forge-a" {
+		t.Errorf("reached forges = %v, want the forge still being carried", status.ReachedForges)
+	}
 	if !strings.Contains(status.LastError, "the forge is not there") {
 		t.Errorf("last error = %q, want the reason the sick forge is unhappy", status.LastError)
 	}
@@ -77,6 +80,9 @@ func TestAForgeThatIsServedAgainStopsBeingNamed(t *testing.T) {
 	}
 	if status := statusOf(t, built); len(status.UnhappyForges) != 0 {
 		t.Errorf("unhappy forges = %v, want none once the forge is served again", status.UnhappyForges)
+	}
+	if status := statusOf(t, built); len(status.ReachedForges) != 2 {
+		t.Errorf("reached forges = %v, want every configured forge once both are served", status.ReachedForges)
 	}
 }
 
