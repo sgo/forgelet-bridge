@@ -54,6 +54,13 @@ served again, and every other forge keeps carrying its rooms in both
 directions. Nothing the rooms said is lost with it either: what the operator
 sends to a forge that is down reaches it once it is back.
 
+`reached_forges` in the same status names the forges the bridge is carrying, and
+the bridge logs both lists once at startup. [Adding a forge](docs/adding-a-forge.md)
+is the runbook for bringing another one in: what its dashboard has to serve, the
+adapter command that edits the configuration
+(`swarmforge/scripts/matrix-bridge.sh add-forge <root> <name>`), the checks
+afterwards, the smoke test in both directions, and the rollback.
+
 A restart also keeps the bridge on the same Matrix device: it reuses the device
 and the crypto store under `state_dir`, so the operator never meets a new
 unverified device, and chat that happens after a restart stays readable.
