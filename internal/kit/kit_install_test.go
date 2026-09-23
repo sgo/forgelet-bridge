@@ -217,3 +217,125 @@ func TestInstallFileReportsAMissingKitFile(t *testing.T) {
 		t.Fatalf("installFile(missing source) = %v, want the missing kit file reported", err)
 	}
 }
+
+func TestInstallWritesAStaleAgentAgain(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+	if _, err := Install(root, kitDir); err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+	agent := filepath.Join(root, ".swarmforge", "stall-watch.plist")
+	if err := os.WriteFile(agent, []byte("an agent from before the watch was installed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Install(root, kitDir)
+	if err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+
+	if !strings.Contains(report.String(), "wrote the stall watch's agent") {
+		t.Errorf("the report does not say the stale agent was written again:\n%s", report)
+	}
+	want, _ := run(filepath.Join(root, "swarmforge", "scripts", "stall_watch.sh"), "print-agent", root)
+	if got, _ := os.ReadFile(agent); string(got) != want {
+		t.Errorf("the agent = %q, want what the installed watch prints", got)
+	}
+}
+
+func TestIdlerSelfCheckFailsWhenNoProjectHasARolesFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "projects", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scripts := t.TempDir()
+	writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\nexit 0\n")
+
+	line, ok := idlerSelfCheck(scripts, root)
+	if ok || !strings.Contains(line, "serves no project to read") {
+		t.Errorf("idlerSelfCheck = (%q, %v), want a failure naming the forge with nothing to read", line, ok)
+	}
+}
+
+func TestIdlerSelfCheckFailsWhenTheCheckReadsNoRole(t *testing.T) {
+	root := fixtureForge(t)
+	scripts := t.TempDir()
+	// A check that prints nothing at all has read nothing: that is the failure
+	// the self-check exists for, not a quiet pass.
+	writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\nexit 0\n")
+
+	line, ok := idlerSelfCheck(scripts, root)
+	if ok || !strings.Contains(line, "which read no role") {
+		t.Errorf("idlerSelfCheck = (%q, %v), want a failure saying the check read no role", line, ok)
+	}
+}
+
+func TestInstallReportsAWatchThatCannotPrintItsAgent(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+	writeScript(t, filepath.Join(kitDir, "stall_watch.sh"), "#!/bin/sh\nexit 1\n")
+
+	if _, err := Install(root, kitDir); err == nil || !strings.Contains(err.Error(), "could not print the agent") {
+		t.Fatalf("Install = %v, want the watch that cannot print its agent reported", err)
+	}
+}
+
+func TestProjectsSkipsWhatIsNotAProject(t *testing.T) {
+	root := fixtureForge(t)
+	if err := os.MkdirAll(filepath.Join(root, "projects", "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "projects", "loose.txt"), []byte("not a project\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := projects(root)
+	if err != nil {
+		t.Fatalf("projects: %v", err)
+	}
+	if len(found) != 1 || filepath.Base(found[0]) != "forgelet-bridge" {
+		t.Errorf("projects = %v, want only the project with a roles file", found)
+	}
+}
+
+func TestInstallReportsAKitThatIsMissingAFile(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+	if err := os.Remove(filepath.Join(kitDir, "stall_watch.sh")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(root, kitDir); err == nil || !strings.Contains(err.Error(), "the kit is missing") {
+		t.Fatalf("Install = %v, want the kit missing a file reported", err)
+	}
+}
+
+func TestInstallFileReportsATargetItCannotRead(t *testing.T) {
+	kitDir := t.TempDir()
+	writeScript(t, filepath.Join(kitDir, "route_card.sh"), "#!/bin/sh\n")
+	// A directory where the file goes cannot be read as the file it should be,
+	// and overwriting it is not the installer's to do.
+	scripts := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(scripts, "route_card.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installFile("route gate", filepath.Join(kitDir, "route_card.sh"), filepath.Join(scripts, "route_card.sh")); err == nil {
+		t.Fatal("installFile reported success for a target it could not read")
+	}
+}
+
+func TestInstallFileReportsATargetItCannotWrite(t *testing.T) {
+	kitDir := t.TempDir()
+	writeScript(t, filepath.Join(kitDir, "route_card.sh"), "#!/bin/sh\nthe kit's own gate\n")
+	scripts := t.TempDir()
+	target := filepath.Join(scripts, "route_card.sh")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\nthe forge's own gate\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(target, 0o644) })
+
+	if _, err := installFile("route gate", filepath.Join(kitDir, "route_card.sh"), target); err == nil {
+		t.Fatal("installFile reported success for a target it could not write")
+	}
+}
