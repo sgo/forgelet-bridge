@@ -15,6 +15,16 @@ func localpartOf(userID string) (string, error) {
 	return localpart, nil
 }
 
+// outputSays checks a captured output carries a phrase, and complains with the
+// given wording when it does not, so the output itself is on the page either
+// way.
+func outputSays(output, phrase, complaint string) error {
+	if !strings.Contains(output, phrase) {
+		return fmt.Errorf("%s:\n%s", complaint, output)
+	}
+	return nil
+}
+
 func appendUnique(list []string, value string) []string {
 	for _, item := range list {
 		if item == value {

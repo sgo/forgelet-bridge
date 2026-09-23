@@ -94,12 +94,22 @@ type run struct {
 // prune removes every subdirectory of dir but the newest keep, and reports how
 // many it removed. A directory that is not there holds nothing to remove.
 func prune(dir string, keep int) (int, error) {
-	entries, err := os.ReadDir(dir)
+	found, err := runsIn(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
 		return 0, err
+	}
+	return removeStale(found, keep)
+}
+
+// runsIn is the run directories one directory of runs holds, each with when it
+// was last touched.
+func runsIn(dir string) ([]run, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
 	}
 	found := make([]run, 0, len(entries))
 	for _, entry := range entries {
@@ -108,11 +118,11 @@ func prune(dir string, keep int) (int, error) {
 		}
 		info, err := entry.Info()
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		found = append(found, run{path: filepath.Join(dir, entry.Name()), modified: info.ModTime().UnixNano()})
 	}
-	return removeStale(found, keep)
+	return found, nil
 }
 
 // pruneEverywhere removes runs that a pass left under a tree of its own: every
@@ -133,20 +143,11 @@ func pruneEverywhere(root, name string, keep int) (int, error) {
 		if !entry.IsDir() || entry.Name() != name {
 			return nil
 		}
-		entries, err := os.ReadDir(path)
+		runs, err := runsIn(path)
 		if err != nil {
 			return err
 		}
-		for _, child := range entries {
-			if !child.IsDir() {
-				continue
-			}
-			info, err := child.Info()
-			if err != nil {
-				return err
-			}
-			found = append(found, run{path: filepath.Join(path, child.Name()), modified: info.ModTime().UnixNano()})
-		}
+		found = append(found, runs...)
 		// A run's own contents are not runs, so there is nothing to find in
 		// there.
 		return fs.SkipDir
