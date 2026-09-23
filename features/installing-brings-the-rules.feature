@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=8d789eecd199b24964547100623d4cee2dbf748f96d3ba6c216b3f071b7ef3ed
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-23T18:25:51.824650Z","feature_name":"Installing Brings The Rules","feature_path":"features/installing-brings-the-rules.feature","background_hash":"2c73d51e495b0977cfc742d79dc4cca67e47550e2d128e3a2fb2b0d279a8bcfa","implementation_hash":"sha256:61d4290fafa1ba2abe2dd1667b40a801659e301ef464a7d15bd26cdf43942ecc","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-23T18:58:25.579581Z","feature_name":"Installing Brings The Rules","feature_path":"features/installing-brings-the-rules.feature","background_hash":"2c73d51e495b0977cfc742d79dc4cca67e47550e2d128e3a2fb2b0d279a8bcfa","implementation_hash":"sha256:61d4290fafa1ba2abe2dd1667b40a801659e301ef464a7d15bd26cdf43942ecc","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Installing Brings The Rules
