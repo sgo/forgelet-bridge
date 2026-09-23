@@ -39,7 +39,7 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 	}
 
 	waiting := b.pendingApprovalsFor(root)
-	for _, action := range relay.PlanApprovals(b.cfg.Operator, b.state.Relay, pending, reactions, replies) {
+	for _, action := range relay.PlanApprovals(b.cfg.Operator, b.approvalState(room), pending, reactions, replies) {
 		waiting.keep(action)
 	}
 
@@ -47,6 +47,9 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 	for _, action := range waiting.list() {
 		if err := b.applyApproval(ctx, store, room, action); err != nil {
 			b.reportApprovalFailure(ctx, room, waiting, action, err)
+			// The forge refused this action: it is named in the status, and
+			// the rest of the tick - the other forges included - goes ahead.
+			b.refuse(err, root)
 			continue
 		}
 		waiting.done(action)
@@ -84,10 +87,20 @@ func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.Appro
 		return fmt.Errorf("post approval %s: %w", action.Key, err)
 	}
 	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.RoomID = room.ApprovalsRoomID
 		state.MessageID = eventID
 		return state
 	})
 	return nil
+}
+
+// approvalState is the share of the bridge's bookkeeping this forge's
+// approvals room reports on: what it carries itself, never what another
+// forge's room carries.
+func (b *Bridge) approvalState(room Room) relay.State {
+	scoped := b.state.Relay
+	scoped.Approvals = scopedToRoom(b.state.Relay.Approvals, relay.ApprovalState.Room, room.ApprovalsRoomID)
+	return scoped
 }
 
 // reportResolution reports in the approval's thread how it was resolved.

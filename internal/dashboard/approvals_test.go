@@ -21,7 +21,8 @@ func TestApprovalsReachesTheDashboardItAnnounces(t *testing.T) {
 	}))
 	defer server.Close()
 
-	approvals := Approvals{Root: announced(t, server.URL)}
+	root := announced(t, server.URL)
+	approvals := Approvals{Root: root}
 
 	pending, err := approvals.Pending(context.Background())
 	if err != nil {
@@ -30,7 +31,7 @@ func TestApprovalsReachesTheDashboardItAnnounces(t *testing.T) {
 	if got := <-asked; got != "GET /api/state" {
 		t.Errorf("dashboard was asked %q, want the state endpoint", got)
 	}
-	if len(pending) != 1 || pending[0].Key != "forgelet-bridge/approval-1" || pending[0].Gate != "coder → refactorer" {
+	if len(pending) != 1 || pending[0].Key != forgeKey(root, "forgelet-bridge", "approval-1") || pending[0].Gate != "coder → refactorer" {
 		t.Errorf("pending = %+v, want the approval the dashboard is showing", pending)
 	}
 }
