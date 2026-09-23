@@ -67,7 +67,10 @@ cmd_start() {
   fi
   local wrapper=""
   command -v caffeinate >/dev/null 2>&1 && wrapper="caffeinate -ims "
-  local inner="exec ${wrapper}'$BINARY' --config '$CONFIG' >> '$LOG' 2>&1"
+  # The bridge is started in the forge root, so a configuration that names its
+  # state directory relative to the forge keeps it there whatever directory the
+  # adapter was called from.
+  local inner="cd '$FORGE_ROOT' && exec ${wrapper}'$BINARY' --config '$CONFIG' >> '$LOG' 2>&1"
   tmux -S "$SOCKET" new-session -d -s "$SESSION" "$inner"
   local status_path; status_path="$(status_file)"
   for _ in {1..60}; do
