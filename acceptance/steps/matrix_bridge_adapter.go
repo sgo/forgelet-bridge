@@ -25,6 +25,8 @@ const (
 	adapterBinaryEnv      = "MATRIX_BRIDGE_BINARY"
 	adapterRulesBinaryEnv = "MATRIX_BRIDGE_RULES_BINARY"
 	adapterRulesDirEnv    = "MATRIX_BRIDGE_RULES"
+	adapterKitBinaryEnv   = "MATRIX_BRIDGE_KIT_BINARY"
+	adapterKitDirEnv      = "MATRIX_BRIDGE_KIT"
 )
 
 // stopAdapterBridge stops the bridge a forge root's adapter started, if the
@@ -77,12 +79,18 @@ func (w *World) adapterCommand(ctx context.Context, args ...string) (string, err
 	if err != nil {
 		return "", err
 	}
+	kitInstaller, err := buildHelper("install-kit", "./cmd/install-kit")
+	if err != nil {
+		return "", err
+	}
 	command := exec.CommandContext(ctx, installed, args...)
 	command.Dir = fixtures.ProjectRoot()
 	command.Env = append(os.Environ(),
 		adapterBinaryEnv+"="+binary,
 		adapterRulesBinaryEnv+"="+installer,
 		adapterRulesDirEnv+"="+filepath.Join(fixtures.ProjectRoot(), "rules"),
+		adapterKitBinaryEnv+"="+kitInstaller,
+		adapterKitDirEnv+"="+filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts"),
 	)
 	out, runErr := command.CombinedOutput()
 	w.adapterOutput = string(out)

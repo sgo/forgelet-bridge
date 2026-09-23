@@ -45,8 +45,12 @@ type World struct {
 	// a scenario works with, and adapterOutput is what that adapter said.
 	servedRoot    string
 	adapterOutput string
-	// rulesSnapshot is the tree an install of the prompt rules left behind.
+	// rulesSnapshot is the tree the last install left behind, rules or kit,
+	// which is what an install that changed nothing is compared against.
 	rulesSnapshot string
+	// kitErr is what the kit installer returned: a self-check that read
+	// nothing leaves it non-zero while the report still says why.
+	kitErr error
 	// gateProposal is the proposal the route gate is holding, and gateOutput
 	// and gateErr are what its last run said.
 	gateProposal string
