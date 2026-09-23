@@ -72,7 +72,7 @@ func (a *API) Clarifications(ctx context.Context) ([]relay.Clarification, error)
 			continue
 		}
 		pending = append(pending, relay.Clarification{
-			Key:      request.Project + "/" + request.ID,
+			Key:      forgeKey(a.root, request.Project, request.ID),
 			ID:       request.ID,
 			Project:  request.Project,
 			Role:     request.Role,

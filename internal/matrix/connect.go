@@ -35,6 +35,9 @@ type Client struct {
 	reactions  chan relay.Reaction
 	log        *slog.Logger
 	serverName string
+	// operator is the one whose phone has to be able to read what the bridge
+	// posts, in every room it posts in.
+	operator id.UserID
 }
 
 // Connect logs the bridge in, opens its crypto store, and starts syncing.
@@ -59,6 +62,7 @@ func Connect(ctx context.Context, cfg config.Config, log *slog.Logger) (*Client,
 		reactions:  make(chan relay.Reaction, eventBuffer),
 		log:        log,
 		serverName: serverName(cfg.UserID),
+		operator:   id.UserID(cfg.Operator),
 	}
 	syncer, ok := cli.Syncer.(*mautrix.DefaultSyncer)
 	if !ok {
@@ -141,6 +145,13 @@ func (c *Client) DeviceIdentity() (deviceID, fingerprint string) {
 // SendText posts an encrypted chat message. A non-empty thread anchor makes it
 // a reply in that message's thread.
 func (c *Client) SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error) {
+	// What the bridge posts, the operator has to be able to read - the first
+	// message in a room included. The bridge's own view of a room it has just
+	// created can lag the invite it sent, so the operator's devices are named
+	// here rather than left to that view.
+	if err := c.shareWithOperator(ctx, id.RoomID(roomID)); err != nil {
+		return "", err
+	}
 	content := &event.MessageEventContent{
 		MsgType: event.MsgText,
 		Body:    body,
@@ -161,6 +172,19 @@ func (c *Client) SendText(ctx context.Context, roomID, body, threadAnchor string
 		return "", fmt.Errorf("send chat message: %w", err)
 	}
 	return resp.EventID.String(), nil
+}
+
+// shareWithOperator shares the room's group session with the operator's
+// devices. It does nothing when the session is already shared, so it is the
+// first message in a room that pays for it.
+func (c *Client) shareWithOperator(ctx context.Context, roomID id.RoomID) error {
+	if c.operator == "" {
+		return nil
+	}
+	if err := c.helper.Machine().ShareGroupSession(ctx, roomID, []id.UserID{c.operator}); err != nil {
+		return fmt.Errorf("share the session in %s with %s: %w", roomID, c.operator, err)
+	}
+	return nil
 }
 
 func (c *Client) captureMessage(_ context.Context, evt *event.Event) {

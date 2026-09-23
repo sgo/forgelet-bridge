@@ -141,7 +141,7 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 	approvals := make([]relay.Approval, 0, len(state.Approvals))
 	for _, request := range state.Approvals {
 		approval := relay.Approval{
-			Key:       request.Project + "/" + request.ID,
+			Key:       forgeKey(a.root, request.Project, request.ID),
 			Project:   request.Project,
 			ID:        request.ID,
 			Card:      request.Card,
@@ -162,6 +162,12 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 		approvals = append(approvals, approval)
 	}
 	return approvals, nil
+}
+
+// forgeKey names one item inside one forge: what the bridge remembers is per
+// forge, so the same project and id in two forges are two items, not one.
+func forgeKey(root, project, id string) string {
+	return root + "/" + project + "/" + id
 }
 
 // Approve approves an approval through the dashboard, so the dashboard applies

@@ -90,7 +90,7 @@ func openAdapters(cfg config.Config) adapters {
 		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root), Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.approvals[forge.Root] = dashboard.Approvals{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.clarifications[forge.Root] = dashboard.Clarifications{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
-		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root)}
+		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root), Forge: forge.Root}
 	}
 	return opened
 }

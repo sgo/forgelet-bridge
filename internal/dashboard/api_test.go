@@ -70,7 +70,7 @@ func TestApprovalsReadsTheDashboardState(t *testing.T) {
 	}))
 	defer server.Close()
 
-	approvals, err := NewAPI(server.URL).Approvals(context.Background())
+	approvals, err := NewForgeAPI("/forges/forge-a", server.URL).Approvals(context.Background())
 	if err != nil {
 		t.Fatalf("Approvals: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestApprovalsReadsTheDashboardState(t *testing.T) {
 	if approvals[0].Gate != "coder → refactorer" {
 		t.Errorf("gate = %q, want the roles the forge reports", approvals[0].Gate)
 	}
-	if approvals[0].Key != "forgelet-bridge/approval-1" || approvals[0].Card != "phone-approvals" ||
+	if approvals[0].Key != "/forges/forge-a/forgelet-bridge/approval-1" || approvals[0].Card != "phone-approvals" ||
 		len(approvals[0].Artifacts) != 1 {
 		t.Errorf("approval = %+v", approvals[0])
 	}

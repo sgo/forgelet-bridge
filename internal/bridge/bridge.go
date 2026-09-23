@@ -87,7 +87,9 @@ type Bridge struct {
 	pending               map[string]*pendingChat
 	pendingApprovals      map[string]*pendingApprovals
 	pendingClarifications map[string]*pendingClarifications
-	lastError             error
+	// unhappy is why each forge could not be served in the tick now running,
+	// so one sick forge is named while the rest keep their rooms.
+	unhappy map[string]string
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -116,6 +118,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		pending:               map[string]*pendingChat{},
 		pendingApprovals:      map[string]*pendingApprovals{},
 		pendingClarifications: map[string]*pendingClarifications{},
+		unhappy:               map[string]string{},
 	}, nil
 }
 
@@ -166,11 +169,16 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		return err
 	}
 
+	b.unhappy = map[string]string{}
 	carriedOut := 0
 	for _, forge := range b.cfg.Forges {
 		done, err := b.tickForge(ctx, forge.Root, seen)
 		if err != nil {
-			return err
+			// A forge the bridge cannot serve is that forge's problem: it is
+			// reported and tried again on its own, and what the rooms said for
+			// every other forge is still carried out.
+			b.refuse(err, forge.Root)
+			continue
 		}
 		carriedOut += done
 	}
@@ -183,10 +191,25 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		DeviceFingerprint: b.device.Fingerprint,
 		Pending:           b.pendingCount(),
 	}
-	if b.lastError != nil {
-		status.LastError = b.lastError.Error()
-	}
+	status.UnhappyForges, status.LastError = b.unhappyForges()
 	return b.writeStatus(status)
+}
+
+// unhappyForges is the forges the tick could not serve, in the order the
+// configuration names them, and the last of the reasons why. A tick that
+// serves a forge again is a tick that stops naming it.
+func (b *Bridge) unhappyForges() ([]string, string) {
+	var names []string
+	last := ""
+	for _, forge := range b.cfg.Forges {
+		why, unhappy := b.unhappy[forge.Root]
+		if !unhappy {
+			continue
+		}
+		names = append(names, b.cfg.ForgeName(forge.Root))
+		last = why
+	}
+	return names, last
 }
 
 // pendingFor is the work one forge still owes the rooms.
@@ -214,11 +237,25 @@ func (b *Bridge) pendingClarificationsFor(key string) *pendingClarifications {
 	return b.pendingClarifications[key]
 }
 
-// refuse records an action the forge would not carry out, so the tick can carry
-// on and the action can be tried again.
+// scopedToRoom is the share of the bridge's bookkeeping one room reports on:
+// the items whose message that room carries. Every forge keeps its own rooms,
+// so one forge's room never reports on another forge's work.
+func scopedToRoom[T any](all map[string]T, roomOf func(T) string, roomID string) map[string]T {
+	scoped := map[string]T{}
+	for key, item := range all {
+		if roomOf(item) == roomID {
+			scoped[key] = item
+		}
+	}
+	return scoped
+}
+
+// refuse records a forge the bridge could not serve, so the tick can carry on
+// with the other forges, the forge is named in the status, and what it could
+// not do is tried again.
 func (b *Bridge) refuse(err error, root string) {
-	b.lastError = err
-	b.log.Error("the forge refused an action", "root", root, "error", err)
+	b.unhappy[root] = err.Error()
+	b.log.Error("the forge could not be served", "root", root, "error", err)
 }
 
 // roomEvents is what the Matrix side has said since the last tick, grouped by

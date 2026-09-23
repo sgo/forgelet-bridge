@@ -21,7 +21,8 @@ func TestClarificationsReadsThePendingOnesTheDashboardIsShowing(t *testing.T) {
 	}))
 	defer server.Close()
 
-	clarifications := Clarifications{Root: announced(t, server.URL)}
+	root := announced(t, server.URL)
+	clarifications := Clarifications{Root: root}
 
 	pending, err := clarifications.Pending(context.Background())
 	if err != nil {
@@ -34,7 +35,7 @@ func TestClarificationsReadsThePendingOnesTheDashboardIsShowing(t *testing.T) {
 		t.Fatalf("pending = %+v, want only the clarification still waiting", pending)
 	}
 	want := struct{ Key, Project, Role, Question string }{
-		Key:      "forgelet-bridge/clar-1",
+		Key:      forgeKey(root, "forgelet-bridge", "clar-1"),
 		Project:  "forgelet-bridge",
 		Role:     "coder",
 		Question: "which lane should the refund card start in?",
