@@ -13,91 +13,6 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/rules"
 )
 
-// subject is the rule the features install.
-const installedRule = "stopping-without-finishing"
-
-// forgeWrote is the wording a fixture forge wrote for itself, which an install
-// must keep.
-const forgeWrote = "This forge switched its language and tooling to Go, and says so here.\n"
-
-func ruleArticle(root, where string) string {
-	dir := filepath.Join(root, "swarmforge", "constitution", "articles")
-	if where != "" {
-		dir = filepath.Join(root, where, "swarmforge", "constitution", "articles")
-	}
-	return filepath.Join(dir, installedRule+".prompt")
-}
-
-// forgeWroteItsOwnConstitution gives a fixture forge a constitution of its own:
-// the text it wrote, and a project it is working on.
-func forgeWroteItsOwnConstitution(ctx context.Context, world any, captures []string) error {
-	w := world.(*World)
-	store, err := w.forge(ctx, captures[1])
-	if err != nil {
-		return err
-	}
-	root := store.Root()
-	for path, content := range map[string]string{
-		filepath.Join(root, "swarmforge", "constitution.prompt"):                        forgeWrote,
-		filepath.Join(root, "swarmforge", "constitution", "articles", "project.prompt"): forgeWrote,
-	} {
-		if err := writeFile(path, content); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// forgeScaffoldsFromAPack gives a fixture forge a pack its projects come from,
-// with wording of its own.
-func forgeScaffoldsFromAPack(ctx context.Context, world any, captures []string) error {
-	w := world.(*World)
-	store, err := w.forge(ctx, captures[1])
-	if err != nil {
-		return err
-	}
-	root := filepath.Join(store.Root(), "packs", captures[2])
-	for path, content := range map[string]string{
-		filepath.Join(root, "swarmforge", "constitution.prompt"):                        forgeWrote,
-		filepath.Join(root, "swarmforge", "constitution", "articles", "project.prompt"): forgeWrote,
-		filepath.Join(root, "swarmforge", "swarmforge.conf"):                            "pack " + captures[2] + "\n",
-	} {
-		if err := writeFile(path, content); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// projectIsMidCard gives a fixture forge a project with work in flight and its
-// own tracked copy of the forge's rules.
-func projectIsMidCard(ctx context.Context, world any, captures []string) error {
-	w := world.(*World)
-	store, err := w.forge(ctx, captures[2])
-	if err != nil {
-		return err
-	}
-	root := filepath.Join(store.Root(), "projects", captures[1])
-	for path, content := range map[string]string{
-		filepath.Join(root, "swarmforge", "constitution.prompt"): "This project's own tracked copy.\n",
-		filepath.Join(root, "tmp", "question.txt"):               "which lane should the refund card start in?\n",
-		filepath.Join(root, "features", "work.feature"):          "Feature: work in flight\n",
-	} {
-		if err := writeFile(path, content); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeFile writes a fixture file, making its directory.
-func writeFile(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(content), 0o644)
-}
-
 // adapterInstallsRules runs the served forge root's adapter, which installs the
 // rules the bridge's rooms rely on, and remembers the tree it left behind.
 func adapterInstallsRules(_ context.Context, world any, captures []string) error {
@@ -123,19 +38,13 @@ func adapterInstallsRules(_ context.Context, world any, captures []string) error
 // installerChangedRule checks the installer said it changed a rule.
 func installerChangedRule(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "changed") || !strings.Contains(w.adapterOutput, captures[1]) {
-		return fmt.Errorf("the installer's output does not say it changed %s:\n%s", captures[1], w.adapterOutput)
-	}
-	return nil
+	return installerSaid(w.adapterOutput, "changed", captures[1])
 }
 
 // installerAlreadyCurrent checks the installer said a rule was already current.
 func installerAlreadyCurrent(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	if !strings.Contains(w.adapterOutput, "already current") || !strings.Contains(w.adapterOutput, captures[1]) {
-		return fmt.Errorf("the installer's output does not say %s was already current:\n%s", captures[1], w.adapterOutput)
-	}
-	return nil
+	return installerSaid(w.adapterOutput, "already current", captures[1])
 }
 
 // installerLeftProjectsAlone checks the installer said it left the forge's
@@ -147,9 +56,14 @@ func installerLeftProjectsAlone(_ context.Context, world any, captures []string)
 		return err
 	}
 	projects := filepath.Join(served.Root(), "projects")
-	output := w.adapterOutput
-	if !strings.Contains(output, "left alone") || !strings.Contains(output, projects) {
-		return fmt.Errorf("the installer's output does not say it left %s alone:\n%s", projects, output)
+	return installerSaid(w.adapterOutput, "left alone", projects)
+}
+
+// installerSaid checks the installer's output carried both a phrase about a
+// result and what that result was about.
+func installerSaid(output, phrase, about string) error {
+	if !strings.Contains(output, phrase) || !strings.Contains(output, about) {
+		return fmt.Errorf("the installer's output does not say %q about %s:\n%s", phrase, about, output)
 	}
 	return nil
 }
@@ -272,26 +186,6 @@ func projectIsTheTreeItWas(_ context.Context, world any, captures []string) erro
 		return fmt.Errorf("the install reached into the project's own tree:\n%s", now)
 	}
 	return nil
-}
-
-// ruleHasGoneStale makes the installed rule drift, the way a hand-edited copy
-// would.
-func ruleHasGoneStale(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	served, err := w.declaredForge(captures[2])
-	if err != nil {
-		return err
-	}
-	path := ruleArticle(served.Root(), "")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	stale := strings.Replace(string(data), "raise a clarification", "go quiet and hope", 1)
-	if stale == string(data) {
-		return fmt.Errorf("%s does not carry the rule's wording", path)
-	}
-	return os.WriteFile(path, []byte(stale), 0o644)
 }
 
 // snapshotTree is a forge root's tree as one string: every file's path and
