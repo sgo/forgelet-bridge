@@ -242,23 +242,3 @@ func (w *World) forgeApprovalMessage(ctx context.Context, forgeName, card string
 	})
 	return roomID, messageID, body, err
 }
-
-// waitForCardUpdateIn waits for a card update the operator can read in a room.
-func waitForCardUpdateIn(ctx context.Context, w *World, roomID, card, want string) error {
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	return waitFor(ctx, fmt.Sprintf("the operator never read the update for %s", card), func() (bool, error) {
-		for _, message := range operator.Messages(roomID) {
-			if message.Body != want {
-				continue
-			}
-			if !message.Encrypted {
-				return false, fmt.Errorf("the card update %q was not decrypted from an encrypted event", want)
-			}
-			return true, nil
-		}
-		return false, nil
-	})
-}

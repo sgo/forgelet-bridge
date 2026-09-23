@@ -52,6 +52,11 @@ func waitForCardUpdate(w *World, card, want string) error {
 	if err != nil {
 		return err
 	}
+	return waitForCardUpdateIn(ctx, w, roomID, card, want)
+}
+
+// waitForCardUpdateIn waits for a card update the operator can read in a room.
+func waitForCardUpdateIn(ctx context.Context, w *World, roomID, card, want string) error {
 	operator, err := w.operator(ctx)
 	if err != nil {
 		return err
