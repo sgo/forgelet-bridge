@@ -55,9 +55,9 @@ type ClarificationAction struct {
 // rather than a gesture: any reply of the operator's in the clarification's
 // thread, written there or made by quoting the message, is the answer.
 func PlanClarifications(operator string, st State, pending []Clarification, replies []RoomEvent) []ClarificationAction {
-	_, byKey := clarificationsByMessage(st, pending)
+	byMessage, byKey := clarificationsByMessage(st, pending)
 
-	actions := answeredByReply(operator, st, pending, replies)
+	actions := answeredByReply(operator, st, byMessage, replies)
 	actions = append(actions, unpostedClarifications(st, pending)...)
 	return append(actions, answersToReport(st, byKey)...)
 }
@@ -79,8 +79,7 @@ func clarificationsByMessage(st State, pending []Clarification) (map[string]Clar
 
 // answeredByReply plans the answers the operator gave in a clarification's
 // thread.
-func answeredByReply(operator string, st State, pending []Clarification, replies []RoomEvent) []ClarificationAction {
-	byMessage, _ := clarificationsByMessage(st, pending)
+func answeredByReply(operator string, st State, byMessage map[string]Clarification, replies []RoomEvent) []ClarificationAction {
 	var actions []ClarificationAction
 	for _, reply := range replies {
 		if reply.Sender != operator {

@@ -15,7 +15,7 @@ func clarificationMessage(clarification relay.Clarification) string {
 	lines := []string{
 		fmt.Sprintf("Clarification for %s from %s", clarification.Project, clarification.Role),
 		fmt.Sprintf("Question: %s", clarification.Question),
-		"Reply in this thread with the answer: a clarification's reply is the answer.",
+		"Reply in this thread with the answer.",
 	}
 	return strings.Join(lines, "\n")
 }
