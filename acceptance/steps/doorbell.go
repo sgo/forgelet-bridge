@@ -82,6 +82,44 @@ func theDashboardTypedTheRequest(_ context.Context, world any, captures []string
 	return w.typeIntoMasterPane(root, request.ID, body)
 }
 
+// theDashboardTypedTheRequestLongAgo types a request into the pane and then
+// scrolls it out of sight, the way a request the role answered hours ago has
+// left the visible screen while the pane's scrollback still proves it arrived.
+func theDashboardTypedTheRequestLongAgo(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	body := captures[1]
+	root, request, err := w.requestByBody(body)
+	if err != nil {
+		return err
+	}
+	if err := w.typeIntoMasterPane(root, request.ID, body); err != nil {
+		return err
+	}
+	pane, socket, err := w.masterPane(root)
+	if err != nil {
+		return err
+	}
+	// A pane's screen is a few dozen lines; enough blank lines push what was
+	// typed up into the history the pane keeps.
+	for line := 0; line < screenFullOfLines; line++ {
+		if _, err := tmux(socket, "send-keys", "-t", pane, "C-m"); err != nil {
+			return err
+		}
+	}
+	text, err := paneText(socket, pane)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(text, "["+request.ID+"]") {
+		return fmt.Errorf("the request the dashboard typed is still on the screen, so the scenario cannot tell the two apart:\n%s", text)
+	}
+	return nil
+}
+
+// screenFullOfLines is how many blank lines the fixture sends to push what was
+// typed off a pane's visible screen.
+const screenFullOfLines = 60
+
 // theDoorbellRuns runs this repository's doorbell for one forge root, the way
 // the forge's own copy would be run, and keeps what it said.
 func theDoorbellRuns(_ context.Context, world any, captures []string) error {
@@ -108,10 +146,83 @@ func doorbellRangTheRequest(_ context.Context, world any, captures []string) err
 	return doorbellSaid(world.(*World), captures[1], "was never delivered and rung")
 }
 
-// doorbellLeftADeliveredRequestAlone checks the doorbell said a request that
-// was already delivered was left where it was.
+// doorbellLeftADeliveredRequestAlone checks the doorbell said a request the
+// screen still shows was left where it was, and names that evidence.
 func doorbellLeftADeliveredRequestAlone(_ context.Context, world any, captures []string) error {
-	return doorbellSaid(world.(*World), captures[1], "was already delivered and left alone")
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the screen and left alone")
+}
+
+// doorbellLeftARequestTheScreenForgotAlone checks the doorbell read past the
+// screen: a request the pane's scrollback still proves is delivery, not a
+// reason to ring again.
+func doorbellLeftARequestTheScreenForgotAlone(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the scrollback and left alone")
+}
+
+// doorbellLedgerSays checks the doorbell's ledger says what became of one
+// request, so the next reader can tell a delivery from a ring without reading
+// the pane again.
+func doorbellLedgerSays(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, request, err := w.requestByBody(captures[1])
+	if err != nil {
+		return err
+	}
+	ledger, err := readDoorbellLedger(root)
+	if err != nil {
+		return err
+	}
+	rung := fixtures.Contains(ledger["rung"], request.ID)
+	seen := fixtures.Contains(ledger["seen"], request.ID)
+	switch captures[2] {
+	case "rung":
+		if !rung {
+			return fmt.Errorf("the ledger does not say the request %s was rung: %+v", request.ID, ledger)
+		}
+	case "delivered":
+		if !seen || rung {
+			return fmt.Errorf("the ledger does not say the request %s was delivered and not rung: %+v", request.ID, ledger)
+		}
+	default:
+		return fmt.Errorf("the step does not know the fate %q", captures[2])
+	}
+	return nil
+}
+
+// readDoorbellLedger reads the doorbell's own record of what it has seen and
+// what it has rung.
+func readDoorbellLedger(root string) (map[string][]string, error) {
+	path := filepath.Join(root, ".swarmforge", "doorbell.edn")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("the doorbell kept no ledger: %w", err)
+	}
+	ledger := map[string][]string{}
+	for _, key := range []string{"seen", "rung"} {
+		ledger[key] = ledgerIDs(string(data), ":"+key)
+	}
+	return ledger, nil
+}
+
+// ledgerIDs reads the ids out of one vector of a written ledger, which prints
+// the whole map on one line.
+func ledgerIDs(text, key string) []string {
+	start := strings.Index(text, key+" [")
+	if start < 0 {
+		return nil
+	}
+	rest := text[start+len(key)+2:]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return nil
+	}
+	var ids []string
+	for _, field := range strings.Fields(rest[:end]) {
+		if id := strings.Trim(field, "\""); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // doorbellWaitedForTheRole checks the doorbell said it did not ring because the

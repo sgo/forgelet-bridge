@@ -65,9 +65,6 @@
       (when (zero? exit) (str/trim out)))
     (catch Exception _ nil)))
 
-(defn pane-text [socket pane]
-  (tmux socket "capture-pane" "-p" "-t" pane))
-
 (defn request-files [root]
   (let [dir (fs/path root ".swarmforge" "dashboard" "requests" "pending")]
     (if (fs/directory? dir)
@@ -132,10 +129,32 @@
   (= "working" (verdict-of (idler-check root idler) role)))
 
 ;; The dashboard types the id in as [<id>], which is the only delivery evidence
-;; there is: a capture of the pane, and the ledger for what the capture can no
-;; longer hold.
-(defn delivered-evidence [id pane]
-  (boolean (and pane (str/includes? pane (str "[" id "]")))))
+;; there is. What counts is what the pane can still prove, not only what its
+;; visible screen shows: a request delivered before the doorbell existed, or long
+;; enough ago to have scrolled away, is still in the scrollback, and reading the
+;; screen alone would ring it a second time. The bound stays where the evidence
+;; does - a request the pane can no longer prove is not remembered forever, and
+;; ringing it is the repair working.
+(def scrollback-lines 2000)
+
+(defn pane-screen [socket pane]
+  (tmux socket "capture-pane" "-p" "-t" pane))
+
+(defn pane-scrollback [socket pane]
+  (tmux socket "capture-pane" "-p" "-S" (str "-" scrollback-lines) "-t" pane))
+
+(defn holds-id? [text id]
+  (boolean (and text (str/includes? text (str "[" id "]")))))
+
+;; The evidence, named the way the pass reports it: what the pane still shows
+;; says the most, then what its scrollback remembers, and the ledger last - it is
+;; the fallback for a request the pane can no longer prove at all.
+(defn delivered-evidence [id screen scrollback seen rung]
+  (cond
+    (holds-id? screen id) "the screen"
+    (holds-id? scrollback id) "the scrollback"
+    (or (contains? rung id) (contains? seen id)) "the ledger"
+    :else nil))
 
 (defn wake-text [id body]
   (if (str/includes? (or body "") "\n")
@@ -157,7 +176,8 @@
         role (first row)
         pane (nth row 3 nil)
         socket (tmux-socket root)
-        pane-text (when (and socket pane) (pane-text socket pane))
+        screen (when (and socket pane) (pane-screen socket pane))
+        scrollback (when (and socket pane) (pane-scrollback socket pane))
         stored (ledger root)
         seen (atom (:seen stored))
         rung (atom (:rung stored))
@@ -167,11 +187,13 @@
     (if (empty? requests)
       (println "nothing pending: no chat request is waiting to be delivered")
       (doseq [{:keys [id body]} requests]
-        (let [quoted (str "\"" body "\"")]
+        (let [quoted (str "\"" body "\"")
+              proved (delivered-evidence id screen scrollback @seen @rung)]
           (cond
-            (or (contains? @rung id) (contains? @seen id) (delivered-evidence id pane-text))
+            proved
             (do (swap! seen conj id)
-                (println (str "the chat request " quoted " was already delivered and left alone")))
+                (println (str "the chat request " quoted " was already delivered from " proved
+                              " and left alone")))
 
             (nil? pane)
             (println (str "the chat request " quoted " was not rung: the role " (or role "-")
