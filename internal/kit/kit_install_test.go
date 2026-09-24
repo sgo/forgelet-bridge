@@ -339,3 +339,30 @@ func TestInstallFileReportsATargetItCannotWrite(t *testing.T) {
 		t.Fatal("installFile reported success for a target it could not write")
 	}
 }
+
+func TestInstallProvesTheReadOnThePassThatInstalledTheTools(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+
+	first, err := Install(root, kitDir)
+	if err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+	if !strings.Contains(first.String(), "self-check idler check") {
+		t.Errorf("the install does not carry the self-check it ran:\n%s", first)
+	}
+	if strings.Contains(first.String(), "left alone the self-checks") {
+		t.Errorf("the install claims it left the self-checks alone although it put the tools there:\n%s", first)
+	}
+
+	second, err := Install(root, kitDir)
+	if err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+	if !strings.Contains(second.String(), "left alone the self-checks") {
+		t.Errorf("the second install does not say it left the self-checks alone:\n%s", second)
+	}
+	if strings.Contains(second.String(), "self-check idler check") {
+		t.Errorf("the second install ran a self-check although it installed nothing:\n%s", second)
+	}
+}

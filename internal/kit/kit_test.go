@@ -262,3 +262,21 @@ func TestPaneOfSaysNothingWhenTheProjectHasNoRolesFile(t *testing.T) {
 		t.Errorf("paneOf = %q, want nothing read from a project with no roles file", got)
 	}
 }
+
+func TestIdlerEvidenceCarriesAReadingWithSomethingInFlight(t *testing.T) {
+	project := fixtureProject(t)
+	// One role has an empty lane and an empty inbox, the next holds a card with
+	// nothing in its inbox: the card is the reading that says the most, so it is
+	// the one the report carries rather than the emptiness read first.
+	report := "master      idle-nothing-assigned   -             new=0 in_process=0 quiet=9m tool=codex\n" +
+		"coder       idle-holding-card      refund-card   new=0 in_process=0 quiet=9m tool=codex\n"
+
+	line, ok := idlerEvidence(project, "role_health.sh "+project, report)
+
+	if !ok {
+		t.Fatalf("a card was read as nothing to read: %s", line)
+	}
+	if !strings.Contains(line, "board refund-card") {
+		t.Errorf("the self-check line does not carry the reading with something in flight:\n%s", line)
+	}
+}
