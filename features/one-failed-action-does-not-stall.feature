@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=e9b8ae1109e601ac268993ee1a5d86c078670b313c1fdf11e4d7379b81a807c5
+# mutation-stamp: sha256=8aecbf6c151efc0534a1562fe41d85a6540b8cd7fb63a717c35b10b3d5c3a535
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T12:20:58.890633Z","feature_name":"One Failed Action Does Not Stall","feature_path":"features/one-failed-action-does-not-stall.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:757cea3e590a205975a4203c18a0623b5d054f54017d3de28417b11c51f1dfbd","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T12:43:47.106683Z","feature_name":"One Failed Action Does Not Stall","feature_path":"features/one-failed-action-does-not-stall.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:757cea3e590a205975a4203c18a0623b5d054f54017d3de28417b11c51f1dfbd","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: One Failed Action Does Not Stall

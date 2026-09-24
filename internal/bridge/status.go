@@ -28,7 +28,19 @@ type Status struct {
 	// UnhappyForges names the forges this tick could not serve, so one forge
 	// that cannot be reached is neither silent nor the whole bridge's problem.
 	UnhappyForges []string `json:"unhappy_forges,omitempty"`
-	LastError     string   `json:"last_error,omitempty"`
+	// Owed names the work the bridge still has to carry out for each configured
+	// forge. Being reached says the bridge got to the forge - configured, its
+	// rooms created - and a queue behind it is a separate, visible fact rather
+	// than proof that reaching it failed.
+	Owed      []ForgeOwed `json:"owed,omitempty"`
+	LastError string      `json:"last_error,omitempty"`
+}
+
+// ForgeOwed is one forge and the work the bridge has taken from it and not yet
+// carried out.
+type ForgeOwed struct {
+	Name  string `json:"name"`
+	Items int    `json:"items"`
 }
 
 // Device is the Matrix device the bridge is using.
@@ -57,5 +69,5 @@ func (b *Bridge) writeStatus(status Status) error {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T14:45:11+02:00","module_hash":"71c151d2db7f64611f1fc56c319b52fbb747add81896c62cbc57f2980650759d","functions":[{"id":"func/Bridge.ReportDevice","name":"Bridge.ReportDevice","line":42,"end_line":44,"hash":"9abf9e292aafe2f10a8204dd1970ebe3416ad531653c59425a7f93968de761a4"},{"id":"func/Bridge.writeStatus","name":"Bridge.writeStatus","line":48,"end_line":57,"hash":"79a205547a958b3a5f9d1cc48f96e9549e6f42304bed9bf643585c7433bfa3dd"}]}
+// {"version":1,"tested_at":"2026-09-24T14:40:19+02:00","module_hash":"2702f76dbee25e62ac3f3e2f84533f03960ae3de77932f467d2d8043e1542c44","functions":[{"id":"func/Bridge.ReportDevice","name":"Bridge.ReportDevice","line":54,"end_line":56,"hash":"9abf9e292aafe2f10a8204dd1970ebe3416ad531653c59425a7f93968de761a4"},{"id":"func/Bridge.writeStatus","name":"Bridge.writeStatus","line":60,"end_line":69,"hash":"79a205547a958b3a5f9d1cc48f96e9549e6f42304bed9bf643585c7433bfa3dd"}]}
 // mutate4go-manifest-end

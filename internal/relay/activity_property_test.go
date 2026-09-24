@@ -119,7 +119,10 @@ func changeFor(st State, card Card) (ActivityKind, bool) {
 	known, seen := st.Activity[card.Key]
 	switch {
 	case !seen && card.Done:
-		return CardFinished, true
+		// A card the bridge first meets already finished is history: a forge
+		// joining reports from the moment it joined, not the board it arrived
+		// with.
+		return "", false
 	case !seen:
 		return CardAppeared, true
 	case card.Done && known.Reported != ReportedFinished:
