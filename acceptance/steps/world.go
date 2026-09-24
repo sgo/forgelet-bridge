@@ -53,6 +53,9 @@ type World struct {
 	kitErr error
 	// doorbellOutput is what the doorbell last said about a forge's requests.
 	doorbellOutput string
+	// activityCount is how many card updates the activity room held when a step
+	// last counted them, which is what a restart must not add to.
+	activityCount int
 	// keepScenarios and keepMutants are how many runs of each kind the fixture
 	// keeps; scenarioRuns and mutantRuns are the ones it made, oldest first,
 	// and runsOutput is what a clean up said.

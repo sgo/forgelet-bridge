@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
@@ -24,10 +25,12 @@ func cardUpdate(action relay.ActivityAction) string {
 }
 
 // carryOutActivity posts the card updates the operator still has to hear, and
-// nothing else: the room stays quiet while nothing changes. What is news - a
-// card appearing and a card finishing - goes as an ordinary message, the kind
-// clients notify on; the routine lane-to-lane step goes as a notice, worth
-// seeing in the room and not worth waking anyone for.
+// nothing else: the room stays quiet while nothing changes. A tick's news
+// travels as one message, so what the phone sees is bounded by ticks rather
+// than by the size of a board - and the cards that appeared or finished are
+// named in it, so nothing is dropped. A tick's routine lane moves are one
+// notice, which is what they always were: worth seeing in the room and not
+// worth waking anyone for, even when they share a tick with news.
 func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (int, error) {
 	store, ok := b.boards[root]
 	if !ok {
@@ -39,22 +42,13 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	}
 
 	actions := relay.PlanActivity(b.state.Relay, cards)
+	news, moves := splitCardUpdates(actions)
 	posted := map[string]bool{}
-	for _, action := range actions {
-		if err := b.postCardUpdate(ctx, room.ActivityRoomID, action); err != nil {
-			return 0, fmt.Errorf("post the update for %s: %w", action.Card.Key, err)
-		}
-		posted[action.Card.Key] = true
-		b.state.Relay.EnsureMaps()
-		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
-			Lane:     action.Card.Lane,
-			Reported: string(action.Kind),
-			Project:  action.Card.Project,
-			Name:     action.Card.Name,
-		}
-		if err := b.state.Save(b.statePath); err != nil {
-			return 0, err
-		}
+	if err := b.postCardNews(ctx, room.ActivityRoomID, news, posted); err != nil {
+		return 0, err
+	}
+	if err := b.postCardMoves(ctx, room.ActivityRoomID, moves, posted); err != nil {
+		return 0, err
 	}
 	if seeded := b.rememberQuietCards(cards, posted); seeded > 0 {
 		if err := b.state.Save(b.statePath); err != nil {
@@ -64,16 +58,69 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	return len(actions), nil
 }
 
-// postCardUpdate posts one card update as the kind of message it is: a card
-// arriving or finishing notifies, a routine move between lanes does not.
-func (b *Bridge) postCardUpdate(ctx context.Context, roomID string, action relay.ActivityAction) error {
-	body := cardUpdate(action)
-	if action.Kind == relay.CardMovedOn {
-		_, err := b.rooms.SendNotice(ctx, roomID, body)
-		return err
+// postCardNews posts a tick's card news as one message - the message the phone
+// is woken for - and remembers that the room has it.
+func (b *Bridge) postCardNews(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
 	}
-	_, err := b.rooms.SendText(ctx, roomID, body, "")
-	return err
+	if _, err := b.rooms.SendText(ctx, roomID, cardUpdates(actions), ""); err != nil {
+		return fmt.Errorf("post the tick's card news: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
+}
+
+// postCardMoves posts a tick's routine lane moves as one notice, which the
+// clients do not notify on, and remembers that the room has it.
+func (b *Bridge) postCardMoves(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	if _, err := b.rooms.SendNotice(ctx, roomID, cardUpdates(actions)); err != nil {
+		return fmt.Errorf("post the tick's card moves: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
+}
+
+// splitCardUpdates keeps the tick's news apart from its routine moves: the news
+// notifies and the moves do not, and sharing a tick must never promote a move
+// into something that wakes the operator.
+func splitCardUpdates(actions []relay.ActivityAction) (news, moves []relay.ActivityAction) {
+	for _, action := range actions {
+		if action.Kind == relay.CardMovedOn {
+			moves = append(moves, action)
+			continue
+		}
+		news = append(news, action)
+	}
+	return news, moves
+}
+
+// cardUpdates is what the operator reads for one group of card updates: a line
+// each, in the order the board is in, so a tick with one card's news reads
+// exactly as it did before the news was batched.
+func cardUpdates(actions []relay.ActivityAction) string {
+	lines := make([]string, 0, len(actions))
+	for _, action := range actions {
+		lines = append(lines, cardUpdate(action))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// rememberCardUpdates records what the operator has been told about every card
+// in a group, once that group is in the room: a restart then repeats nothing.
+func (b *Bridge) rememberCardUpdates(actions []relay.ActivityAction, posted map[string]bool) error {
+	b.state.Relay.EnsureMaps()
+	for _, action := range actions {
+		posted[action.Card.Key] = true
+		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
+			Lane:     action.Card.Lane,
+			Reported: string(action.Kind),
+			Project:  action.Card.Project,
+			Name:     action.Card.Name,
+		}
+	}
+	return b.state.Save(b.statePath)
 }
 
 // rememberQuietCards remembers the cards a forge arrived with that there was
@@ -103,5 +150,5 @@ func (b *Bridge) rememberQuietCards(cards []relay.Card, posted map[string]bool) 
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-24T14:41:23+02:00","module_hash":"cfd6f01d47815c0a329d57be5c6c26c712e8eb1a9c6b2574929d4afe2413bb12","functions":[{"id":"func/cardUpdate","name":"cardUpdate","line":12,"end_line":24,"hash":"c2a615621bb4fc84f739407ebe1c7dcd74f51548e5749984cf6cd7aae76cb270"},{"id":"func/Bridge.carryOutActivity","name":"Bridge.carryOutActivity","line":31,"end_line":65,"hash":"8f8c3484c1f2e9f1f19125dd73ffff8947eaabd6299ab7e07706789047cec94e"},{"id":"func/Bridge.postCardUpdate","name":"Bridge.postCardUpdate","line":69,"end_line":77,"hash":"0c14925150103fe7276c52a86d051838de4d53db04e50914932417967dacbab9"},{"id":"func/Bridge.rememberQuietCards","name":"Bridge.rememberQuietCards","line":84,"end_line":103,"hash":"be1aaf8183103c4228e7c7340dbada838f2397dba12b593c0b40f5d97e19fd7f"}]}
+// {"version":1,"tested_at":"2026-09-24T16:48:15+02:00","module_hash":"94ceb6f3c608b8c144cbb14d03d8c4bc1b73796df55731c70e5f145a812e1459","functions":[{"id":"func/cardUpdate","name":"cardUpdate","line":13,"end_line":25,"hash":"c2a615621bb4fc84f739407ebe1c7dcd74f51548e5749984cf6cd7aae76cb270"},{"id":"func/Bridge.carryOutActivity","name":"Bridge.carryOutActivity","line":34,"end_line":59,"hash":"561cefbd055cd363f469f344afebaeb0f19a8b632ca0513dcb53270a5ccbaecf"},{"id":"func/Bridge.postCardNews","name":"Bridge.postCardNews","line":63,"end_line":71,"hash":"fec9ad990d30ec371c780b904f737b4b43c7d22a52583a3cf1bac28d517abfd0"},{"id":"func/Bridge.postCardMoves","name":"Bridge.postCardMoves","line":75,"end_line":83,"hash":"94779c2910f9013e99a9ae95b30025c719abca71114304588b24df0d7011c44a"},{"id":"func/splitCardUpdates","name":"splitCardUpdates","line":88,"end_line":97,"hash":"4620f53099784418e7d7ceedad005d2477009835aa82bc610b2ef326a89b9273"},{"id":"func/cardUpdates","name":"cardUpdates","line":102,"end_line":108,"hash":"555c1b76e5c103dc2b037dc4cd1d73d452f7aea7019f4906eecd50d7a88b7a16"},{"id":"func/Bridge.rememberCardUpdates","name":"Bridge.rememberCardUpdates","line":112,"end_line":124,"hash":"ec86323227b9181d1fca033afc2a02773657fcd1b444fe7d378c9b4402296cd5"},{"id":"func/Bridge.rememberQuietCards","name":"Bridge.rememberQuietCards","line":131,"end_line":150,"hash":"be1aaf8183103c4228e7c7340dbada838f2397dba12b593c0b40f5d97e19fd7f"}]}
 // mutate4go-manifest-end
