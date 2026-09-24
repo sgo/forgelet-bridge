@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/board"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
 )
@@ -100,7 +101,7 @@ func statusReportsTheWorkItStillOwes(_ context.Context, world any, _ []string) e
 		if err != nil {
 			return false, nil
 		}
-		if !containsName(status.ReachedForges, name) {
+		if !fixtures.Contains(status.ReachedForges, name) {
 			return false, nil
 		}
 		return owedFor(status.Owed, name), nil
@@ -111,16 +112,6 @@ func statusReportsTheWorkItStillOwes(_ context.Context, world any, _ []string) e
 func owedFor(owed []bridge.ForgeOwed, name string) bool {
 	for _, forge := range owed {
 		if forge.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// containsName reports whether a list of forge names holds one.
-func containsName(names []string, name string) bool {
-	for _, candidate := range names {
-		if candidate == name {
 			return true
 		}
 	}
