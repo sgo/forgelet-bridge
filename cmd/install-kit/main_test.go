@@ -40,6 +40,8 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	write(t, filepath.Join(dir, "role_health.sh"), "#!/bin/sh\necho 'coder idle-holding-card refund-card new=0 in_process=1'\n")
 	write(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")
 	write(t, filepath.Join(dir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+forgeRoot+"</string>'\n")
+	write(t, filepath.Join(dir, "doorbell.sh"), "#!/bin/sh\necho 'doorbell: read the pane fixture-master of the role master'\n")
+	write(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
 	return dir
 }
 
@@ -68,7 +70,7 @@ func TestRunInstallsTheKitAndPrintsTheReport(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	if !strings.Contains(reported.String(), "installed the route gate, the idler check and the stall watch") {
+	if !strings.Contains(reported.String(), "installed the route gate, the idler check, the stall watch and the doorbell") {
 		t.Errorf("the report does not say what it installed:\n%s", reported.String())
 	}
 	if !strings.Contains(reported.String(), "left the gate policy in the lieutenant prompt alone") {
