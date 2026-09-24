@@ -16,6 +16,11 @@ Feature: Forge Startup Report
   # full of cards has a backlog, and that backlog is a separate, visible thing:
   # naming it is not the same as failing to reach the forge, or adding a forge
   # that works would report failure and send its operator to a log for a queue.
+  # Each room carries its forge's name as well as its channel — Chat (forge-b),
+  # Approvals (forge-b) — because a room list shows them outside their space and
+  # two Chats from two forges have to be told apart at a glance. The channel comes
+  # first and the forge alongside it, so a flat list groups by channel; the space
+  # keeps the forge's own name.
 
   Background:
     Given the fixture forge roots forge-a and forge-b have their dashboards running
@@ -26,11 +31,12 @@ Feature: Forge Startup Report
     Given the bridge is configured with the forge roots forge-a, forge-b
     And the bridge is started
     Then the bridge's status names every configured forge as reached
+    And the forge space forge-a holds the chat room Chat (forge-a)
     And the operator is invited to the forge space forge-b
-    And the forge space forge-b holds the chat room Chat
-    And the forge space forge-b holds the approvals room Approvals
-    And the forge space forge-b holds the activity room Activity
-    And the forge space forge-b holds the clarifications room Clarifications
+    And the forge space forge-b holds the chat room Chat (forge-b)
+    And the forge space forge-b holds the approvals room Approvals (forge-b)
+    And the forge space forge-b holds the activity room Activity (forge-b)
+    And the forge space forge-b holds the clarifications room Clarifications (forge-b)
 
   # Forge Startup Report 2: a forge the bridge could not reach is named as unreached
   Scenario: Forge Startup Report 2: a forge the bridge could not reach is named as unreached

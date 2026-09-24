@@ -23,7 +23,8 @@ Feature: Naming Applies On Reuse
     And the bridge is stopped and started again
     Then the operator sees exactly one forge space named Forgelet
     And the operator sees no forge space named forge-a
-    And the forge space Forgelet holds exactly one chat room Chat
+    And the forge space Forgelet holds exactly one chat room Chat (Forgelet)
+    And the forge space Forgelet holds exactly one chat room
     And the operator decrypts the chat message "is the build green?" in the forge Forgelet's chat room sent under the name Forgelet
 
   # Naming Applies On Reuse 2: a forge created with its name keeps it on the next start
@@ -33,7 +34,7 @@ Feature: Naming Applies On Reuse
     When the bridge is stopped and started again
     Then the operator sees exactly one forge space named Forgelet
     And the operator sees no forge space named forge-a
-    And the forge space Forgelet holds exactly one chat room Chat
+    And the forge space Forgelet holds exactly one chat room Chat (Forgelet)
 
   # Naming Applies On Reuse 3: a restart leaves every fact about the forge as its configuration says
   Scenario: Naming Applies On Reuse 3: a restart leaves every fact about the forge as its configuration says
@@ -41,9 +42,9 @@ Feature: Naming Applies On Reuse
     And the bridge is started
     When the bridge is stopped and started again
     Then the operator is invited to the forge space Forgelet
-    And the forge space Forgelet holds exactly one chat room Chat
-    And chat room Chat is encrypted
-    And the forge space Forgelet holds the approvals room Approvals
-    And the approvals room Approvals is encrypted
-    And the forge space Forgelet holds the activity room Activity
-    And the activity room Activity is encrypted
+    And the forge space Forgelet holds exactly one chat room Chat (Forgelet)
+    And chat room Chat (Forgelet) is encrypted
+    And the forge space Forgelet holds the approvals room Approvals (Forgelet)
+    And the approvals room Approvals (Forgelet) is encrypted
+    And the forge space Forgelet holds the activity room Activity (Forgelet)
+    And the activity room Activity (Forgelet) is encrypted
