@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=18780c4ba69f8a0de4bfba04cb8aae5dc500ebae48a9c373083a6f855325d167
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T12:43:45.369166Z","feature_name":"Forge Startup Report","feature_path":"features/forge-startup-report.feature","background_hash":"82f3ad327b9bd9635067c590d7165b7ec8b83bc9f03e45725cadfe3eb8a6ea02","implementation_hash":"sha256:50354654a649450ec1f0e89e5cf6dac50df31840661c99e0bbc8c3b06115fdda","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T14:35:07.580522Z","feature_name":"Forge Startup Report","feature_path":"features/forge-startup-report.feature","background_hash":"82f3ad327b9bd9635067c590d7165b7ec8b83bc9f03e45725cadfe3eb8a6ea02","implementation_hash":"sha256:50354654a649450ec1f0e89e5cf6dac50df31840661c99e0bbc8c3b06115fdda","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Forge Startup Report
