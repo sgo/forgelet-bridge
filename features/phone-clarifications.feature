@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=4894ee846ec2d3f0008f6ae3b881a57895d637c95862a870693e9b9b5350c1d3
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T16:33:56.531761Z","feature_name":"Phone Clarifications","feature_path":"features/phone-clarifications.feature","background_hash":"cf1e0b2a981ce9d8820a4ef9b6cff3eb9c1a3fb90f04f075c6dcc8edd54100c9","implementation_hash":"sha256:233417baea6ae415f7f024ff12fa885e02724322220897c7ffee38b9b13e99e2","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T16:46:04.527138Z","feature_name":"Phone Clarifications","feature_path":"features/phone-clarifications.feature","background_hash":"cf1e0b2a981ce9d8820a4ef9b6cff3eb9c1a3fb90f04f075c6dcc8edd54100c9","implementation_hash":"sha256:233417baea6ae415f7f024ff12fa885e02724322220897c7ffee38b9b13e99e2","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Phone Clarifications
