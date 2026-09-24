@@ -26,6 +26,37 @@ func boardHoldsCard(_ context.Context, world any, captures []string) error {
 	return setCardLane(root, project, card, lane)
 }
 
+// boardHoldsCards puts several cards on the forge's board in one lane, in one
+// write, so a tick sees them all appear together.
+func boardHoldsCards(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	project, lane := captures[2], captures[3]
+	root, err := boardForge(w)
+	if err != nil {
+		return err
+	}
+	if err := markProjectOpen(root); err != nil {
+		return err
+	}
+	changes := make([]cardLane, 0, len(forgeNames(captures[1])))
+	for _, card := range forgeNames(captures[1]) {
+		changes = append(changes, cardLane{card, lane})
+	}
+	return setCardLanes(root, project, changes)
+}
+
+// forgeMovesAndFinishes writes two changes in one board: the card that moved on
+// and the card that finished, so one tick carries both.
+func forgeMovesAndFinishes(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	moved, lane, finished := captures[1], captures[2], captures[3]
+	root, err := boardForge(w)
+	if err != nil {
+		return err
+	}
+	return setCardLanes(root, approvalProject, []cardLane{{moved, lane}, {finished, board.DoneLane}})
+}
+
 // forgeMovesCard moves a card to another lane.
 func forgeMovesCard(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
@@ -65,6 +96,18 @@ func boardForge(w *World) (string, error) {
 // setCardLane writes one card into a project's board in the lane it is in,
 // keeping the board's row shape: name, lane, timestamps, task id, audits.
 func setCardLane(root, project, card, lane string) error {
+	return setCardLanes(root, project, []cardLane{{card, lane}})
+}
+
+// cardLane is one card and the lane it belongs in.
+type cardLane struct {
+	card string
+	lane string
+}
+
+// setCardLanes writes several cards into a project's board in one write, so a
+// tick sees every one of those changes at once.
+func setCardLanes(root, project string, changes []cardLane) error {
 	path := filepath.Join(root, "projects", project, filepath.FromSlash(board.TasksFile))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -74,19 +117,20 @@ func setCardLane(root, project, card, lane string) error {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	row := strings.Join([]string{card, lane, now, now, approvalTaskID(card), "0"}, "\t")
-
 	rows := splitRows(string(existing))
-	replaced := false
-	for index, line := range rows {
-		if name, _, ok := board.ParseRow(line); ok && name == card {
-			rows[index] = row
-			replaced = true
-			break
+	for _, change := range changes {
+		row := strings.Join([]string{change.card, change.lane, now, now, approvalTaskID(change.card), "0"}, "\t")
+		replaced := false
+		for index, line := range rows {
+			if name, _, ok := board.ParseRow(line); ok && name == change.card {
+				rows[index] = row
+				replaced = true
+				break
+			}
 		}
-	}
-	if !replaced {
-		rows = append(rows, row)
+		if !replaced {
+			rows = append(rows, row)
+		}
 	}
 	return os.WriteFile(path, []byte(strings.Join(rows, "\n")+"\n"), 0o644)
 }
