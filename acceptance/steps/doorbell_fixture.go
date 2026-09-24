@@ -182,3 +182,39 @@ func (w *World) typeIntoMasterPane(root, id, body string) error {
 	}
 	return nil
 }
+
+// readDoorbellLedger reads the doorbell's own record of what it has seen and
+// what it has rung.
+func readDoorbellLedger(root string) (map[string][]string, error) {
+	path := filepath.Join(root, ".swarmforge", "doorbell.edn")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("the doorbell kept no ledger: %w", err)
+	}
+	ledger := map[string][]string{}
+	for _, key := range []string{"seen", "rung"} {
+		ledger[key] = ledgerIDs(string(data), ":"+key)
+	}
+	return ledger, nil
+}
+
+// ledgerIDs reads the ids out of one vector of a written ledger, which prints
+// the whole map on one line.
+func ledgerIDs(text, key string) []string {
+	start := strings.Index(text, key+" [")
+	if start < 0 {
+		return nil
+	}
+	rest := text[start+len(key)+2:]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return nil
+	}
+	var ids []string
+	for _, field := range strings.Fields(rest[:end]) {
+		if id := strings.Trim(field, "\""); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
