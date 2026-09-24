@@ -81,5 +81,5 @@ func movedOn(known CardState, card Card) bool {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T16:13:59+02:00","module_hash":"e82b1672b5394af9fb44321fc83bef16ca7fe88b8d238987433793197eb82483","functions":[{"id":"func/PlanActivity","name":"PlanActivity","line":50,"end_line":68,"hash":"8adc6478827e40f36c7dd11e6b6e343fb3cc3d839be63ef9440606a89281d7dd"},{"id":"func/finishedNow","name":"finishedNow","line":72,"end_line":74,"hash":"44a3c3170fed35ac8423de273bfd38c7d393ce1c5d00b7d043aea9e74f2fae57"},{"id":"func/movedOn","name":"movedOn","line":77,"end_line":79,"hash":"2a9e1e2920311d1c109f8c1cedc2fab7b9b09ed1d52be7ab1776c267631d8dba"}]}
+// {"version":1,"tested_at":"2026-09-24T14:42:05+02:00","module_hash":"c980098a39aa3bfcbe188188a9a4bb2caea107a08e9ffd4f846739e171a82965","functions":[{"id":"func/PlanActivity","name":"PlanActivity","line":50,"end_line":70,"hash":"7179c769e23fa562154ed95e5095feda885828ecadcba580951e508303b8c504"},{"id":"func/finishedNow","name":"finishedNow","line":74,"end_line":76,"hash":"44a3c3170fed35ac8423de273bfd38c7d393ce1c5d00b7d043aea9e74f2fae57"},{"id":"func/movedOn","name":"movedOn","line":79,"end_line":81,"hash":"2a9e1e2920311d1c109f8c1cedc2fab7b9b09ed1d52be7ab1776c267631d8dba"}]}
 // mutate4go-manifest-end
