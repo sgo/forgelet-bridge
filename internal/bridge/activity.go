@@ -24,7 +24,10 @@ func cardUpdate(action relay.ActivityAction) string {
 }
 
 // carryOutActivity posts the card updates the operator still has to hear, and
-// nothing else: the room stays quiet while nothing changes.
+// nothing else: the room stays quiet while nothing changes. What is news - a
+// card appearing and a card finishing - goes as an ordinary message, the kind
+// clients notify on; the routine lane-to-lane step goes as a notice, worth
+// seeing in the room and not worth waking anyone for.
 func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (int, error) {
 	store, ok := b.boards[root]
 	if !ok {
@@ -36,10 +39,12 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	}
 
 	actions := relay.PlanActivity(b.state.Relay, cards)
+	posted := map[string]bool{}
 	for _, action := range actions {
-		if _, err := b.rooms.SendText(ctx, room.ActivityRoomID, cardUpdate(action), ""); err != nil {
+		if err := b.postCardUpdate(ctx, room.ActivityRoomID, action); err != nil {
 			return 0, fmt.Errorf("post the update for %s: %w", action.Card.Key, err)
 		}
+		posted[action.Card.Key] = true
 		b.state.Relay.EnsureMaps()
 		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
 			Lane:     action.Card.Lane,
@@ -51,7 +56,50 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 			return 0, err
 		}
 	}
+	if seeded := b.rememberQuietCards(cards, posted); seeded > 0 {
+		if err := b.state.Save(b.statePath); err != nil {
+			return 0, err
+		}
+	}
 	return len(actions), nil
+}
+
+// postCardUpdate posts one card update as the kind of message it is: a card
+// arriving or finishing notifies, a routine move between lanes does not.
+func (b *Bridge) postCardUpdate(ctx context.Context, roomID string, action relay.ActivityAction) error {
+	body := cardUpdate(action)
+	if action.Kind == relay.CardMovedOn {
+		_, err := b.rooms.SendNotice(ctx, roomID, body)
+		return err
+	}
+	_, err := b.rooms.SendText(ctx, roomID, body, "")
+	return err
+}
+
+// rememberQuietCards remembers the cards a forge arrived with that there was
+// nothing to say about, so the board it arrives with is not narrated now and is
+// not narrated on the next tick either. A card the bridge meets in flight is
+// announced, so what it remembers quietly here is the history: cards that had
+// already finished before the bridge got to them.
+func (b *Bridge) rememberQuietCards(cards []relay.Card, posted map[string]bool) int {
+	seeded := 0
+	for _, card := range cards {
+		if _, known := b.state.Relay.Activity[card.Key]; known {
+			continue
+		}
+		if posted[card.Key] || !card.Done {
+			continue
+		}
+		b.state.Relay.EnsureMaps()
+		b.state.Relay.Activity[card.Key] = relay.CardState{
+			Lane:     card.Lane,
+			Reported: relay.ReportedFinished,
+			Project:  card.Project,
+			Name:     card.Name,
+		}
+		seeded++
+	}
+	return seeded
 }
 
 // mutate4go-manifest-begin

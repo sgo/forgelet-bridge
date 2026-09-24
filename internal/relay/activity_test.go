@@ -44,12 +44,14 @@ func TestPlanActivityReportsACardThatFinished(t *testing.T) {
 	}
 }
 
-func TestPlanActivityReportsACardFirstSeenAlreadyFinished(t *testing.T) {
+// A forge joining reports from the moment it joined, so a card that finished
+// before the bridge got to it is history rather than news: the board a forge
+// arrives with must not become a burst the size of that board.
+func TestPlanActivityStaysQuietAboutACardFirstSeenAlreadyFinished(t *testing.T) {
 	actions := PlanActivity(State{}, []Card{boardCard("done")})
 
-	want := []ActivityAction{{Kind: CardFinished, Card: boardCard("done")}}
-	if !reflect.DeepEqual(actions, want) {
-		t.Errorf("actions = %+v, want %+v", actions, want)
+	if len(actions) != 0 {
+		t.Errorf("actions = %+v, want the finished card the forge arrived with left unsaid", actions)
 	}
 }
 

@@ -11,6 +11,11 @@ Feature: Forge Startup Report
   # configured forge it reached and every one it did not: a forge it reached has
   # its space and rooms provisioned and the operator invited, and a forge it did
   # not reach is named as unreached rather than passing silently.
+  # Reached means the bridge got to the forge — configured, its rooms created —
+  # and not that the forge's work is finished. A forge that arrives with a board
+  # full of cards has a backlog, and that backlog is a separate, visible thing:
+  # naming it is not the same as failing to reach the forge, or adding a forge
+  # that works would report failure and send its operator to a log for a queue.
 
   Background:
     Given the fixture forge roots forge-a and forge-b have their dashboards running
@@ -34,3 +39,11 @@ Feature: Forge Startup Report
     And the bridge is started
     Then the bridge's status names the forge forge-a as one it reached
     And the bridge's status names the forge forge-b as one it did not reach
+
+  # Forge Startup Report 3: a forge with a backlog is reached, and its backlog is its own
+  Scenario: Forge Startup Report 3: a forge with a backlog is reached, and its backlog is its own
+    Given the bridge is configured with the forge root forge-a
+    And the forge's dashboard already holds 40 chat requests
+    When the bridge is started
+    Then the bridge's status names the forge forge-a as one it reached
+    And the bridge's status reports the work it still owes the forge

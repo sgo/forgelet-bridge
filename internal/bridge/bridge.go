@@ -64,6 +64,9 @@ type Rooms interface {
 	// about a forge is true on every start, not only when the rooms are new.
 	RefreshForge(ctx context.Context, room Room, forgeName, operator string) error
 	SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error)
+	// SendNotice posts a message clients do not notify on: something worth
+	// seeing in the room and not worth waking anyone for.
+	SendNotice(ctx context.Context, roomID, body string) (string, error)
 	DrainEvents(ctx context.Context) ([]relay.RoomEvent, error)
 	DrainReactions(ctx context.Context) ([]relay.Reaction, error)
 }
@@ -192,6 +195,7 @@ func (b *Bridge) Tick(ctx context.Context) error {
 		Pending:           b.pendingCount(),
 	}
 	status.ReachedForges, status.UnhappyForges, status.LastError = b.forgeReport()
+	status.Owed = b.owedReport()
 	if b.tick == 1 {
 		// What the bridge carries is the first thing an operator or a script
 		// adding a forge wants to know, so it is said out loud once, at
@@ -220,6 +224,24 @@ func (b *Bridge) forgeReport() (reached, unhappy []string, last string) {
 // pendingFor is the work one forge still owes the rooms.
 func (b *Bridge) pendingFor(root string) *pendingChat {
 	return pendingAt(b.pending, root, newPendingChat)
+}
+
+// owedReport is the work the bridge still has to carry out for every configured
+// forge, in the order the configuration names them.
+func (b *Bridge) owedReport() []ForgeOwed {
+	owed := make([]ForgeOwed, 0, len(b.cfg.Forges))
+	for _, forge := range b.cfg.Forges {
+		owed = append(owed, ForgeOwed{Name: b.cfg.ForgeName(forge.Root), Items: b.owedFor(forge.Root)})
+	}
+	return owed
+}
+
+// owedFor is the work one forge still owes the rooms: what it refused and what
+// the tick could not carry out yet.
+func (b *Bridge) owedFor(root string) int {
+	return b.pendingFor(root).count() +
+		b.pendingApprovalsFor(root).count() +
+		b.pendingClarificationsFor(root).count()
 }
 
 // pendingApprovalsFor is the approvals work one forge still owes the rooms.

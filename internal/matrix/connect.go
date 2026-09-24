@@ -141,17 +141,24 @@ func (c *Client) DeviceIdentity() (deviceID, fingerprint string) {
 // SendText posts an encrypted chat message. A non-empty thread anchor makes it
 // a reply in that message's thread.
 func (c *Client) SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error) {
-	content := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    body,
-	}
+	content := &event.MessageEventContent{MsgType: event.MsgText, Body: body}
 	if threadAnchor != "" {
 		content.RelatesTo = &event.RelatesTo{
 			Type:    event.RelThread,
 			EventID: id.EventID(threadAnchor),
 		}
 	}
+	return c.sendMessage(ctx, roomID, content)
+}
 
+// SendNotice posts an encrypted message clients do not notify on: something
+// worth seeing in the room and not worth waking anyone for.
+func (c *Client) SendNotice(ctx context.Context, roomID, body string) (string, error) {
+	return c.sendMessage(ctx, roomID, &event.MessageEventContent{MsgType: event.MsgNotice, Body: body})
+}
+
+// sendMessage puts one already-shaped message into a room, encrypted.
+func (c *Client) sendMessage(ctx context.Context, roomID string, content *event.MessageEventContent) (string, error) {
 	encrypted, err := c.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)
 	if err != nil {
 		return "", fmt.Errorf("encrypt chat message: %w", err)

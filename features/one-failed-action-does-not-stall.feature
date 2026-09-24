@@ -10,6 +10,10 @@ Feature: One Failed Action Does Not Stall
   # messages are not held hostage by one message the forge refused. What a tick
   # took from the rooms is not lost when the work it planned then fails, and a
   # bridge that is stuck is visible from the phone instead of looking quiet.
+  # A forge's card feed is the action most likely to fail on a forge that has
+  # just arrived - a board too big to read in one turn - and it is the least
+  # important: the chat, approvals and clarifications a forge was just given must
+  # not wait behind it.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -38,3 +42,13 @@ Feature: One Failed Action Does Not Stall
     Then the operator decrypts the approval reply "Could not send it back" to the approval message for the card card-activity-feed
     When the operator taps ✅ on the approval message for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
+
+  # One Failed Action Does Not Stall 3: a card feed that cannot be read holds nothing else up
+  Scenario: One Failed Action Does Not Stall 3: a card feed that cannot be read holds nothing else up
+    Given the forge's board cannot be read
+    And the forge's dashboard already holds the chat request "is the build green?"
+    And the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    When the bridge is started
+    Then the operator decrypts the chat message "is the build green?"
+    And the approval message for the card phone-approvals names the project forgelet-bridge, the gate "coder → refactorer", and the changed files internal/bridge/bridge.go and internal/relay/relay.go
+    And the bridge's status names the forge forge-a as the only unhappy one

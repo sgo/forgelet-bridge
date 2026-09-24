@@ -72,6 +72,67 @@ func waitForCardUpdateIn(ctx context.Context, w *World, roomID, card, want strin
 }
 
 // cardUpdateCount checks how many card updates the activity room holds.
+// cardUpdatesNotifyForTheNews checks which of a card's updates would buzz the
+// operator's phone: a card arriving and a card finishing are ordinary messages,
+// which clients notify on, while the routine lane-to-lane step is posted as the
+// kind of event clients do not notify on. Which is which belongs in the spec
+// rather than in a client setting, so it is pinned here.
+func cardUpdatesNotifyForTheNews(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, err := w.activityRoom(ctx)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	card := captures[1]
+	// What each update is, and whether it is news worth waking anyone for.
+	news := []struct {
+		marker string
+		notify bool
+	}{
+		{"appeared", true},
+		{"moved on", false},
+		{"finished", true},
+	}
+	found := map[string]bool{}
+	for _, message := range operator.Messages(roomID) {
+		if !strings.HasPrefix(message.Body, "card "+card+" ") {
+			continue
+		}
+		for _, update := range news {
+			if !strings.Contains(message.Body, update.marker) {
+				continue
+			}
+			found[update.marker] = true
+			notifies := message.MsgType == "m.text"
+			if notifies != update.notify {
+				return fmt.Errorf("the update %q was sent as %q: want the %s to %s",
+					message.Body, message.MsgType, update.marker, notifyWording(update.notify))
+			}
+		}
+	}
+	for _, update := range news {
+		if !found[update.marker] {
+			return fmt.Errorf("the activity room never carried the update saying the card %s %s", card, update.marker)
+		}
+	}
+	return nil
+}
+
+// notifyWording says what a kind of update should do to the operator's phone.
+func notifyWording(notify bool) string {
+	if notify {
+		return "notify"
+	}
+	return "stay quiet"
+}
+
+// cardUpdateCount checks how many card updates the activity room holds.
 func cardUpdateCount(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
