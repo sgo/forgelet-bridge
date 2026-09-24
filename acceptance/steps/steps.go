@@ -145,7 +145,7 @@ func register(registry *runtime.Registry) error {
 		{`^the operator sees no forge space named (.+)$`, noForgeSpace},
 		{`^the operator sees (\d+) forge spaces$`, operatorSeesSpaces},
 		{`^the operator is invited to the forge space (.+)$`, operatorInvitedToSpace},
-		{`^the operator is invited to chat room (.+)$`, operatorInvitedToRoom},
+		{`^the operator is invited to chat room (.+)$`, invitedToNamedRoom},
 		{`^the forge space (.+?) holds the chat room (.+)$`, spaceHoldsRoom},
 		{`^the forge space (.+?) holds exactly one chat room (.+)$`, spaceHoldsOneRoom},
 		{`^the forge space (.+?) holds exactly one chat room$`, spaceHoldsExactlyOneChatRoom},
