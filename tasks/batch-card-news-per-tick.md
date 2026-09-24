@@ -1,7 +1,5 @@
 # batch-card-news-per-tick
 
-# batch-card-news-per-tick
-
 The activity feed posts **one message per card event**. A tick that moves several cards posts
 several messages, and on the phone each one is a notification. This card makes a tick's card
 news travel as one message, so the volume is bounded by ticks rather than by the size of a
