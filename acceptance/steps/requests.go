@@ -39,11 +39,19 @@ func (w *World) dashboardTakesRequest(text string) error {
 	return askDashboard(w, filepath.Base(root), text)
 }
 
-// askDashboard hands a chat request to one fixture forge's dashboard.
+// askDashboard hands a chat request to one fixture forge's dashboard. A
+// scenario that does not run a dashboard - one about a forge's files rather
+// than about the channel - puts the request in the same queue the dashboard
+// writes it to, which is what "the dashboard already holds it" means.
 func askDashboard(w *World, name, text string) error {
 	dashboard, ok := w.running[name]
 	if !ok {
-		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", name)
+		store := w.dashboards[name]
+		if store == nil {
+			return fmt.Errorf("the fixture forge root %s has no dashboard queue", name)
+		}
+		_, err := store.CreateRequest(text)
+		return err
 	}
 	ctx, cancel := stepContext()
 	defer cancel()

@@ -25,6 +25,11 @@ Feature: Installing Brings The Kit
   # choose, and such an install succeeds while saying what it could not exercise,
   # naming the projects it read and the pane path it could not prove, so a later
   # run can prove it.
+  # The doorbell's self-check runs its pass, so installing the kit into a forge
+  # with a request that never arrived rings it: the rings are right, because such
+  # a request really was never delivered, and installing is a moment when somebody
+  # is reading. That is a deliberate repair, not a surprise, so the report says
+  # which requests it rang on the way in.
 
   Background:
     Given the fixture forge root forge-a carries its own lieutenant prompt
@@ -74,4 +79,15 @@ Feature: Installing Brings The Kit
     Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
     When the adapter for the forge root forge-a installs the kit
     Then the installer's output names the projects it read and the pane it could not prove
+    And the installer succeeded
+
+  # Installing Brings The Kit 6: the doorbell's self-check rings a request that never arrived
+  Scenario: Installing Brings The Kit 6: the doorbell's self-check rings a request that never arrived
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the project forgelet-bridge of the forge root forge-a is mastered by the role coder
+    And the forge root forge-a gives the role coder a live session
+    And the forge's dashboard already holds the chat request "is the build green?"
+    When the adapter for the forge root forge-a installs the kit
+    Then the master role's pane holds the chat request "is the build green?" the doorbell typed
+    And the installer's output says it rang the chat request "is the build green?" that had never been delivered
     And the installer succeeded

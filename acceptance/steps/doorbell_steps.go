@@ -67,18 +67,29 @@ func doorbellLedgerSays(_ context.Context, world any, captures []string) error {
 		return err
 	}
 	rung := fixtures.Contains(ledger["rung"], request.ID)
-	seen := fixtures.Contains(ledger["seen"], request.ID)
-	switch captures[2] {
+	delivered := fixtures.Contains(ledger["delivered"], request.ID)
+	owed := fixtures.Contains(ledger["owed"], request.ID)
+	fate := captures[2]
+	if fate == "" {
+		fate = captures[3]
+	}
+	switch fate {
 	case "rung":
 		if !rung {
 			return fmt.Errorf("the ledger does not say the request %s was rung: %+v", request.ID, ledger)
 		}
 	case "delivered":
-		if !seen || rung {
-			return fmt.Errorf("the ledger does not say the request %s was delivered and not rung: %+v", request.ID, ledger)
+		if !delivered {
+			return fmt.Errorf("the ledger does not say the request %s was delivered: %+v", request.ID, ledger)
+		}
+	case "still owed":
+		// Looked at while the role was busy is not delivery: the request stays
+		// owed, and a later pass rings it once the role is free.
+		if !owed || rung || delivered {
+			return fmt.Errorf("the ledger does not say the request %s is still owed: %+v", request.ID, ledger)
 		}
 	default:
-		return fmt.Errorf("the step does not know the fate %q", captures[2])
+		return fmt.Errorf("the step does not know the fate %q", fate)
 	}
 	return nil
 }

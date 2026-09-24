@@ -214,6 +214,19 @@ func installerNamesTheProjectsAndThePaneItCouldNotProve(_ context.Context, world
 	return nil
 }
 
+// installerRangTheRequest checks the installer's report names a request its
+// doorbell self-check repaired on the way in: the rings are right, and installing
+// is a moment when somebody is reading, so a ring is deliberate rather than a
+// surprise.
+func installerRangTheRequest(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	want := fmt.Sprintf("rang the chat request %q that had never been delivered", captures[1])
+	if !strings.Contains(w.adapterOutput, want) {
+		return fmt.Errorf("the installer's output does not say it %s:\n%s", want, w.adapterOutput)
+	}
+	return nil
+}
+
 // installerSaysTheSelfCheckFailed checks a tool that read nothing is a failure
 // on the page rather than a clean-looking silence.
 func installerSaysTheSelfCheckFailed(_ context.Context, world any, _ []string) error {

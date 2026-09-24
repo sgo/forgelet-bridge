@@ -30,6 +30,14 @@ Feature: Doorbell
   # the two apart without re-reading the pane. The bound stays where the evidence
   # does: a request the pane can no longer prove is not remembered forever, and
   # ringing it is the repair working rather than a failure.
+  #
+  # The ledger remembers only what has been proved or rung. A request the pass
+  # skipped because the role was mid-turn has been *looked at*, not delivered, and
+  # it stays owed: recording a skip as seen would let a message the operator sent
+  # and never arrived be written off silently, which is the failure this tool
+  # exists to repair. So the three outcomes stay three — delivered, rung, and not
+  # rung because the role was busy — and a later pass, once the role is free,
+  # rings what the earlier one had to leave.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -66,3 +74,15 @@ Feature: Doorbell
     When the doorbell runs for the forge root forge-a
     Then the doorbell says the chat request "is the build green?" was already delivered from the scrollback and left alone
     And the doorbell's ledger says the chat request "is the build green?" was delivered
+
+  # Doorbell 5: a request skipped for a busy role is rung once the role is free
+  Scenario: Doorbell 5: a request skipped for a busy role is rung once the role is free
+    Given the forge root forge-a gives the role coder a working session
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "is the build green?" was not rung because the role was busy
+    And the doorbell's ledger says the chat request "is the build green?" is still owed
+    When the forge root forge-a gives the role coder a live session
+    And the doorbell runs for the forge root forge-a again
+    Then the doorbell says the chat request "is the build green?" was never delivered and rung
+    And the master role's pane holds the chat request "is the build green?" the doorbell typed
+    And the doorbell's ledger says the chat request "is the build green?" was rung
