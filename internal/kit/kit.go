@@ -36,7 +36,10 @@ func Tools() []Tool {
 	return []Tool{
 		{Subject: "route gate", Files: []string{"route_card.sh", "route_card.bb"}, Check: gateSelfCheck},
 		{Subject: "idler check", Files: []string{"role_health.sh", "role_health.bb"}, Check: idlerSelfCheck},
-		{Subject: "stall watch", Files: []string{"stall_watch.sh"}, Check: watchSelfCheck},
+		// The watch's cadence travels with it: the agent the installer writes
+		// runs the forge schedule, which makes the watch's pass and then the
+		// doorbell's, so the script it names has to be installed beside it.
+		{Subject: "stall watch", Files: []string{"stall_watch.sh", "forge_schedule.sh"}, Check: watchSelfCheck},
 		{Subject: "doorbell", Files: []string{"doorbell.sh", "doorbell.bb"}, Check: doorbellSelfCheck},
 	}
 }

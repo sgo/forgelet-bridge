@@ -74,17 +74,10 @@ func theForgeGivesAWorkingSession(_ context.Context, world any, captures []strin
 // made here.
 func theDashboardTypedTheRequest(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	root, err := boardForge(w)
-	if err != nil {
-		return err
-	}
 	body := captures[1]
-	request, found, err := w.requestByBody(root, body)
+	root, request, err := w.requestByBody(body)
 	if err != nil {
 		return err
-	}
-	if !found {
-		return fmt.Errorf("the forge holds no pending chat request reading %q", body)
 	}
 	return w.typeIntoMasterPane(root, request.ID, body)
 }
@@ -144,17 +137,10 @@ func doorbellSaid(w *World, body, phrase string) error {
 // the only evidence of it there is.
 func theMasterPaneHoldsTheRequestTheDoorbellTyped(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
-	root, err := boardForge(w)
-	if err != nil {
-		return err
-	}
 	body := captures[1]
-	request, found, err := w.requestByBody(root, body)
+	root, request, err := w.requestByBody(body)
 	if err != nil {
 		return err
-	}
-	if !found {
-		return fmt.Errorf("the forge holds no pending chat request reading %q", body)
 	}
 	pane, socket, err := w.masterPane(root)
 	if err != nil {
@@ -171,18 +157,25 @@ func theMasterPaneHoldsTheRequestTheDoorbellTyped(_ context.Context, world any, 
 	return nil
 }
 
-// requestByBody is the pending delivery request that reads body, if the forge
-// is waiting on one.
-func (w *World) requestByBody(root, body string) (request deliveryRequest, found bool, err error) {
-	store := w.dashboards[filepath.Base(root)]
-	if store == nil {
-		return deliveryRequest{}, false, fmt.Errorf("the fixture forge root %s has no dashboard queue", root)
+// requestByBody is the pending delivery request that reads body, and the forge
+// whose queue is holding it: a scenario that serves several forges names the
+// request, not the forge it belongs to.
+func (w *World) requestByBody(body string) (root string, request deliveryRequest, err error) {
+	roots := append(append([]string{}, w.configured...), w.forgeRoots...)
+	for _, candidate := range roots {
+		store := w.dashboards[filepath.Base(candidate)]
+		if store == nil {
+			continue
+		}
+		pending, found, err := store.RequestForBody(body)
+		if err != nil {
+			return "", deliveryRequest{}, err
+		}
+		if found {
+			return candidate, deliveryRequest{ID: pending.ID}, nil
+		}
 	}
-	pending, found, err := store.RequestForBody(body)
-	if err != nil || !found {
-		return deliveryRequest{}, found, err
-	}
-	return deliveryRequest{ID: pending.ID}, true, nil
+	return "", deliveryRequest{}, fmt.Errorf("no fixture forge root holds a pending chat request reading %q", body)
 }
 
 // deliveryRequest is the little of a dashboard request the doorbell needs.
