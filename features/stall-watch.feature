@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=482b8e2d6d9b143c92b5312b84d431b73677d97119a7c11e03d1f9d60d79f038
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T12:23:47.946982Z","feature_name":"Stall Watch","feature_path":"features/stall-watch.feature","background_hash":"6eb52f5a96020b6037784710db5477e6f665699690ac0b411b96946309e323d6","implementation_hash":"sha256:f2071cca306c3a858f05f7f2e93a7fda738c1fb248ea6bfd5bfb4387aa3a8714","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T12:46:41.941193Z","feature_name":"Stall Watch","feature_path":"features/stall-watch.feature","background_hash":"6eb52f5a96020b6037784710db5477e6f665699690ac0b411b96946309e323d6","implementation_hash":"sha256:f2071cca306c3a858f05f7f2e93a7fda738c1fb248ea6bfd5bfb4387aa3a8714","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Stall Watch
