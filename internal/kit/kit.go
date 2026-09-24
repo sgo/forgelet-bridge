@@ -224,21 +224,12 @@ func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	var unproved []string
 	var first string
 	for _, project := range projects {
-		command := "role_health.sh " + project + " --forge-root " + forgeRoot
-		out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
-		notRunning, readings := parseIdlerReport(out)
-		if notRunning || allSessionsGone(readings) {
+		line, proved, skipped := idlerProjectRead(scripts, forgeRoot, project)
+		if skipped {
 			unproved = append(unproved, project)
 			continue
 		}
-		if len(readings) == 0 {
-			if first == "" {
-				first = fmt.Sprintf("self-check failed idler check: ran %q, which read no role on a project that holds one", command)
-			}
-			continue
-		}
-		line, ok := idlerEvidence(project, command, out)
-		if ok {
+		if proved {
 			return line, true
 		}
 		if first == "" {
@@ -246,11 +237,36 @@ func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 		}
 	}
 	if len(unproved) > 0 {
-		command := "role_health.sh " + unproved[0] + " --forge-root " + forgeRoot
-		return fmt.Sprintf("self-check idler check: ran %q, read the projects %s and could not prove a pane: nothing is up on %s",
-			command, strings.Join(unproved, ", "), panePath(unproved[0])), true
+		return idlerUnprovedSummary(forgeRoot, unproved), true
 	}
 	return first, false
+}
+
+// idlerProjectRead runs the check over one project and says what it read: a
+// reading that proves the tool read this forge, a reading that did not, or
+// nothing to prove because no session is up on the project, which is not a
+// fault.
+func idlerProjectRead(scripts, forgeRoot, project string) (line string, proved, unproved bool) {
+	command := "role_health.sh " + project + " --forge-root " + forgeRoot
+	out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
+	notRunning, readings := parseIdlerReport(out)
+	if notRunning || allSessionsGone(readings) {
+		return "", false, true
+	}
+	if len(readings) == 0 {
+		return fmt.Sprintf("self-check failed idler check: ran %q, which read no role on a project that holds one", command), false, false
+	}
+	line, proved = idlerEvidence(project, command, out)
+	return line, proved, false
+}
+
+// idlerUnprovedSummary is what a pass says when every project it read could not
+// prove a pane: nothing to fail on, and the projects it read and the pane it
+// could not prove named, so a later run can prove it.
+func idlerUnprovedSummary(forgeRoot string, unproved []string) string {
+	command := "role_health.sh " + unproved[0] + " --forge-root " + forgeRoot
+	return fmt.Sprintf("self-check idler check: ran %q, read the projects %s and could not prove a pane: nothing is up on %s",
+		command, strings.Join(unproved, ", "), panePath(unproved[0]))
 }
 
 // allSessionsGone reports whether every reading names a pane whose session has
