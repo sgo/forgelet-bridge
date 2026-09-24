@@ -80,8 +80,9 @@ func watchAgentInstalled(_ context.Context, world any, captures []string) error 
 	return nil
 }
 
-// watchAgentRunsFor checks the agent the machine would run starts the watch,
-// once, for every forge root it was installed for.
+// watchAgentRunsFor checks the agent the machine would run starts the forge
+// schedule, once, for every forge root it was installed for: one cadence that
+// makes both passes, rather than one tool quietly keeping the old target.
 func watchAgentRunsFor(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	roots, err := w.rootsOf(captures[1])
@@ -92,7 +93,10 @@ func watchAgentRunsFor(_ context.Context, world any, captures []string) error {
 		return fmt.Errorf("no agent was installed to read")
 	}
 	if !strings.Contains(w.watchAgent, "<string>run</string>") {
-		return fmt.Errorf("the agent does not run the watch:\n%s", w.watchAgent)
+		return fmt.Errorf("the agent does not run a pass:\n%s", w.watchAgent)
+	}
+	if !strings.Contains(w.watchAgent, "forge_schedule.sh") {
+		return fmt.Errorf("the agent does not run the forge schedule:\n%s", w.watchAgent)
 	}
 	for _, root := range roots {
 		if !strings.Contains(w.watchAgent, "<string>"+root+"</string>") {

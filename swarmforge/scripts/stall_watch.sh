@@ -14,10 +14,11 @@
 #   stall_watch.sh run     <forge-root>...   one pass, the way launchd runs it
 #   stall_watch.sh print-agent <forge-root>...  the launch agent it would write
 #
-# One watch covers every forge root it is installed for: the agent runs one pass
-# over all of them, and the heartbeat and the log live in the first root, which
-# is where the agent was installed from. An alert is raised in the forge the
-# stalled role belongs to, and names it.
+# One watch covers every forge root it is installed for: the agent runs the
+# forge schedule, which makes the watch's pass over all of them and then a
+# doorbell pass for each, and the heartbeat and the log live in the first root,
+# which is where the agent was installed from. An alert is raised in the forge
+# the stalled role belongs to, and names it.
 set -euo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
@@ -68,7 +69,7 @@ plist_body() {
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>$SCRIPT_DIR/stall_watch.sh</string>
+    <string>$SCRIPT_DIR/forge_schedule.sh</string>
     <string>run</string>
 $args  </array>
   <key>EnvironmentVariables</key>
