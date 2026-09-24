@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=7836164a58e9329d44ee4f737246abe8ea970bcfaff82e66c94967682bdfb945
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T12:43:46.425735Z","feature_name":"Naming Applies On Reuse","feature_path":"features/naming-applies-on-reuse.feature","background_hash":"597b30070087a4868ae2cda8070f595fe8c4b3a9ce7a8e050b619863cfc798f4","implementation_hash":"sha256:31e6f074c9849ebf26319c4f20fe7c21074b546c0c653e8d0ade5dabe761e2e6","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T14:35:08.568565Z","feature_name":"Naming Applies On Reuse","feature_path":"features/naming-applies-on-reuse.feature","background_hash":"597b30070087a4868ae2cda8070f595fe8c4b3a9ce7a8e050b619863cfc798f4","implementation_hash":"sha256:31e6f074c9849ebf26319c4f20fe7c21074b546c0c653e8d0ade5dabe761e2e6","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Naming Applies On Reuse

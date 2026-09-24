@@ -263,6 +263,21 @@ func TestPaneOfSaysNothingWhenTheProjectHasNoRolesFile(t *testing.T) {
 	}
 }
 
+func TestPanePathNamesTheSocketTheProjectWrites(t *testing.T) {
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(project, ".swarmforge", "tmux-socket")
+	if err := os.WriteFile(socket, []byte("/tmp/forge-socket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := panePath(project); got != "/tmp/forge-socket" {
+		t.Errorf("panePath = %q, want the socket the project writes", got)
+	}
+}
+
 func TestIdlerEvidenceCarriesAReadingWithSomethingInFlight(t *testing.T) {
 	project := fixtureProject(t)
 	// One role has an empty lane and an empty inbox, the next holds a card with

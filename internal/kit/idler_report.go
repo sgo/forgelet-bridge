@@ -130,3 +130,7 @@ func inboxRead(found reading) string {
 	}
 	return found.Mail
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-24T16:28:26+02:00","module_hash":"6e739b3b86f1533f0dc0389b9072eae720278843a4f2265a664624203b3a039d","functions":[{"id":"func/parseIdlerReport","name":"parseIdlerReport","line":21,"end_line":36,"hash":"d1317252a05b64fbc31b286c504434c8d4c16a6096260f00597f947e6c8408ef"},{"id":"func/readingFrom","name":"readingFrom","line":40,"end_line":47,"hash":"02e45455e68fbaff4be2de1912ed5ad454512d5e11df952143b056157fe0c7e9"},{"id":"func/mailOf","name":"mailOf","line":51,"end_line":63,"hash":"0ec62c2244e0e2727d0d4e98dbc61f786a1e014bdeb01f39a01966b2c3a2f93c"},{"id":"func/countOf","name":"countOf","line":66,"end_line":72,"hash":"0d2f4363a3d949886a923f10779ae39233aa333ebce3c1e23437cf0cbc090ed5"},{"id":"func/idlerEvidence","name":"idlerEvidence","line":79,"end_line":114,"hash":"31d695bf3ff9e9a7e21ddb3dab9fa0c392bb80407fa84e5642112fc781fd8b37"},{"id":"func/boardRead","name":"boardRead","line":118,"end_line":123,"hash":"5de4d9e8c53b8b5620a333ff5d5c606cd01ad165738abe7b9af687c6c1ee8fca"},{"id":"func/inboxRead","name":"inboxRead","line":127,"end_line":132,"hash":"c8dd4e11c9f804a29376794afd8d110ff50d4d332aadbbd82a56cd2bbe2b99f0"}]}
+// mutate4go-manifest-end
