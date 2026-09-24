@@ -1,0 +1,164 @@
+package steps
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+)
+
+// doorbellCommand is this repository's doorbell: the tool that rings a request
+// the dashboard wrote down but never delivered.
+const doorbellCommand = "doorbell.sh"
+
+// theDoorbellRuns runs this repository's doorbell for one forge root, the way
+// the forge's own copy would be run, and keeps what it said.
+func theDoorbellRuns(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, err := w.forgeRootOf(captures[1])
+	if err != nil {
+		return err
+	}
+	ctx, cancel := stepContext()
+	defer cancel()
+	command := exec.CommandContext(ctx, filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts", doorbellCommand), root)
+	command.Dir = root
+	out, err := command.CombinedOutput()
+	w.doorbellOutput = string(out)
+	if err != nil {
+		return fmt.Errorf("the doorbell did not finish: %v\n%s", err, w.doorbellOutput)
+	}
+	return nil
+}
+
+// doorbellRangTheRequest checks the doorbell said a request it had no evidence
+// for was rung.
+func doorbellRangTheRequest(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was never delivered and rung")
+}
+
+// doorbellLeftADeliveredRequestAlone checks the doorbell said a request the
+// screen still shows was left where it was, and named that evidence.
+func doorbellLeftADeliveredRequestAlone(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the screen and left alone")
+}
+
+// doorbellLeftARequestTheScreenForgotAlone checks the doorbell read past the
+// screen: a request the pane's scrollback still proves is delivery, not a
+// reason to ring again.
+func doorbellLeftARequestTheScreenForgotAlone(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the scrollback and left alone")
+}
+
+// doorbellLedgerSays checks the doorbell's ledger says what became of one
+// request, so the next reader can tell a delivery from a ring without reading
+// the pane again.
+func doorbellLedgerSays(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, request, err := w.requestByBody(captures[1])
+	if err != nil {
+		return err
+	}
+	ledger, err := readDoorbellLedger(root)
+	if err != nil {
+		return err
+	}
+	rung := fixtures.Contains(ledger["rung"], request.ID)
+	seen := fixtures.Contains(ledger["seen"], request.ID)
+	switch captures[2] {
+	case "rung":
+		if !rung {
+			return fmt.Errorf("the ledger does not say the request %s was rung: %+v", request.ID, ledger)
+		}
+	case "delivered":
+		if !seen || rung {
+			return fmt.Errorf("the ledger does not say the request %s was delivered and not rung: %+v", request.ID, ledger)
+		}
+	default:
+		return fmt.Errorf("the step does not know the fate %q", captures[2])
+	}
+	return nil
+}
+
+// readDoorbellLedger reads the doorbell's own record of what it has seen and
+// what it has rung.
+func readDoorbellLedger(root string) (map[string][]string, error) {
+	path := filepath.Join(root, ".swarmforge", "doorbell.edn")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("the doorbell kept no ledger: %w", err)
+	}
+	ledger := map[string][]string{}
+	for _, key := range []string{"seen", "rung"} {
+		ledger[key] = ledgerIDs(string(data), ":"+key)
+	}
+	return ledger, nil
+}
+
+// ledgerIDs reads the ids out of one vector of a written ledger, which prints
+// the whole map on one line.
+func ledgerIDs(text, key string) []string {
+	start := strings.Index(text, key+" [")
+	if start < 0 {
+		return nil
+	}
+	rest := text[start+len(key)+2:]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return nil
+	}
+	var ids []string
+	for _, field := range strings.Fields(rest[:end]) {
+		if id := strings.Trim(field, "\""); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// doorbellWaitedForTheRole checks the doorbell said it did not ring because the
+// role was mid-turn, rather than injecting into it.
+func doorbellWaitedForTheRole(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was not rung because the role")
+}
+
+// doorbellSaid checks the doorbell's report about one request carried a phrase.
+func doorbellSaid(w *World, body, phrase string) error {
+	if w.doorbellOutput == "" {
+		return fmt.Errorf("the doorbell has not run")
+	}
+	wanted := fmt.Sprintf("the chat request %q %s", body, phrase)
+	if !strings.Contains(w.doorbellOutput, wanted) {
+		return fmt.Errorf("the doorbell does not say %q:\n%s", wanted, w.doorbellOutput)
+	}
+	return nil
+}
+
+// theMasterPaneHoldsTheRequestTheDoorbellTyped checks the request's own id is
+// in the pane the doorbell rang: the typing is the delivery, and the pane is
+// the only evidence of it there is.
+func theMasterPaneHoldsTheRequestTheDoorbellTyped(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	body := captures[1]
+	root, request, err := w.requestByBody(body)
+	if err != nil {
+		return err
+	}
+	pane, socket, err := w.masterPane(root)
+	if err != nil {
+		return err
+	}
+	text, err := paneText(socket, pane)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(text, "["+request.ID+"]") || !strings.Contains(text, body) {
+		return fmt.Errorf("the pane %s does not hold the request the doorbell typed ([%s] %s):\n%s",
+			pane, request.ID, body, text)
+	}
+	return nil
+}
