@@ -118,11 +118,11 @@ func idlerSelfCheckNamesTheCardAndTheMail(_ context.Context, world any, _ []stri
 	if err != nil {
 		return err
 	}
-	card, ok := kitValue(line, "card")
-	if !ok || card == "-" {
+	card, ok := kitValue(line, "board")
+	if !ok || card == "empty" {
 		return fmt.Errorf("the self-check does not name the card it read:\n%s", line)
 	}
-	mail, ok := kitValue(line, "mail")
+	mail, ok := kitValue(line, "inbox")
 	if !ok {
 		return fmt.Errorf("the self-check does not name the mail it read:\n%s", line)
 	}
@@ -132,6 +132,45 @@ func idlerSelfCheckNamesTheCardAndTheMail(_ context.Context, world any, _ []stri
 	}
 	if tally, err := strconv.Atoi(count); err != nil || tally < 1 {
 		return fmt.Errorf("the self-check read %q as no mail at all:\n%s", mail, line)
+	}
+	return nil
+}
+
+// idlerSelfCheckNamesTheEmptyBoardAndInbox checks a quiet forge is read rather
+// than called unread: an empty board and an empty inbox are things the tool
+// looked at and found nothing in, which is what installing between cards looks
+// like.
+func idlerSelfCheckNamesTheEmptyBoardAndInbox(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	line, err := kitSelfCheckLine(w.adapterOutput, "idler check")
+	if err != nil {
+		return err
+	}
+	for _, want := range []string{"board empty", "inbox empty"} {
+		if !strings.Contains(line, want) {
+			return fmt.Errorf("the self-check does not say it read %q on a forge between cards:\n%s", want, line)
+		}
+	}
+	return nil
+}
+
+// installerSucceeded checks the installer's exit status: a self-check that read
+// the forge is an install, and the adapter says so with its status.
+func installerSucceeded(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	if w.kitErr != nil {
+		return fmt.Errorf("the installer failed: %v\n%s", w.kitErr, w.adapterOutput)
+	}
+	return nil
+}
+
+// installerFailed checks the installer's exit status the other way: a tool that
+// read nothing at all is not an install, and the adapter says so with its
+// status rather than only on the page.
+func installerFailed(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	if w.kitErr == nil {
+		return fmt.Errorf("the installer reported success over a self-check that read nothing:\n%s", w.adapterOutput)
 	}
 	return nil
 }

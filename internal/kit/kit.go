@@ -67,7 +67,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 	if err := os.MkdirAll(scripts, 0o755); err != nil {
 		return report, err
 	}
-	changed, err := installTools(&report, kitDir, scripts)
+	changed, installed, err := installTools(&report, kitDir, scripts)
 	if err != nil {
 		return report, err
 	}
@@ -80,7 +80,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 		return report, err
 	}
 	report.line("left alone loading the stall watch's agent: the machine's own step, and the agent it runs is written down")
-	selfChecks(&report, scripts, forgeRoot)
+	selfChecks(&report, scripts, forgeRoot, installed)
 	policy(&report, forgeRoot)
 	return report, nil
 }
@@ -105,20 +105,24 @@ func forgeDir(forgeRoot string) (string, error) {
 }
 
 // installTools copies every file of the kit into the forge's scripts, and says
-// whether any of them changed.
-func installTools(report *Report, kitDir, scripts string) (bool, error) {
+// whether any of them changed and which tools this pass put there.
+func installTools(report *Report, kitDir, scripts string) (bool, map[string]bool, error) {
 	changed := false
+	installed := map[string]bool{}
 	for _, tool := range Tools() {
+		put := false
 		for _, file := range tool.Files {
 			outcome, err := installFile(tool.Subject, filepath.Join(kitDir, file), filepath.Join(scripts, file))
 			if err != nil {
-				return changed, err
+				return changed, installed, err
 			}
 			report.line(outcome.line)
 			changed = changed || outcome.changed
+			put = put || outcome.changed
 		}
+		installed[tool.Subject] = put
 	}
-	return changed, nil
+	return changed, installed, nil
 }
 
 // installOutcome is what copying one file did.
@@ -178,14 +182,24 @@ func installAgent(report *Report, scripts, forgeRoot string) error {
 	return nil
 }
 
-// selfChecks runs each installed tool against the forge and writes down what it
-// ran and what it looked for. A reading that does not fit is a failure in the
-// report, not silence.
-func selfChecks(report *Report, scripts, forgeRoot string) {
+// selfChecks runs each tool this pass installed against the forge and writes
+// down what it ran and what it looked for. A reading that does not fit is a
+// failure in the report, not silence. A tool that was already current is left
+// alone: this pass put nothing there, and running the installer again is meant
+// to be safe wherever the forge happens to be.
+func selfChecks(report *Report, scripts, forgeRoot string, installed map[string]bool) {
+	checked := false
 	for _, tool := range Tools() {
+		if !installed[tool.Subject] {
+			continue
+		}
+		checked = true
 		line, ok := tool.Check(scripts, forgeRoot)
 		report.line(line)
 		report.failed = report.failed || !ok
+	}
+	if !checked {
+		report.line("left alone the self-checks: the kit was already installed, so there was nothing new to prove")
 	}
 }
 
@@ -229,9 +243,11 @@ func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	return first, false
 }
 
-// idlerEvidence is what one run of the check read: the pane, the marker it
-// found, the card and the mail. A run that read nothing says which of the three
-// it could not read.
+// idlerEvidence is what one run of the check read: the pane it looked at, the
+// marker it found, the board and the inbox. An empty board and an empty inbox
+// are reads the tool made - a forge between cards is a forge the check can
+// read - so only reading nothing at all fails: no pane, no role, or no live
+// session behind the one it names.
 func idlerEvidence(project, command, output string) (string, bool) {
 	notRunning, readings := parseIdlerReport(output)
 	if notRunning {
@@ -241,22 +257,50 @@ func idlerEvidence(project, command, output string) (string, bool) {
 		return fmt.Sprintf("self-check failed idler check: ran %q, which read no role", command), false
 	}
 	var first string
+	var quiet string
 	for _, reading := range readings {
 		evidence := fmt.Sprintf("read pane %s, found marker %s", paneOf(project, reading.Role), reading.Verdict)
-		switch {
-		case reading.Verdict == "session-gone":
+		if reading.Verdict == "session-gone" {
 			if first == "" {
 				first = fmt.Sprintf("self-check failed idler check: ran %q, %s, and there is no live pane behind it", command, evidence)
 			}
-		case reading.Card == "-" || reading.MailCount == 0:
-			if first == "" {
-				first = fmt.Sprintf("self-check failed idler check: ran %q, %s, with no board row or mail to read", command, evidence)
-			}
-		default:
-			return fmt.Sprintf("self-check idler check: ran %q, %s, card %s, mail %s", command, evidence, reading.Card, reading.Mail), true
+			continue
+		}
+		line := fmt.Sprintf("self-check idler check: ran %q, %s, board %s, inbox %s",
+			command, evidence, boardRead(reading), inboxRead(reading))
+		// A role with something in flight is the reading that says the most, so
+		// it is the one the report carries when there is one.
+		if boardRead(reading) != "empty" || inboxRead(reading) != "empty" {
+			return line, true
+		}
+		if quiet == "" {
+			quiet = line
 		}
 	}
+	if quiet != "" {
+		// Every role read was empty, and an empty board and inbox are reads the
+		// tool made: a forge between cards is a forge the check can read.
+		return quiet, true
+	}
 	return first, false
+}
+
+// boardRead is what the check found in the card's lane. Nothing there is a
+// reading too: the tool looked and the board held no card.
+func boardRead(found reading) string {
+	if found.Card == "" || found.Card == "-" {
+		return "empty"
+	}
+	return found.Card
+}
+
+// inboxRead is what the check found in the role's own inbox: the mail waiting
+// there, or nothing, which is still something the tool read.
+func inboxRead(found reading) string {
+	if found.MailCount == 0 {
+		return "empty"
+	}
+	return found.Mail
 }
 
 // reading is one role's line from the check's report: the verdict it reached,
