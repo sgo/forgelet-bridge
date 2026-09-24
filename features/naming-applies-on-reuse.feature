@@ -24,6 +24,7 @@ Feature: Naming Applies On Reuse
     Then the operator sees exactly one forge space named Forgelet
     And the operator sees no forge space named forge-a
     And the forge space Forgelet holds exactly one chat room Chat (Forgelet)
+    And the forge space Forgelet holds exactly one chat room
     And the operator decrypts the chat message "is the build green?" in the forge Forgelet's chat room sent under the name Forgelet
 
   # Naming Applies On Reuse 2: a forge created with its name keeps it on the next start

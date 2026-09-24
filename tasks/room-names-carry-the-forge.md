@@ -1,7 +1,5 @@
 # room-names-carry-the-forge
 
-# room-names-carry-the-forge
-
 From the operator's phone (2026-09-24 15:58): "In Element the rooms are often shown next to
 each other outside of the context of the space in which they exist. This makes it hard to tell
 the Saibill Chat from the Forgelet Chat. Perhaps we could rename the rooms to have a suffix that
