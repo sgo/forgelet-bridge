@@ -40,10 +40,47 @@ func doorbellRangTheRequest(_ context.Context, world any, captures []string) err
 	return doorbellSaid(world.(*World), captures[1], "was never delivered and rung")
 }
 
-// doorbellLeftADeliveredRequestAlone checks the doorbell said a request that
-// was already delivered was left where it was.
+// doorbellLeftADeliveredRequestAlone checks the doorbell said a request the
+// screen still shows was left where it was, and names that evidence.
 func doorbellLeftADeliveredRequestAlone(_ context.Context, world any, captures []string) error {
-	return doorbellSaid(world.(*World), captures[1], "was already delivered and left alone")
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the screen and left alone")
+}
+
+// doorbellLeftARequestTheScreenForgotAlone checks the doorbell read past the
+// screen: a request the pane's scrollback still proves is delivery, not a
+// reason to ring again.
+func doorbellLeftARequestTheScreenForgotAlone(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was already delivered from the scrollback and left alone")
+}
+
+// doorbellLedgerSays checks the doorbell's ledger says what became of one
+// request, so the next reader can tell a delivery from a ring without reading
+// the pane again.
+func doorbellLedgerSays(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, request, err := w.requestByBody(captures[1])
+	if err != nil {
+		return err
+	}
+	ledger, err := readDoorbellLedger(root)
+	if err != nil {
+		return err
+	}
+	rung := fixtures.Contains(ledger["rung"], request.ID)
+	seen := fixtures.Contains(ledger["seen"], request.ID)
+	switch captures[2] {
+	case "rung":
+		if !rung {
+			return fmt.Errorf("the ledger does not say the request %s was rung: %+v", request.ID, ledger)
+		}
+	case "delivered":
+		if !seen || rung {
+			return fmt.Errorf("the ledger does not say the request %s was delivered and not rung: %+v", request.ID, ledger)
+		}
+	default:
+		return fmt.Errorf("the step does not know the fate %q", captures[2])
+	}
+	return nil
 }
 
 // doorbellWaitedForTheRole checks the doorbell said it did not ring because the

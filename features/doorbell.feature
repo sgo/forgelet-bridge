@@ -19,6 +19,17 @@ Feature: Doorbell
   # been seen and already rung is what keeps a delivered request from being rung
   # twice. It never rings into a role mid-turn, which is the case that failed: it
   # waits for a window and says so when it cannot find one.
+  #
+  # The evidence is what the pane can still prove, not only what its visible
+  # screen shows. A request delivered before the doorbell existed, or long enough
+  # ago to have scrolled away, is still in the pane's scrollback, and reading the
+  # screen alone would ring it a second time — the harm this rule exists to
+  # prevent, on the first pass of every forge. So the pass reads back through the
+  # scrollback for the id, and what it finds there is delivery; the ledger records
+  # which requests were delivered and which were rung, so the next reader can tell
+  # the two apart without re-reading the pane. The bound stays where the evidence
+  # does: a request the pane can no longer prove is not remembered forever, and
+  # ringing it is the repair working rather than a failure.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -32,17 +43,26 @@ Feature: Doorbell
     Then the doorbell says the chat request "is the build green?" was never delivered and rung
     And the master role's pane holds the chat request "is the build green?" the doorbell typed
     When the doorbell runs for the forge root forge-a again
-    Then the doorbell says the chat request "is the build green?" was already delivered and left alone
+    Then the doorbell says the chat request "is the build green?" was already delivered from the screen and left alone
+    And the doorbell's ledger says the chat request "is the build green?" was rung
 
   # Doorbell 2: a request that was delivered is left alone
   Scenario: Doorbell 2: a request that was delivered is left alone
     Given the forge root forge-a gives the role coder a live session
     And the dashboard typed the chat request "is the build green?" into the master role's pane
     When the doorbell runs for the forge root forge-a
-    Then the doorbell says the chat request "is the build green?" was already delivered and left alone
+    Then the doorbell says the chat request "is the build green?" was already delivered from the screen and left alone
 
   # Doorbell 3: a role mid-turn is not rung into, and the pass says so
   Scenario: Doorbell 3: a role mid-turn is not rung into, and the pass says so
     Given the forge root forge-a gives the role coder a working session
     When the doorbell runs for the forge root forge-a
     Then the doorbell says the chat request "is the build green?" was not rung because the role was busy
+
+  # Doorbell 4: a request the screen has forgotten is still proved by the scrollback
+  Scenario: Doorbell 4: a request the screen has forgotten is still proved by the scrollback
+    Given the forge root forge-a gives the role coder a live session
+    And the dashboard typed the chat request "is the build green?" into the master role's pane, and it has scrolled off the screen
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "is the build green?" was already delivered from the scrollback and left alone
+    And the doorbell's ledger says the chat request "is the build green?" was delivered
