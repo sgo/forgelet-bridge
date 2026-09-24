@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
@@ -24,10 +25,12 @@ func cardUpdate(action relay.ActivityAction) string {
 }
 
 // carryOutActivity posts the card updates the operator still has to hear, and
-// nothing else: the room stays quiet while nothing changes. What is news - a
-// card appearing and a card finishing - goes as an ordinary message, the kind
-// clients notify on; the routine lane-to-lane step goes as a notice, worth
-// seeing in the room and not worth waking anyone for.
+// nothing else: the room stays quiet while nothing changes. A tick's news
+// travels as one message, so what the phone sees is bounded by ticks rather
+// than by the size of a board - and the cards that appeared or finished are
+// named in it, so nothing is dropped. A tick's routine lane moves are one
+// notice, which is what they always were: worth seeing in the room and not
+// worth waking anyone for, even when they share a tick with news.
 func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (int, error) {
 	store, ok := b.boards[root]
 	if !ok {
@@ -39,22 +42,13 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	}
 
 	actions := relay.PlanActivity(b.state.Relay, cards)
+	news, moves := splitCardUpdates(actions)
 	posted := map[string]bool{}
-	for _, action := range actions {
-		if err := b.postCardUpdate(ctx, room.ActivityRoomID, action); err != nil {
-			return 0, fmt.Errorf("post the update for %s: %w", action.Card.Key, err)
-		}
-		posted[action.Card.Key] = true
-		b.state.Relay.EnsureMaps()
-		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
-			Lane:     action.Card.Lane,
-			Reported: string(action.Kind),
-			Project:  action.Card.Project,
-			Name:     action.Card.Name,
-		}
-		if err := b.state.Save(b.statePath); err != nil {
-			return 0, err
-		}
+	if err := b.postCardNews(ctx, room.ActivityRoomID, news, posted); err != nil {
+		return 0, err
+	}
+	if err := b.postCardMoves(ctx, room.ActivityRoomID, moves, posted); err != nil {
+		return 0, err
 	}
 	if seeded := b.rememberQuietCards(cards, posted); seeded > 0 {
 		if err := b.state.Save(b.statePath); err != nil {
@@ -64,16 +58,69 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	return len(actions), nil
 }
 
-// postCardUpdate posts one card update as the kind of message it is: a card
-// arriving or finishing notifies, a routine move between lanes does not.
-func (b *Bridge) postCardUpdate(ctx context.Context, roomID string, action relay.ActivityAction) error {
-	body := cardUpdate(action)
-	if action.Kind == relay.CardMovedOn {
-		_, err := b.rooms.SendNotice(ctx, roomID, body)
-		return err
+// postCardNews posts a tick's card news as one message - the message the phone
+// is woken for - and remembers that the room has it.
+func (b *Bridge) postCardNews(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
 	}
-	_, err := b.rooms.SendText(ctx, roomID, body, "")
-	return err
+	if _, err := b.rooms.SendText(ctx, roomID, cardUpdates(actions), ""); err != nil {
+		return fmt.Errorf("post the tick's card news: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
+}
+
+// postCardMoves posts a tick's routine lane moves as one notice, which the
+// clients do not notify on, and remembers that the room has it.
+func (b *Bridge) postCardMoves(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	if _, err := b.rooms.SendNotice(ctx, roomID, cardUpdates(actions)); err != nil {
+		return fmt.Errorf("post the tick's card moves: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
+}
+
+// splitCardUpdates keeps the tick's news apart from its routine moves: the news
+// notifies and the moves do not, and sharing a tick must never promote a move
+// into something that wakes the operator.
+func splitCardUpdates(actions []relay.ActivityAction) (news, moves []relay.ActivityAction) {
+	for _, action := range actions {
+		if action.Kind == relay.CardMovedOn {
+			moves = append(moves, action)
+			continue
+		}
+		news = append(news, action)
+	}
+	return news, moves
+}
+
+// cardUpdates is what the operator reads for one group of card updates: a line
+// each, in the order the board is in, so a tick with one card's news reads
+// exactly as it did before the news was batched.
+func cardUpdates(actions []relay.ActivityAction) string {
+	lines := make([]string, 0, len(actions))
+	for _, action := range actions {
+		lines = append(lines, cardUpdate(action))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// rememberCardUpdates records what the operator has been told about every card
+// in a group, once that group is in the room: a restart then repeats nothing.
+func (b *Bridge) rememberCardUpdates(actions []relay.ActivityAction, posted map[string]bool) error {
+	b.state.Relay.EnsureMaps()
+	for _, action := range actions {
+		posted[action.Card.Key] = true
+		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
+			Lane:     action.Card.Lane,
+			Reported: string(action.Kind),
+			Project:  action.Card.Project,
+			Name:     action.Card.Name,
+		}
+	}
+	return b.state.Save(b.statePath)
 }
 
 // rememberQuietCards remembers the cards a forge arrived with that there was
