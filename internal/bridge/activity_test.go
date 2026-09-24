@@ -58,7 +58,9 @@ func TestTickReportsWorkWhenItPostsACardUpdateAndAChatMessage(t *testing.T) {
 	}
 }
 
-func TestTickPostsEveryCardUpdateItOwes(t *testing.T) {
+// A tick's card news travels as one message naming every card it carries, so
+// what the phone sees is bounded by ticks rather than by the size of a board.
+func TestTickPostsItsCardNewsAsOneMessage(t *testing.T) {
 	board := &fakeBoard{}
 	second := boardCard("specifier")
 	second.Key = "forgelet-bridge/other-card"
@@ -73,8 +75,17 @@ func TestTickPostsEveryCardUpdateItOwes(t *testing.T) {
 		t.Fatalf("Tick: %v", err)
 	}
 
-	if sent := rooms.sentMessages(); len(sent) != 2 {
-		t.Errorf("sent = %+v, want one update per card", sent)
+	sent := rooms.sentMessages()
+	if len(sent) != 1 {
+		t.Fatalf("sent = %+v, want the tick's news in one message", sent)
+	}
+	for _, card := range []string{"card-activity-feed", "other-card"} {
+		if !strings.Contains(sent[0].body, card) {
+			t.Errorf("the message does not name %s:\n%s", card, sent[0].body)
+		}
+	}
+	if sent[0].notice {
+		t.Errorf("the tick's news was posted as a notice, which does not notify:\n%s", sent[0].body)
 	}
 }
 
@@ -289,6 +300,49 @@ func TestTickSendsTheNewsAsMessagesAndTheRoutineStepAsANotice(t *testing.T) {
 		if !seen[body] {
 			t.Errorf("the room never heard %q", body)
 		}
+	}
+}
+
+// A tick that carries both kinds keeps them apart: the finishing card is news
+// and notifies, the card that moved on is a notice, and sharing the tick must
+// not promote the move into something that wakes the operator.
+func TestTickKeepsNewsAndMovesApartInOneTick(t *testing.T) {
+	board := &fakeBoard{}
+	second := boardCard("specifier")
+	second.Key = "forgelet-bridge/second-card"
+	second.Name = "second-card"
+	board.set(boardCard("specifier"), second)
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+
+	// One tick in which the first card finishes and the second moves on.
+	board.set(boardCard("done"), boardCard("coder"))
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	var sawNews, sawMove bool
+	for _, sent := range rooms.sentMessages() {
+		switch {
+		case strings.Contains(sent.body, "finished"):
+			sawNews = true
+			if sent.notice {
+				t.Errorf("the finish was posted as a notice:\n%s", sent.body)
+			}
+		case strings.Contains(sent.body, "moved on"):
+			sawMove = true
+			if !sent.notice {
+				t.Errorf("the move was posted as an ordinary message, which notifies:\n%s", sent.body)
+			}
+		}
+	}
+	if !sawNews || !sawMove {
+		t.Errorf("sent = %+v, want the tick's news and its move both carried", rooms.sentMessages())
 	}
 }
 
