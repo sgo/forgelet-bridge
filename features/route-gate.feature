@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=85556fb9eb8066ca321eea61faf6f537dd15a2e5392dcc2d24d3c745e43de91d
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T16:46:05.677925Z","feature_name":"Route Gate","feature_path":"features/route-gate.feature","background_hash":"1d989f071c65a110cd748176f85254577c6f592812d666af2643c2fe11b3bca4","implementation_hash":"sha256:889eab325c3a899e18c6715bc7a8d24b67aaff6eeded71a1c9d2b8d62ae11a43","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T17:23:45.558237Z","feature_name":"Route Gate","feature_path":"features/route-gate.feature","background_hash":"1d989f071c65a110cd748176f85254577c6f592812d666af2643c2fe11b3bca4","implementation_hash":"sha256:889eab325c3a899e18c6715bc7a8d24b67aaff6eeded71a1c9d2b8d62ae11a43","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Route Gate
