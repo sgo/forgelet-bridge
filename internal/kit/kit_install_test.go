@@ -340,6 +340,65 @@ func TestInstallFileReportsATargetItCannotWrite(t *testing.T) {
 	}
 }
 
+func TestIdlerSelfCheckPassesOnAProjectWithNothingUp(t *testing.T) {
+	cases := map[string]string{
+		"a forge between sessions":      "forge not-running no role session is up",
+		"a project whose session ended": "coder session-gone - new=0 in_process=1",
+	}
+	for what, output := range cases {
+		root := fixtureForge(t)
+		scripts := t.TempDir()
+		writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\necho '"+output+"'\n")
+
+		line, ok := idlerSelfCheck(scripts, root)
+		if !ok {
+			t.Errorf("%s: idlerSelfCheck failed on a project with nothing up: %s", what, line)
+		}
+		if !strings.Contains(line, "could not prove a pane") || !strings.Contains(line, "nothing is up on") {
+			t.Errorf("%s: the self-check does not name what it could not prove:\n%s", what, line)
+		}
+	}
+}
+
+func TestIdlerSelfCheckProvesAReadingThatIsUp(t *testing.T) {
+	root := fixtureForge(t)
+	scripts := t.TempDir()
+	writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\necho 'coder idle-holding-card refund-card new=0 in_process=1'\n")
+
+	line, ok := idlerSelfCheck(scripts, root)
+	if !ok {
+		t.Fatalf("idlerSelfCheck failed on a reading with a pane and a card: %s", line)
+	}
+	if strings.Contains(line, "could not prove a pane") || !strings.Contains(line, "board refund-card") {
+		t.Errorf("the self-check does not carry the reading it proved:\n%s", line)
+	}
+}
+
+func TestIdlerSelfCheckFailsOnAProjectItCannotReadEvenWhenAnotherIsStopped(t *testing.T) {
+	root := fixtureForge(t)
+	stopped := filepath.Join(root, "projects", "stopped-project")
+	if err := os.MkdirAll(filepath.Join(stopped, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	roles := "coder\tcoder\t" + stopped + "\tfixture-coder\tCoder\tcodex\ttask\tforward-only\n"
+	if err := os.WriteFile(filepath.Join(stopped, ".swarmforge", "roles.tsv"), []byte(roles), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scripts := t.TempDir()
+	// One project between sessions, beside one the check cannot read at all:
+	// the quiet project is not a fault, and it does not excuse the other.
+	writeScript(t, filepath.Join(scripts, "role_health.sh"),
+		"#!/bin/sh\ncase \"$1\" in\n*stopped-project*) echo 'forge not-running no role session is up';;\n*) exit 0;;\nesac\n")
+
+	line, ok := idlerSelfCheck(scripts, root)
+	if ok {
+		t.Fatalf("a project the check could not read passed because another was stopped: %s", line)
+	}
+	if !strings.Contains(line, "which read no role on a project that holds one") {
+		t.Errorf("the failure does not name the project the check could not read:\n%s", line)
+	}
+}
+
 // Every pass proves the read, the one that put the tools there and the one that
 // found them already current: a re-run is where a person checks what a forge
 // looks like now, so it is the last pass that should go quiet.
