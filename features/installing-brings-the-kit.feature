@@ -6,8 +6,9 @@
 Feature: Installing Brings The Kit
 
   # Installing the bridge for a forge brings the tools that make the forge
-  # behave, the way it already brings the rules: the route gate, the idler check
-  # and the stall watch, in the forge's own scripts, with the watch's agent.
+  # behave, the way it already brings the rules: the route gate, the idler check,
+  # the stall watch and the doorbell, in the forge's own scripts, with the
+  # watch's agent.
   # Each one is self-checked against the forge it was installed into - one live
   # pane, one board row, one inbox - so a tool that reads nothing is a failure on
   # the page rather than a clean-looking silence, and the self-check prints the
@@ -36,8 +37,8 @@ Feature: Installing Brings The Kit
     And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
     And the project forgelet-bridge of the forge root forge-a keeps a note waiting to be picked up
     When the adapter for the forge root forge-a installs the kit
-    Then the installer's output says it installed the route gate, the idler check and the stall watch
-    And the forge root forge-a carries the route gate, the idler check and the stall watch
+    Then the installer's output says it installed the route gate, the idler check, the stall watch and the doorbell
+    And the forge root forge-a carries the route gate, the idler check, the stall watch and the doorbell
     And the self-check of the idler check names the command it ran, the pane it read and the marker it looked for
     And the self-check of the idler check names the card and the mail it read
     And the installer succeeded
