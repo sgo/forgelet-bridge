@@ -60,13 +60,6 @@ func operatorInvitedToSpace(_ context.Context, world any, captures []string) err
 	return invitedTo(ctx, w, captures[1], true)
 }
 
-func operatorInvitedToRoom(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	ctx, cancel := stepContext()
-	defer cancel()
-	return invitedTo(ctx, w, captures[1], false)
-}
-
 // invitedTo reports whether the bridge invited the operator: either the invite
 // is still open, or the operator accepted it and is now in the room.
 func invitedTo(ctx context.Context, w *World, name string, space bool) error {
