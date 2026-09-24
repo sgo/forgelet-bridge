@@ -155,3 +155,18 @@ func TestForgeNameNamesEachRoot(t *testing.T) {
 		})
 	}
 }
+
+func TestRoomNameInCarriesTheForgeBesideTheChannel(t *testing.T) {
+	// The channel comes first and the forge follows it, so a room list that
+	// shows rooms outside their space groups by channel and still says which
+	// forge each one belongs to.
+	if got := RoomNameIn("Forgelet", RoomName); got != "Chat (Forgelet)" {
+		t.Errorf("RoomNameIn = %q, want the channel first and the forge beside it", got)
+	}
+	for _, channel := range []string{RoomName, ApprovalsRoomName, ActivityRoomName, ClarificationsRoomName} {
+		got := RoomNameIn("Saibill", channel)
+		if !strings.HasPrefix(got, channel+" (") || !strings.HasSuffix(got, "(Saibill)") {
+			t.Errorf("RoomNameIn(Saibill, %q) = %q, want the channel first and the forge named", channel, got)
+		}
+	}
+}
