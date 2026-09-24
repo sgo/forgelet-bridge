@@ -28,7 +28,10 @@ type Message struct {
 	Body       string
 	ThreadRoot string
 	// ReplyTo is the message this one answers, empty when it answers none.
-	ReplyTo   string
+	ReplyTo string
+	// MsgType is how the message was sent, which is what says whether clients
+	// would notify the operator about it: "m.text" yes, "m.notice" no.
+	MsgType   string
 	Encrypted bool
 }
 
@@ -424,6 +427,7 @@ func (u *User) captureMessage(_ context.Context, evt *event.Event) {
 		EventID:   evt.ID.String(),
 		Sender:    evt.Sender.String(),
 		Body:      content.Body,
+		MsgType:   string(content.MsgType),
 		Encrypted: evt.Mautrix.WasEncrypted,
 	}
 	if rel := content.RelatesTo; rel != nil && rel.Type == event.RelThread {

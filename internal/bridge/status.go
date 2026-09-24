@@ -28,7 +28,19 @@ type Status struct {
 	// UnhappyForges names the forges this tick could not serve, so one forge
 	// that cannot be reached is neither silent nor the whole bridge's problem.
 	UnhappyForges []string `json:"unhappy_forges,omitempty"`
-	LastError     string   `json:"last_error,omitempty"`
+	// Owed names the work the bridge still has to carry out for each configured
+	// forge. Being reached says the bridge got to the forge - configured, its
+	// rooms created - and a queue behind it is a separate, visible fact rather
+	// than proof that reaching it failed.
+	Owed      []ForgeOwed `json:"owed,omitempty"`
+	LastError string      `json:"last_error,omitempty"`
+}
+
+// ForgeOwed is one forge and the work the bridge has taken from it and not yet
+// carried out.
+type ForgeOwed struct {
+	Name  string `json:"name"`
+	Items int    `json:"items"`
 }
 
 // Device is the Matrix device the bridge is using.
