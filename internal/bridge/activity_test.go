@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
+	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
 // fakeBoard is a forge's project boards for the bridge tests.
@@ -311,5 +312,72 @@ func TestStatusReportsTheWorkEachForgeStillOwes(t *testing.T) {
 	}
 	if status.Owed[0].Items != 0 {
 		t.Errorf("owed items = %d, want nothing owed once the tick has carried the queue out", status.Owed[0].Items)
+	}
+}
+
+func TestTickRemembersASingleCardTheForgeArrivedWith(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(finishedCards(1)...)
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	// The state on disk, not the one in memory: a card remembered only until
+	// the process ends would be narrated the moment the bridge came back.
+	reloaded, err := state.Load(built.statePath)
+	if err != nil {
+		t.Fatalf("Load state: %v", err)
+	}
+	if _, known := reloaded.Relay.Activity["forgelet-bridge/finished-card-0"]; !known {
+		t.Errorf("the one card the forge arrived with was not saved, so a restart would narrate it")
+	}
+}
+
+func TestTickAnnouncesAFinishAfterAQuietTick(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(boardCard("specifier"))
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	before := len(rooms.sentMessages())
+
+	// A tick where the card has not moved says nothing, and must change nothing:
+	// the card is in flight, so its finish is still news.
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	board.set(boardCard("done"))
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("third Tick: %v", err)
+	}
+
+	sent := rooms.sentMessages()[before:]
+	if len(sent) != 1 || !strings.Contains(sent[0].body, "finished") {
+		t.Errorf("sent = %+v, want the card's finish announced after the quiet tick", sent)
+	}
+}
+
+func TestOwedForCountsEveryKindOfWork(t *testing.T) {
+	built, _ := newTestBridge(t, &fakeRooms{}, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}}, "/forges/forge-a")
+
+	built.pendingFor("/forges/forge-a").keep(relay.Action{Kind: relay.CreateForgeRequest, RequestID: "req-1"})
+	for _, key := range []string{"a-1", "a-2"} {
+		built.pendingApprovalsFor("/forges/forge-a").work.keep(relay.ApprovalAction{Kind: relay.ResolveApproval, Key: key})
+	}
+	for _, key := range []string{"c-1", "c-2", "c-3"} {
+		built.pendingClarificationsFor("/forges/forge-a").keep(relay.ClarificationAction{Kind: relay.AnswerClarification, Key: key})
+	}
+
+	if got := built.owedFor("/forges/forge-a"); got != 6 {
+		t.Errorf("owedFor = %d, want every kind counted: 1 chat, 2 approvals, 3 clarifications", got)
 	}
 }
