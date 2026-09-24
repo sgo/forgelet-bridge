@@ -55,6 +55,7 @@ type sentMessage struct {
 	roomID string
 	body   string
 	anchor string
+	notice bool
 }
 
 type fakeRooms struct {
@@ -97,6 +98,13 @@ func (r *fakeRooms) SendText(_ context.Context, roomID, body, threadAnchor strin
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sent = append(r.sent, sentMessage{roomID: roomID, body: body, anchor: threadAnchor})
+	return "$event-" + body, nil
+}
+
+func (r *fakeRooms) SendNotice(_ context.Context, roomID, body string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sent = append(r.sent, sentMessage{roomID: roomID, body: body, notice: true})
 	return "$event-" + body, nil
 }
 

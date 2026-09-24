@@ -53,9 +53,11 @@ func PlanActivity(st State, cards []Card) []ActivityAction {
 		known, seen := st.Activity[card.Key]
 		switch {
 		case !seen && card.Done:
-			// A card the bridge first meets already finished: the operator
-			// only has to hear that it finished.
-			actions = append(actions, ActivityAction{Kind: CardFinished, Card: card})
+			// A card the bridge first meets already finished is history. A forge
+			// joining reports from the moment it joined, so what it was already
+			// carrying is remembered rather than narrated: a first appearance
+			// must not produce a burst the size of the board it arrives with.
+			continue
 		case !seen:
 			actions = append(actions, ActivityAction{Kind: CardAppeared, Card: card})
 		case finishedNow(known, card):
