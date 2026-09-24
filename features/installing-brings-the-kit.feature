@@ -17,8 +17,13 @@ Feature: Installing Brings The Kit
   # A forge between cards is the other end of the same check: an empty board and
   # an empty inbox are things the tool *did* read, so a quiet forge installs, and
   # the self-check says what it read rather than calling the read unread. What
-  # still fails an install is a tool that read nothing at all - no pane, no
-  # board, no inbox.
+  # still fails an install is a tool that read nothing at all - no roles file, no
+  # board, no inbox, which is a wrong path or a wrong forge rather than a quiet
+  # one. A forge that is not running, or whose projects are stopped, is neither:
+  # installing the tools before starting the forge is the order most people
+  # choose, and such an install succeeds while saying what it could not exercise,
+  # naming the projects it read and the pane path it could not prove, so a later
+  # run can prove it.
 
   Background:
     Given the fixture forge root forge-a carries its own lieutenant prompt
@@ -39,9 +44,9 @@ Feature: Installing Brings The Kit
 
   # Installing Brings The Kit 2: a tool that reads nothing is a failure, not silence
   Scenario: Installing Brings The Kit 2: a tool that reads nothing is a failure, not silence
-    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    Given the fixture forge root forge-a has no project structure
     When the adapter for the forge root forge-a installs the kit
-    Then the self-check of the idler check reports the forge as not running
+    Then the self-check of the idler check says it read no roles, no board and no inbox
     And the installer's output says the self-check failed
     And the installer failed
 
@@ -61,4 +66,11 @@ Feature: Installing Brings The Kit
     When the adapter for the forge root forge-a installs the kit
     Then the self-check of the idler check names the command it ran, the pane it read and the marker it looked for
     And the self-check of the idler check names the board and the inbox it read, and both were empty
+    And the installer succeeded
+
+  # Installing Brings The Kit 5: a stopped forge installs, and says what it could not exercise
+  Scenario: Installing Brings The Kit 5: a stopped forge installs, and says what it could not exercise
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    When the adapter for the forge root forge-a installs the kit
+    Then the installer's output names the projects it read and the pane it could not prove
     And the installer succeeded
