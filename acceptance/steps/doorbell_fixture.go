@@ -192,7 +192,7 @@ func readDoorbellLedger(root string) (map[string][]string, error) {
 		return nil, fmt.Errorf("the doorbell kept no ledger: %w", err)
 	}
 	ledger := map[string][]string{}
-	for _, key := range []string{"seen", "rung"} {
+	for _, key := range []string{"delivered", "rung", "owed"} {
 		ledger[key] = ledgerIDs(string(data), ":"+key)
 	}
 	return ledger, nil

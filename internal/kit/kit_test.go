@@ -278,6 +278,19 @@ func TestPanePathNamesTheSocketTheProjectWrites(t *testing.T) {
 	}
 }
 
+func TestDoorbellRangNamesOnlyTheRequestsThePassRang(t *testing.T) {
+	out := "doorbell: read the pane fixture-coder of the role coder for /forges/forge-a\n" +
+		"the chat request \"already there\" was already delivered from the screen and left alone\n" +
+		"the chat request \"never arrived\" was never delivered and rung into fixture-coder\n" +
+		"the chat request \"busy one\" was not rung because the role coder was busy\n"
+
+	rang := doorbellRang(out)
+
+	if len(rang) != 1 || rang[0] != `"never arrived"` {
+		t.Errorf("doorbellRang = %v, want only the request the pass rang", rang)
+	}
+}
+
 func TestIdlerEvidenceCarriesAReadingWithSomethingInFlight(t *testing.T) {
 	project := fixtureProject(t)
 	// One role has an empty lane and an empty inbox, the next holds a card with
