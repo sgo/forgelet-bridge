@@ -14,6 +14,11 @@ Feature: Installing Brings The Kit
   # command and the marker it looked for. The installer ships tools; it never
   # decides policy: the gate's strictness stays in the forge's own lieutenant
   # prompt, and the report says which policy it found and left alone.
+  # A forge between cards is the other end of the same check: an empty board and
+  # an empty inbox are things the tool *did* read, so a quiet forge installs, and
+  # the self-check says what it read rather than calling the read unread. What
+  # still fails an install is a tool that read nothing at all - no pane, no
+  # board, no inbox.
 
   Background:
     Given the fixture forge root forge-a carries its own lieutenant prompt
@@ -30,6 +35,7 @@ Feature: Installing Brings The Kit
     And the forge root forge-a carries the route gate, the idler check and the stall watch
     And the self-check of the idler check names the command it ran, the pane it read and the marker it looked for
     And the self-check of the idler check names the card and the mail it read
+    And the installer succeeded
 
   # Installing Brings The Kit 2: a tool that reads nothing is a failure, not silence
   Scenario: Installing Brings The Kit 2: a tool that reads nothing is a failure, not silence
@@ -37,6 +43,7 @@ Feature: Installing Brings The Kit
     When the adapter for the forge root forge-a installs the kit
     Then the self-check of the idler check reports the forge as not running
     And the installer's output says the self-check failed
+    And the installer failed
 
   # Installing Brings The Kit 3: running it again is safe, and the policy is left alone
   Scenario: Installing Brings The Kit 3: running it again is safe, and the policy is left alone
@@ -45,3 +52,13 @@ Feature: Installing Brings The Kit
     Then the installer's output says the kit was already current
     And the installer changed nothing in the forge root forge-a
     And the installer's output says it left the gate policy in the lieutenant prompt alone
+    And the installer succeeded
+
+  # Installing Brings The Kit 4: a forge between cards installs, and its empty reads count as read
+  Scenario: Installing Brings The Kit 4: a forge between cards installs, and its empty reads count as read
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    When the adapter for the forge root forge-a installs the kit
+    Then the self-check of the idler check names the command it ran, the pane it read and the marker it looked for
+    And the self-check of the idler check names the board and the inbox it read, and both were empty
+    And the installer succeeded

@@ -38,8 +38,8 @@ func TestIdlerEvidenceNamesThePaneTheMarkerTheCardAndTheMail(t *testing.T) {
 		"ran \"role_health.sh " + project + "\"",
 		"read pane fixture-coder",
 		"found marker idle-holding-card",
-		"card refund-card",
-		"mail in_process=1",
+		"board refund-card",
+		"inbox in_process=1",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the self-check line does not carry %q:\n%s", want, line)
@@ -61,17 +61,21 @@ func TestIdlerEvidenceReportsAForgeThatIsNotRunning(t *testing.T) {
 	}
 }
 
-func TestIdlerEvidenceFailsOnAMailboxWithNothingInIt(t *testing.T) {
+// A forge between cards is the other end of the same check: an empty board and
+// an empty inbox are things the tool read, not things it could not read.
+func TestIdlerEvidenceCountsAnEmptyBoardAndInboxAsReads(t *testing.T) {
 	project := fixtureProject(t)
-	report := "coder       assigned-not-taken       refund-card                        new=0 in_process=0 quiet=9m tool=codex\n"
+	report := "coder       idle-nothing-assigned   -                                  new=0 in_process=0 quiet=9m tool=codex\n"
 
 	line, ok := idlerEvidence(project, "role_health.sh "+project, report)
 
-	if ok {
-		t.Fatalf("a role with no mail was read as a pass: %s", line)
+	if !ok {
+		t.Fatalf("a forge between cards has a live pane, an empty board and an empty inbox, so it installs: %s", line)
 	}
-	if !strings.Contains(line, "no board row or mail to read") {
-		t.Errorf("the failure does not name what it could not read:\n%s", line)
+	for _, want := range []string{"read pane fixture-coder", "board empty", "inbox empty"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the self-check line does not carry %q:\n%s", want, line)
+		}
 	}
 }
 
