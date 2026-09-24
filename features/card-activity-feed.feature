@@ -15,6 +15,12 @@ Feature: Card Activity Feed
   # messages that notify, because they are the news — work starting, work done —
   # while a routine lane-to-lane step is posted as the kind of event clients do
   # not notify on, worth seeing in the room and not worth waking anyone for.
+  # A tick's card news travels as one message: every card that appeared or
+  # finished in that tick is named in the message for that tick, so the volume is
+  # bounded by ticks rather than by the size of a board. A tick with one card's
+  # news reads as it always did; the change is about several. Nothing is dropped,
+  # nothing arrives later than it would have, and a restart still re-posts
+  # nothing.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -33,8 +39,13 @@ Feature: Card Activity Feed
     When the forge finishes the card card-activity-feed
     Then the operator decrypts a card update saying the card card-activity-feed finished in the project forgelet-bridge
     And the card updates for the card card-activity-feed notify for its appearance and its finish, and not for the move between lanes
-    And the activity room holds exactly 3 card updates
     And the approvals room holds no messages
+
+  # Card Activity Feed 4: a tick's card news travels as one message
+  Scenario: Card Activity Feed 4: a tick's card news travels as one message
+    Given the forge's board already holds the cards first-card, second-card and third-card in the project forgelet-bridge in the lane specifier
+    Then the operator decrypts one card update for the tick naming the cards first-card, second-card and third-card
+    And the activity room holds exactly 1 card update
 
   # Card Activity Feed 2: a forge with nothing changing stays quiet
   Scenario: Card Activity Feed 2: a forge with nothing changing stays quiet
