@@ -148,6 +148,7 @@ func register(registry *runtime.Registry) error {
 		{`^the operator is invited to chat room (.+)$`, operatorInvitedToRoom},
 		{`^the forge space (.+?) holds the chat room (.+)$`, spaceHoldsRoom},
 		{`^the forge space (.+?) holds exactly one chat room (.+)$`, spaceHoldsOneRoom},
+		{`^the forge space (.+?) holds exactly one chat room$`, spaceHoldsExactlyOneChatRoom},
 		{`^chat room (.+) is encrypted$`, chatRoomEncrypted},
 		{`^the forge space (.+?) holds the approvals room (.+)$`, spaceHoldsNamedRoom},
 		{`^the operator is invited to the approvals room (.+)$`, invitedToNamedRoom},

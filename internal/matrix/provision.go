@@ -59,8 +59,11 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 }
 
 // ensureRoom finds or creates one of the forge's rooms inside its space, makes
-// sure the operator is in it, and names the bridge after the forge there.
-func (c *Client) ensureRoom(ctx context.Context, spaceID, operator, forgeName, roomName string) (string, error) {
+// sure the operator is in it, and names the bridge after the forge there. The
+// name it looks for and the name it applies are the same one, composed from the
+// forge and the channel, so a rename can never become a second room.
+func (c *Client) ensureRoom(ctx context.Context, spaceID, operator, forgeName, channel string) (string, error) {
+	roomName := config.RoomNameIn(forgeName, channel)
 	roomID, err := c.findRoom(ctx, spaceID, roomName)
 	if err != nil {
 		return "", err
@@ -89,10 +92,10 @@ func (c *Client) RefreshForge(ctx context.Context, room bridge.Room, forgeName, 
 		return err
 	}
 	for _, named := range []struct{ id, name string }{
-		{room.RoomID, config.RoomName},
-		{room.ApprovalsRoomID, config.ApprovalsRoomName},
-		{room.ActivityRoomID, config.ActivityRoomName},
-		{room.ClarificationsRoomID, config.ClarificationsRoomName},
+		{room.RoomID, config.RoomNameIn(forgeName, config.RoomName)},
+		{room.ApprovalsRoomID, config.RoomNameIn(forgeName, config.ApprovalsRoomName)},
+		{room.ActivityRoomID, config.RoomNameIn(forgeName, config.ActivityRoomName)},
+		{room.ClarificationsRoomID, config.RoomNameIn(forgeName, config.ClarificationsRoomName)},
 	} {
 		if named.id == "" {
 			continue

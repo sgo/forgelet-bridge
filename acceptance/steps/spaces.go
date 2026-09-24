@@ -3,6 +3,9 @@ package steps
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/unclebob/forgelet-bridge/internal/config"
 )
 
 // megolmAlgorithm is the encryption the bridge's rooms carry.
@@ -99,6 +102,49 @@ func spaceHoldsRoom(_ context.Context, world any, captures []string) error {
 
 func spaceHoldsOneRoom(_ context.Context, world any, captures []string) error {
 	return expectChatRooms(world.(*World), captures[1], captures[2], true)
+}
+
+// spaceHoldsExactlyOneChatRoom checks the space holds one room of a channel
+// whatever the forge's name in it is: the rename is only proven when a room
+// missed under another name would show up as a second one.
+func spaceHoldsExactlyOneChatRoom(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	spaces, err := w.spaces(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	if len(spaces) == 0 {
+		return fmt.Errorf("the operator does not see a forge space named %s", captures[1])
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	found := 0
+	for _, spaceID := range spaces {
+		children, err := operator.SpaceChildren(ctx, spaceID)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			name, err := operator.RoomName(ctx, child)
+			if err == nil && carriesChannel(name, config.RoomName) {
+				found++
+			}
+		}
+	}
+	if found != 1 {
+		return fmt.Errorf("the forge space %s holds %d chat rooms, want exactly one", captures[1], found)
+	}
+	return nil
+}
+
+// carriesChannel reports whether a room's name carries a channel: the channel
+// itself, or the channel with the forge's name after it.
+func carriesChannel(roomName, channel string) bool {
+	return roomName == channel || strings.HasPrefix(roomName, channel+" (")
 }
 
 // expectChatRooms checks the chat rooms a forge space holds, waiting for the

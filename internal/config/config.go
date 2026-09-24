@@ -26,6 +26,15 @@ const ActivityRoomName = "Activity"
 // forge's agents are blocked on.
 const ClarificationsRoomName = "Clarifications"
 
+// RoomNameIn is the name one of a forge's rooms carries: the channel first,
+// then the forge's own name in brackets, so a room list that shows them outside
+// their space still says which forge a Chat belongs to. The channel comes first
+// because that is the order the operator reads a list in, and the space's own
+// name is the forge's, so it is not repeated there.
+func RoomNameIn(forgeName, channel string) string {
+	return channel + " (" + forgeName + ")"
+}
+
 // Forge is one forge the bridge serves: where it lives, and the name the
 // operator knows it by.
 type Forge struct {

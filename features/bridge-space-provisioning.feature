@@ -19,9 +19,9 @@ Feature: Bridge Space Provisioning
     When the bridge is started
     Then the operator sees the forge space forge-a
     And the operator is invited to the forge space forge-a
-    And the forge space forge-a holds the chat room Chat
-    And the operator is invited to chat room Chat
-    And chat room Chat is encrypted
+    And the forge space forge-a holds the chat room Chat (forge-a)
+    And the operator is invited to chat room Chat (forge-a)
+    And chat room Chat (forge-a) is encrypted
 
   # Bridge Space Provisioning 2: reuses the forge space and chat room it created on the next start
   Scenario: Bridge Space Provisioning 2: reuses the forge space and chat room it created on the next start
@@ -29,7 +29,7 @@ Feature: Bridge Space Provisioning
     And the bridge has created the forge space forge-a and its chat room Chat
     When the bridge is stopped and started again
     Then the operator sees exactly one forge space named forge-a
-    And the forge space forge-a holds exactly one chat room Chat
+    And the forge space forge-a holds exactly one chat room Chat (forge-a)
 
   # Bridge Space Provisioning 3: gives each configured forge root its own forge space
   Scenario Outline: Bridge Space Provisioning 3: gives each configured forge root its own forge space
