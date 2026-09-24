@@ -26,6 +26,15 @@ const ActivityRoomName = "Activity"
 // forge's agents are blocked on.
 const ClarificationsRoomName = "Clarifications"
 
+// RoomNameIn is the name one of a forge's rooms carries: the channel first,
+// then the forge's own name in brackets, so a room list that shows them outside
+// their space still says which forge a Chat belongs to. The channel comes first
+// because that is the order the operator reads a list in, and the space's own
+// name is the forge's, so it is not repeated there.
+func RoomNameIn(forgeName, channel string) string {
+	return channel + " (" + forgeName + ")"
+}
+
 // Forge is one forge the bridge serves: where it lives, and the name the
 // operator knows it by.
 type Forge struct {
@@ -137,5 +146,5 @@ func (c Config) validateForges() error {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T13:37:07+02:00","module_hash":"ea1637e370b2b44df37c2ab93615018e249696416832f60241b5ff8600c6499b","functions":[{"id":"func/Forge.DisplayName","name":"Forge.DisplayName","line":41,"end_line":46,"hash":"abd74e0db2d2bc813e069ee4d6a8e8b31c5f4729e9d2b97d2faa571c5a4919f2"},{"id":"func/folderName","name":"folderName","line":49,"end_line":51,"hash":"7d39f1a1e7a0dd237a5bce7b32e68fdbb8158d8973ade5c0543d4ef85825951b"},{"id":"func/Config.ForgeName","name":"Config.ForgeName","line":69,"end_line":76,"hash":"3bb7b6216b66705c85071c001a8310bfbdc6a9c6f7ebe6ad4fb5739f1316aa7a"},{"id":"func/Load","name":"Load","line":79,"end_line":94,"hash":"73c9c9ba411af51e69731b5d63bbac3936492121b264cc966bf69abf9dc94d30"},{"id":"func/Config.applyDefaults","name":"Config.applyDefaults","line":96,"end_line":101,"hash":"a4b127976fa75aa7b446477d71d9914e63c45d5e0f507753b561c8699ba06242"},{"id":"func/Config.Validate","name":"Config.Validate","line":104,"end_line":118,"hash":"b1e189ca09210e62e796ad50d07a1e73be0f4ab8355f9abf8763a7aad86e3d7b"},{"id":"func/Config.validateForges","name":"Config.validateForges","line":122,"end_line":137,"hash":"aacba25ade49903c209423ffd58552034aea05c13b1e0731f9d0cafc32b8f989"}]}
+// {"version":1,"tested_at":"2026-09-24T17:01:06+02:00","module_hash":"1fc3eb06196ced81c2554ca25927ad7f8993a4975a02c0ee0588ff3793a6f3e7","functions":[{"id":"func/RoomNameIn","name":"RoomNameIn","line":34,"end_line":36,"hash":"c93a54c3de25f4b1052ae175ad0eefd41c82ab8b7d70751024cd9de0b2a52b4b"},{"id":"func/Forge.DisplayName","name":"Forge.DisplayName","line":50,"end_line":55,"hash":"abd74e0db2d2bc813e069ee4d6a8e8b31c5f4729e9d2b97d2faa571c5a4919f2"},{"id":"func/folderName","name":"folderName","line":58,"end_line":60,"hash":"7d39f1a1e7a0dd237a5bce7b32e68fdbb8158d8973ade5c0543d4ef85825951b"},{"id":"func/Config.ForgeName","name":"Config.ForgeName","line":78,"end_line":85,"hash":"3bb7b6216b66705c85071c001a8310bfbdc6a9c6f7ebe6ad4fb5739f1316aa7a"},{"id":"func/Load","name":"Load","line":88,"end_line":103,"hash":"73c9c9ba411af51e69731b5d63bbac3936492121b264cc966bf69abf9dc94d30"},{"id":"func/Config.applyDefaults","name":"Config.applyDefaults","line":105,"end_line":110,"hash":"a4b127976fa75aa7b446477d71d9914e63c45d5e0f507753b561c8699ba06242"},{"id":"func/Config.Validate","name":"Config.Validate","line":113,"end_line":127,"hash":"b1e189ca09210e62e796ad50d07a1e73be0f4ab8355f9abf8763a7aad86e3d7b"},{"id":"func/Config.validateForges","name":"Config.validateForges","line":131,"end_line":146,"hash":"aacba25ade49903c209423ffd58552034aea05c13b1e0731f9d0cafc32b8f989"}]}
 // mutate4go-manifest-end

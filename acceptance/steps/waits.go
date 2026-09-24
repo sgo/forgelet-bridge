@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/bridge"
+	"github.com/unclebob/forgelet-bridge/internal/config"
 )
 
 // caughtUp waits for the bridge to finish a tick with nothing left to do,
@@ -72,7 +74,7 @@ func (w *World) waitForSpaceChild(ctx context.Context, spaceName, childName stri
 			}
 			for _, child := range children {
 				name, err := operator.RoomName(ctx, child)
-				if err != nil || name != childName {
+				if err != nil || !w.namesARoom(childName, name) {
 					continue
 				}
 				membership, err := operator.Membership(ctx, child, w.operatorID)
@@ -108,8 +110,44 @@ func (w *World) chatRoom(ctx context.Context, name string) (string, error) {
 func (w *World) rooms(ctx context.Context, name string) ([]string, error) {
 	return w.roomsMatching(ctx, func(operator *fixtures.User, roomID string) bool {
 		roomName, err := operator.RoomName(ctx, roomID)
-		return err == nil && roomName == name
+		return err == nil && w.namesARoom(name, roomName)
 	})
+}
+
+// namesARoom reports whether a room's own name is the one a step named. A step
+// that names a channel without its forge - "Chat" - also names the room that
+// carries it, because that is the room the scenario means: the channel comes
+// first and the forge's name follows it in brackets.
+func (w *World) namesARoom(named, roomName string) bool {
+	for _, candidate := range w.roomNames(named) {
+		if roomName == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+// roomNames is the names a room step may be naming: the name itself, and - when
+// it names a channel without a forge - that channel with the name of every
+// forge the scenario declared.
+func (w *World) roomNames(named string) []string {
+	names := []string{named}
+	if strings.Contains(named, " (") {
+		return names
+	}
+	for _, root := range append(append([]string{}, w.configured...), w.forgeRoots...) {
+		names = appendUnique(names, config.RoomNameIn(w.forgeDisplayName(root), named))
+	}
+	return names
+}
+
+// forgeDisplayName is what the operator knows one fixture forge by: the name
+// the bridge is configured with, or the folder the forge lives in.
+func (w *World) forgeDisplayName(root string) string {
+	if named := w.forgeNames[root]; named != "" {
+		return named
+	}
+	return filepath.Base(root)
 }
 
 // spaces lists the spaces of a given name the operator knows about. An empty
