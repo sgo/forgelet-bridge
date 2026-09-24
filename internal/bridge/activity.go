@@ -44,21 +44,11 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	actions := relay.PlanActivity(b.state.Relay, cards)
 	news, moves := splitCardUpdates(actions)
 	posted := map[string]bool{}
-	if len(news) > 0 {
-		if _, err := b.rooms.SendText(ctx, room.ActivityRoomID, cardUpdates(news), ""); err != nil {
-			return 0, fmt.Errorf("post the tick's card news: %w", err)
-		}
-		if err := b.rememberCardUpdates(news, posted); err != nil {
-			return 0, err
-		}
+	if err := b.postCardNews(ctx, room.ActivityRoomID, news, posted); err != nil {
+		return 0, err
 	}
-	if len(moves) > 0 {
-		if _, err := b.rooms.SendNotice(ctx, room.ActivityRoomID, cardUpdates(moves)); err != nil {
-			return 0, fmt.Errorf("post the tick's card moves: %w", err)
-		}
-		if err := b.rememberCardUpdates(moves, posted); err != nil {
-			return 0, err
-		}
+	if err := b.postCardMoves(ctx, room.ActivityRoomID, moves, posted); err != nil {
+		return 0, err
 	}
 	if seeded := b.rememberQuietCards(cards, posted); seeded > 0 {
 		if err := b.state.Save(b.statePath); err != nil {
@@ -66,6 +56,30 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 		}
 	}
 	return len(actions), nil
+}
+
+// postCardNews posts a tick's card news as one message - the message the phone
+// is woken for - and remembers that the room has it.
+func (b *Bridge) postCardNews(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	if _, err := b.rooms.SendText(ctx, roomID, cardUpdates(actions), ""); err != nil {
+		return fmt.Errorf("post the tick's card news: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
+}
+
+// postCardMoves posts a tick's routine lane moves as one notice, which the
+// clients do not notify on, and remembers that the room has it.
+func (b *Bridge) postCardMoves(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	if _, err := b.rooms.SendNotice(ctx, roomID, cardUpdates(actions)); err != nil {
+		return fmt.Errorf("post the tick's card moves: %w", err)
+	}
+	return b.rememberCardUpdates(actions, posted)
 }
 
 // splitCardUpdates keeps the tick's news apart from its routine moves: the news
