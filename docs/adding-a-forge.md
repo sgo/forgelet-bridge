@@ -121,7 +121,7 @@ is made, and put a stall on the phone. Install them with the adapter:
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" install-kit
 ```
 
-It installs the route gate, the idler check and the stall watch into the forge's
+It installs the route gate, the idler check, the stall watch and the doorbell into the forge's
 own scripts, with the watch's agent, and self-checks each one against the forge
 it was installed into — one live pane, one board row, one inbox — printing the
 command and the marker it looked for, so a tool that reads nothing fails on the
