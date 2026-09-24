@@ -94,19 +94,26 @@
 (defn ledger-path [root]
   (fs/path root ".swarmforge" "doorbell.edn"))
 
+;; The ledger keeps the three outcomes apart, because they mean different
+;; things: a request the pane proved is delivered and done, one this pass rang
+;; has been delivered by the doorbell, and one that was only looked at - seen
+;; while the role was mid-turn - is still owed. Recording a skip as delivery
+;; would let a message the operator sent and that never arrived be written off
+;; silently, which is the failure this tool exists to repair.
 (defn ledger [root]
-  (let [path (ledger-path root)]
-    (if (fs/regular-file? path)
-      (try
-        (let [stored (edn/read-string (slurp (str path)))]
-          {:seen (set (:seen stored)) :rung (set (:rung stored))})
-        (catch Exception _ {:seen #{} :rung #{}}))
-      {:seen #{} :rung #{}})))
+  (let [path (ledger-path root)
+        stored (if (fs/regular-file? path)
+                 (try (edn/read-string (slurp (str path))) (catch Exception _ {}))
+                 {})]
+    {:delivered (set (:delivered stored)) :rung (set (:rung stored)) :owed (set (:owed stored))}))
 
-(defn save-ledger! [root seen rung]
+(defn save-ledger! [root ledger]
   (let [path (ledger-path root)]
     (fs/create-dirs (fs/parent path))
-    (spit (str path) (pr-str {:seen (vec (sort seen)) :rung (vec (sort rung))}))))
+    (spit (str path) (pr-str (into (sorted-map)
+                                   {:delivered (vec (sort (:delivered ledger)))
+                                    :rung (vec (sort (:rung ledger)))
+                                    :owed (vec (sort (:owed ledger)))})))))
 
 ;; The check that knows what "working" means for each tool is the idler check;
 ;; the doorbell asks it rather than repeating its rules, and treats anything but
@@ -149,11 +156,11 @@
 ;; The evidence, named the way the pass reports it: what the pane still shows
 ;; says the most, then what its scrollback remembers, and the ledger last - it is
 ;; the fallback for a request the pane can no longer prove at all.
-(defn delivered-evidence [id screen scrollback seen rung]
+(defn delivered-evidence [id screen scrollback ledger]
   (cond
     (holds-id? screen id) "the screen"
     (holds-id? scrollback id) "the scrollback"
-    (or (contains? rung id) (contains? seen id)) "the ledger"
+    (or (contains? (:rung ledger) id) (contains? (:delivered ledger) id)) "the ledger"
     :else nil))
 
 (defn wake-text [id body]
@@ -178,9 +185,7 @@
         socket (tmux-socket root)
         screen (when (and socket pane) (pane-screen socket pane))
         scrollback (when (and socket pane) (pane-scrollback socket pane))
-        stored (ledger root)
-        seen (atom (:seen stored))
-        rung (atom (:rung stored))
+        kept (atom (ledger root))
         requests (pending-requests root)]
     (println (str "doorbell: read the pane " (or pane "-") " of the role " (or role "-")
                   " for " (str root)))
@@ -188,28 +193,32 @@
       (println "nothing pending: no chat request is waiting to be delivered")
       (doseq [{:keys [id body]} requests]
         (let [quoted (str "\"" body "\"")
-              proved (delivered-evidence id screen scrollback @seen @rung)]
+              proved (delivered-evidence id screen scrollback @kept)]
           (cond
             proved
-            (do (swap! seen conj id)
+            (do (when-not (contains? (:rung @kept) id) (swap! kept update :delivered conj id))
+                (swap! kept update :owed (fnil disj #{}) id)
                 (println (str "the chat request " quoted " was already delivered from " proved
                               " and left alone")))
 
             (nil? pane)
-            (println (str "the chat request " quoted " was not rung: the role " (or role "-")
-                          " has no pane to ring"))
+            (do (swap! kept update :owed conj id)
+                (println (str "the chat request " quoted " was not rung: the role " (or role "-")
+                              " has no pane to ring")))
 
             (busy? root role idler)
-            (do (swap! seen conj id)
+            ;; Looked at, not delivered: the request stays owed, and a later
+            ;; pass rings it once the role is free.
+            (do (swap! kept update :owed conj id)
                 (println (str "the chat request " quoted " was not rung because the role "
                               (or role "-") " was busy")))
 
             :else
             (do (ring! socket pane id body)
-                (swap! seen conj id)
-                (swap! rung conj id)
+                (swap! kept update :rung conj id)
+                (swap! kept update :owed (fnil disj #{}) id)
                 (println (str "the chat request " quoted " was never delivered and rung into " pane)))))))
-    (save-ledger! root @seen @rung)
+    (save-ledger! root @kept)
     (System/exit 0)))
 
 (when (= (str *file*) (System/getProperty "babashka.file"))

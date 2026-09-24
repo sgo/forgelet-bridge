@@ -145,7 +145,31 @@ func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
 	if !strings.Contains(out, marker) {
 		return fmt.Sprintf("self-check failed doorbell: ran %q and never said what it read (%q)", command, marker), false
 	}
-	return fmt.Sprintf("self-check doorbell: ran %q, and the doorbell said: %s", command, doorbellRead(out)), true
+	report := fmt.Sprintf("self-check doorbell: ran %q, and the doorbell said: %s", command, doorbellRead(out))
+	// The self-check runs the doorbell's pass, so installing into a forge with a
+	// request that never arrived rings it. Those rings are right - such a request
+	// really was never delivered - and installing is a moment when somebody is
+	// reading, so the report says which requests it repaired on the way in.
+	for _, body := range doorbellRang(out) {
+		report += fmt.Sprintf("; it rang the chat request %s that had never been delivered", body)
+	}
+	return report, true
+}
+
+// doorbellRang is the requests one pass rang, as the doorbell named them.
+func doorbellRang(out string) []string {
+	var rang []string
+	for _, line := range strings.Split(out, "\n") {
+		const prefix = `the chat request "`
+		if !strings.HasPrefix(line, prefix) || !strings.Contains(line, "was never delivered and rung") {
+			continue
+		}
+		body, _, found := strings.Cut(strings.TrimPrefix(line, prefix), `"`)
+		if found && body != "" {
+			rang = append(rang, `"`+body+`"`)
+		}
+	}
+	return rang
 }
 
 // doorbellRead is what the doorbell said it read, which is what its first line

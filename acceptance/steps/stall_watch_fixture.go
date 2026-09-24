@@ -149,6 +149,10 @@ func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 		command := paneCommand
 		if pane == livePane {
 			command = liveCommand
+			// The role's session is what the scenario is describing now, whether
+			// an earlier step left it working or quiet: a session already there
+			// is replaced, so a role that was mid-turn can be free.
+			_, _ = tmux(socket, "kill-session", "-t", pane)
 		}
 		if err := startPane(socket, pane, command); err != nil {
 			return err
