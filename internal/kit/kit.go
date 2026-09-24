@@ -67,7 +67,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 	if err := os.MkdirAll(scripts, 0o755); err != nil {
 		return report, err
 	}
-	changed, installed, err := installTools(&report, kitDir, scripts)
+	changed, err := installTools(&report, kitDir, scripts)
 	if err != nil {
 		return report, err
 	}
@@ -80,7 +80,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 		return report, err
 	}
 	report.line("left alone loading the stall watch's agent: the machine's own step, and the agent it runs is written down")
-	selfChecks(&report, scripts, forgeRoot, installed)
+	selfChecks(&report, scripts, forgeRoot)
 	policy(&report, forgeRoot)
 	return report, nil
 }
@@ -105,24 +105,20 @@ func forgeDir(forgeRoot string) (string, error) {
 }
 
 // installTools copies every file of the kit into the forge's scripts, and says
-// whether any of them changed and which tools this pass put there.
-func installTools(report *Report, kitDir, scripts string) (bool, map[string]bool, error) {
+// whether any of them changed.
+func installTools(report *Report, kitDir, scripts string) (bool, error) {
 	changed := false
-	installed := map[string]bool{}
 	for _, tool := range Tools() {
-		put := false
 		for _, file := range tool.Files {
 			outcome, err := installFile(tool.Subject, filepath.Join(kitDir, file), filepath.Join(scripts, file))
 			if err != nil {
-				return changed, installed, err
+				return changed, err
 			}
 			report.line(outcome.line)
 			changed = changed || outcome.changed
-			put = put || outcome.changed
 		}
-		installed[tool.Subject] = put
 	}
-	return changed, installed, nil
+	return changed, nil
 }
 
 // installOutcome is what copying one file did.
@@ -182,24 +178,14 @@ func installAgent(report *Report, scripts, forgeRoot string) error {
 	return nil
 }
 
-// selfChecks runs each tool this pass installed against the forge and writes
-// down what it ran and what it looked for. A reading that does not fit is a
-// failure in the report, not silence. A tool that was already current is left
-// alone: this pass put nothing there, and running the installer again is meant
-// to be safe wherever the forge happens to be.
-func selfChecks(report *Report, scripts, forgeRoot string, installed map[string]bool) {
-	checked := false
+// selfChecks runs every tool the kit ships against the forge and writes down
+// what it ran and what it looked for. A reading that does not fit is a failure
+// in the report, not silence.
+func selfChecks(report *Report, scripts, forgeRoot string) {
 	for _, tool := range Tools() {
-		if !installed[tool.Subject] {
-			continue
-		}
-		checked = true
 		line, ok := tool.Check(scripts, forgeRoot)
 		report.line(line)
 		report.failed = report.failed || !ok
-	}
-	if !checked {
-		report.line("left alone the self-checks: the kit was already installed, so there was nothing new to prove")
 	}
 }
 
@@ -221,26 +207,90 @@ func gateSelfCheck(scripts, forgeRoot string) (string, bool) {
 }
 
 // idlerSelfCheck runs the check over every project the forge serves and reports
-// the first reading that shows it read the forge: a live pane, a board row and
-// an inbox.
+// what it read. The pane is the reading most worth proving - it is the one that
+// broke when Claude Code started reporting its version instead of its name - but
+// a forge that is not running is not a fault: installing the tools before
+// starting the forge is the order most people choose. Such a pass succeeds and
+// names the projects it read and the pane it could not prove, so a later run can
+// prove it. What still fails is a forge with no structure to read at all: no
+// roles file, no board and no inbox, which is a wrong path or a wrong forge
+// rather than a quiet one.
 func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	projects, err := projects(forgeRoot)
 	if err != nil || len(projects) == 0 {
-		return "self-check failed idler check: the forge serves no project to read", false
+		return fmt.Sprintf("self-check failed idler check: %s holds no project with a roles file, so it read no roles, no board and no inbox",
+			filepath.Join(forgeRoot, "projects")), false
 	}
+	var unproved []string
 	var first string
 	for _, project := range projects {
-		command := "role_health.sh " + project + " --forge-root " + forgeRoot
-		out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
-		line, ok := idlerEvidence(project, command, out)
-		if ok {
+		line, proved, skipped := idlerProjectRead(scripts, forgeRoot, project)
+		if skipped {
+			unproved = append(unproved, project)
+			continue
+		}
+		if proved {
 			return line, true
 		}
 		if first == "" {
 			first = line
 		}
 	}
+	// A project the tool could not read at all is a fault whatever else the
+	// forge holds: a pane that is not up is the only reading excused.
+	if len(unproved) > 0 && first == "" {
+		return idlerUnprovedSummary(forgeRoot, unproved), true
+	}
 	return first, false
+}
+
+// idlerProjectRead runs the check over one project and says what it read: a
+// reading that proves the tool read this forge, a reading that did not, or
+// nothing to prove because no session is up on the project, which is not a
+// fault.
+func idlerProjectRead(scripts, forgeRoot, project string) (line string, proved, unproved bool) {
+	command := "role_health.sh " + project + " --forge-root " + forgeRoot
+	out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
+	notRunning, readings := parseIdlerReport(out)
+	if notRunning || allSessionsGone(readings) {
+		return "", false, true
+	}
+	if len(readings) == 0 {
+		return fmt.Sprintf("self-check failed idler check: ran %q, which read no role on a project that holds one", command), false, false
+	}
+	line, proved = idlerEvidence(project, command, out)
+	return line, proved, false
+}
+
+// idlerUnprovedSummary is what a pass says when every project it read could not
+// prove a pane: nothing to fail on, and the projects it read and the pane it
+// could not prove named, so a later run can prove it.
+func idlerUnprovedSummary(forgeRoot string, unproved []string) string {
+	command := "role_health.sh " + unproved[0] + " --forge-root " + forgeRoot
+	return fmt.Sprintf("self-check idler check: ran %q, read the projects %s and could not prove a pane: nothing is up on %s",
+		command, strings.Join(unproved, ", "), panePath(unproved[0]))
+}
+
+// allSessionsGone reports whether every reading names a pane whose session has
+// ended. A role the check read and judged is a read, whatever it judged.
+func allSessionsGone(readings []reading) bool {
+	for _, found := range readings {
+		if found.Verdict != "session-gone" {
+			return false
+		}
+	}
+	return len(readings) > 0
+}
+
+// panePath is where a project's panes live: the socket the check reads them on.
+// A forge with no socket at all says so rather than naming nothing.
+func panePath(project string) string {
+	path := filepath.Join(project, ".swarmforge", "tmux-socket")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return path + " (no socket written yet)"
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // idlerEvidence is what one run of the check read: the pane it looked at, the
@@ -448,5 +498,5 @@ func run(command string, args ...string) (string, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-24T12:22:36+02:00","module_hash":"16e9238c6aa8677bd858a3dacc8b041a10c87c91b364451f902568cfb7a0c4a5","functions":[{"id":"func/Tools","name":"Tools","line":36,"end_line":42,"hash":"e04178bc850c9e20648be62d7e984d0c2498989ee72be4daf19c90453d4620b0"},{"id":"func/Report.String","name":"Report.String","line":51,"end_line":51,"hash":"863e712f9451c5c9557839b1f63d51b90cbca25f344ed8be78f4bb1db698109d"},{"id":"func/Report.Failed","name":"Report.Failed","line":54,"end_line":54,"hash":"6571c27262847925ba3f9d9228894e28a4e8f64e756fd26f5a9fe2dedeca6219"},{"id":"func/Report.line","name":"Report.line","line":56,"end_line":56,"hash":"f139de20d2b5e0c47987f48ff54a63a8fd8abfef4ee9f0f72709daeca5b4fb77"},{"id":"func/Install","name":"Install","line":60,"end_line":86,"hash":"05c2c63d18bef9c127cf28f7ca77fdb0a31cc540dbdbe0280288b31f4041992b"},{"id":"func/forgeDir","name":"forgeDir","line":92,"end_line":105,"hash":"3201b616212bcf7f5a30837dec2b783d9659270662cb1db0f7ac25a6ad3d2f64"},{"id":"func/installTools","name":"installTools","line":109,"end_line":126,"hash":"0ebf91f9d8633f0aa3b93105c96a1c70a74d0f2439f11e1bc217fac5e1204295"},{"id":"func/installFile","name":"installFile","line":137,"end_line":160,"hash":"9b58bb5480e63c7f14ffb5eb27be651e9641336c60044d95ff8678d3f6cdf188"},{"id":"func/installAgent","name":"installAgent","line":165,"end_line":183,"hash":"53718d85a8f28a22c9ee2214d32751afaf26d55ea889f20db7265d8610516640"},{"id":"func/selfChecks","name":"selfChecks","line":190,"end_line":204,"hash":"f4d3c650c36069877cc65791a4b6bf3320f0ea9132f6a4a3adcd1f89641777f5"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":213,"end_line":221,"hash":"1e619c76e525fca762a817046990f848b0debe2aa7fbc215f84bde379a0a3976"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":226,"end_line":244,"hash":"871972403f17e874d6ac62b5d04963ad3c1ab2dbf89056a2c520655422fefb87"},{"id":"func/idlerEvidence","name":"idlerEvidence","line":251,"end_line":286,"hash":"31d695bf3ff9e9a7e21ddb3dab9fa0c392bb80407fa84e5642112fc781fd8b37"},{"id":"func/boardRead","name":"boardRead","line":290,"end_line":295,"hash":"5de4d9e8c53b8b5620a333ff5d5c606cd01ad165738abe7b9af687c6c1ee8fca"},{"id":"func/inboxRead","name":"inboxRead","line":299,"end_line":304,"hash":"c8dd4e11c9f804a29376794afd8d110ff50d4d332aadbbd82a56cd2bbe2b99f0"},{"id":"func/parseIdlerReport","name":"parseIdlerReport","line":318,"end_line":333,"hash":"d1317252a05b64fbc31b286c504434c8d4c16a6096260f00597f947e6c8408ef"},{"id":"func/readingFrom","name":"readingFrom","line":337,"end_line":344,"hash":"02e45455e68fbaff4be2de1912ed5ad454512d5e11df952143b056157fe0c7e9"},{"id":"func/mailOf","name":"mailOf","line":348,"end_line":360,"hash":"0ec62c2244e0e2727d0d4e98dbc61f786a1e014bdeb01f39a01966b2c3a2f93c"},{"id":"func/countOf","name":"countOf","line":363,"end_line":369,"hash":"0d2f4363a3d949886a923f10779ae39233aa333ebce3c1e23437cf0cbc090ed5"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":374,"end_line":382,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/policy","name":"policy","line":385,"end_line":393,"hash":"0c82487d751f8aa51afd36223b39b7b5e7dc093624363312b499929f3be2eb83"},{"id":"func/firstLine","name":"firstLine","line":396,"end_line":403,"hash":"55405d13f50d5c0b8bed4113c52ff9d3314748ddade7e4dc38afc668638a0cae"},{"id":"func/projects","name":"projects","line":406,"end_line":424,"hash":"7c4517b40f84cd057b6fe50d69cca68cf19ec7baeada4860a4ebae2e489315b1"},{"id":"func/paneOf","name":"paneOf","line":428,"end_line":440,"hash":"dbb60542d466b85f6528d132ec38702d9715958b37e117f38eefb9c0cb950043"},{"id":"func/run","name":"run","line":445,"end_line":448,"hash":"b0ba526783b3c7b75bbd753ee0cc95ab7a15ecd7af00ccd08a10f9bd95c098ae"}]}
+// {"version":1,"tested_at":"2026-09-24T14:19:24+02:00","module_hash":"f663d219df574f6ab04e3396b7636233aa95a695f7e307ad63a76884a1450254","functions":[{"id":"func/Tools","name":"Tools","line":36,"end_line":42,"hash":"e04178bc850c9e20648be62d7e984d0c2498989ee72be4daf19c90453d4620b0"},{"id":"func/Report.String","name":"Report.String","line":51,"end_line":51,"hash":"863e712f9451c5c9557839b1f63d51b90cbca25f344ed8be78f4bb1db698109d"},{"id":"func/Report.Failed","name":"Report.Failed","line":54,"end_line":54,"hash":"6571c27262847925ba3f9d9228894e28a4e8f64e756fd26f5a9fe2dedeca6219"},{"id":"func/Report.line","name":"Report.line","line":56,"end_line":56,"hash":"f139de20d2b5e0c47987f48ff54a63a8fd8abfef4ee9f0f72709daeca5b4fb77"},{"id":"func/Install","name":"Install","line":60,"end_line":86,"hash":"2cb72b6421c7585c406a13ad8f40ee7a5c817a5da9ad37f7b029b7caf937629c"},{"id":"func/forgeDir","name":"forgeDir","line":92,"end_line":105,"hash":"3201b616212bcf7f5a30837dec2b783d9659270662cb1db0f7ac25a6ad3d2f64"},{"id":"func/installTools","name":"installTools","line":109,"end_line":122,"hash":"e44299b0e64ad015e26023a978f63d25a36ce7e77b1a03c3e53cd8b0d2e5b814"},{"id":"func/installFile","name":"installFile","line":133,"end_line":156,"hash":"9b58bb5480e63c7f14ffb5eb27be651e9641336c60044d95ff8678d3f6cdf188"},{"id":"func/installAgent","name":"installAgent","line":161,"end_line":179,"hash":"53718d85a8f28a22c9ee2214d32751afaf26d55ea889f20db7265d8610516640"},{"id":"func/selfChecks","name":"selfChecks","line":184,"end_line":190,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":199,"end_line":207,"hash":"1e619c76e525fca762a817046990f848b0debe2aa7fbc215f84bde379a0a3976"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":218,"end_line":245,"hash":"6bcb44297ad17825e70054d9dc5d2abdde9a2de785106e1abae1dbcb596313b9"},{"id":"func/idlerProjectRead","name":"idlerProjectRead","line":251,"end_line":263,"hash":"4795cb1006101abb3045316ee06ab7564e1c3c7421c22af76c56f86ae27889f2"},{"id":"func/idlerUnprovedSummary","name":"idlerUnprovedSummary","line":268,"end_line":272,"hash":"1dfeb139a94f5b979af1b697dbd84f46a3f156fde6d99094a26619757ceffd7a"},{"id":"func/allSessionsGone","name":"allSessionsGone","line":276,"end_line":283,"hash":"77d7bb47ccd76367f8c088752a0c84dd09c4e03229e24cfaf348e2bc3e652066"},{"id":"func/panePath","name":"panePath","line":287,"end_line":294,"hash":"7422b4755c59d8535f04bb2d8ae2b2e58e0b580543ef0c14aecf48b1fdca62ff"},{"id":"func/idlerEvidence","name":"idlerEvidence","line":301,"end_line":336,"hash":"31d695bf3ff9e9a7e21ddb3dab9fa0c392bb80407fa84e5642112fc781fd8b37"},{"id":"func/boardRead","name":"boardRead","line":340,"end_line":345,"hash":"5de4d9e8c53b8b5620a333ff5d5c606cd01ad165738abe7b9af687c6c1ee8fca"},{"id":"func/inboxRead","name":"inboxRead","line":349,"end_line":354,"hash":"c8dd4e11c9f804a29376794afd8d110ff50d4d332aadbbd82a56cd2bbe2b99f0"},{"id":"func/parseIdlerReport","name":"parseIdlerReport","line":368,"end_line":383,"hash":"d1317252a05b64fbc31b286c504434c8d4c16a6096260f00597f947e6c8408ef"},{"id":"func/readingFrom","name":"readingFrom","line":387,"end_line":394,"hash":"02e45455e68fbaff4be2de1912ed5ad454512d5e11df952143b056157fe0c7e9"},{"id":"func/mailOf","name":"mailOf","line":398,"end_line":410,"hash":"0ec62c2244e0e2727d0d4e98dbc61f786a1e014bdeb01f39a01966b2c3a2f93c"},{"id":"func/countOf","name":"countOf","line":413,"end_line":419,"hash":"0d2f4363a3d949886a923f10779ae39233aa333ebce3c1e23437cf0cbc090ed5"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":424,"end_line":432,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/policy","name":"policy","line":435,"end_line":443,"hash":"0c82487d751f8aa51afd36223b39b7b5e7dc093624363312b499929f3be2eb83"},{"id":"func/firstLine","name":"firstLine","line":446,"end_line":453,"hash":"55405d13f50d5c0b8bed4113c52ff9d3314748ddade7e4dc38afc668638a0cae"},{"id":"func/projects","name":"projects","line":456,"end_line":474,"hash":"7c4517b40f84cd057b6fe50d69cca68cf19ec7baeada4860a4ebae2e489315b1"},{"id":"func/paneOf","name":"paneOf","line":478,"end_line":490,"hash":"dbb60542d466b85f6528d132ec38702d9715958b37e117f38eefb9c0cb950043"},{"id":"func/run","name":"run","line":495,"end_line":498,"hash":"b0ba526783b3c7b75bbd753ee0cc95ab7a15ecd7af00ccd08a10f9bd95c098ae"}]}
 // mutate4go-manifest-end
