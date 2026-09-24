@@ -10,6 +10,11 @@ Feature: Card Activity Feed
   # room, a log to keep quiet, apart from the room where approvals wait, and
   # nothing arrives unless a card actually changed, because the quiet between
   # updates is what tells the operator an agent may be stuck.
+  # Not every update deserves a buzz, and which is which belongs here rather
+  # than in a client setting: a card appearing and a card finishing are ordinary
+  # messages that notify, because they are the news — work starting, work done —
+  # while a routine lane-to-lane step is posted as the kind of event clients do
+  # not notify on, worth seeing in the room and not worth waking anyone for.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -27,6 +32,7 @@ Feature: Card Activity Feed
     Then the operator decrypts a card update saying the card card-activity-feed moved on in the project forgelet-bridge to the lane coder
     When the forge finishes the card card-activity-feed
     Then the operator decrypts a card update saying the card card-activity-feed finished in the project forgelet-bridge
+    And the card updates for the card card-activity-feed notify for its appearance and its finish, and not for the move between lanes
     And the activity room holds exactly 3 card updates
     And the approvals room holds no messages
 
