@@ -92,8 +92,13 @@ func projectRecordsRole(_ context.Context, world any, captures []string) error {
 // the machine does: one tmux session per role, up and quiet. A session judged
 // alive by its pane rather than by the agent's name is what the check reads.
 func forgeGivesLiveSession(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	root, err := w.forgeRootOf(captures[1])
+	return forgeGivesSession(world.(*World), captures[1], captures[2], paneCommand)
+}
+
+// forgeGivesSession starts the forge's role sessions with the named role
+// running the command the scenario asked for.
+func forgeGivesSession(w *World, forge, role, command string) error {
+	root, err := w.forgeRootOf(forge)
 	if err != nil {
 		return err
 	}
@@ -102,20 +107,38 @@ func forgeGivesLiveSession(_ context.Context, world any, captures []string) erro
 		return err
 	}
 	if len(projects) != 1 {
-		return fmt.Errorf("the forge root %s holds %d projects, want exactly one here", captures[1], len(projects))
+		return fmt.Errorf("the forge root %s holds %d projects, want exactly one here", forge, len(projects))
 	}
-	return w.serveRoleSessions(projects[0], captures[2])
+	return w.serveSessions(projects[0], role, command)
 }
 
 // serveRoleSessions starts one quiet tmux session per role of a project, named
 // after the role's pane, so the role the scenario names is a live session and
 // the ones it does not name are not read as dead agents.
 func (w *World) serveRoleSessions(projectDir, liveRole string) error {
+	return w.serveSessions(projectDir, liveRole, paneCommand)
+}
+
+// paneCommand is what a fixture pane runs: something that is not a shell - a
+// shell is what a session that ended looks like - that prints nothing on its
+// own and echoes what is typed into it, which is how a pane shows a request the
+// dashboard, or the doorbell, typed.
+const paneCommand = "cat"
+
+// busyPaneCommand is what a role mid-turn looks like to the check that judges
+// it: codex says so in its own pane line, whatever the terminal draws.
+const busyPaneCommand = `zsh -c 'echo "esc to interrupt"; exec cat'`
+
+// serveSessions starts one tmux session per role of a project, with the role
+// the scenario names running the command it was given and the others running a
+// quiet pane.
+func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 	panes, err := rolePanes(projectDir)
 	if err != nil {
 		return err
 	}
-	if _, err := paneOf(projectDir, liveRole); err != nil {
+	livePane, err := paneOf(projectDir, liveRole)
+	if err != nil {
 		return err
 	}
 	socket, err := w.projectSocket(projectDir)
@@ -123,7 +146,11 @@ func (w *World) serveRoleSessions(projectDir, liveRole string) error {
 		return err
 	}
 	for _, pane := range panes {
-		if err := startPane(socket, pane); err != nil {
+		command := paneCommand
+		if pane == livePane {
+			command = liveCommand
+		}
+		if err := startPane(socket, pane, command); err != nil {
 			return err
 		}
 	}
@@ -149,6 +176,10 @@ func projectsOf(root string) ([]string, error) {
 // way the forge records it. The socket itself lives in the system's short-path
 // scratch: a unix socket path holds about a hundred bytes, and the worktree a
 // scenario runs in is longer than that before anything is added to it.
+//
+// The forge root records the same socket: one forge has one set of panes, and
+// both the check, which reads a project's, and a tool that reads the forge
+// root's — the doorbell rings the pane the dashboard would — have to find them.
 func (w *World) projectSocket(projectDir string) (string, error) {
 	stateDir := filepath.Join(projectDir, ".swarmforge")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
@@ -157,6 +188,9 @@ func (w *World) projectSocket(projectDir string) (string, error) {
 	record := filepath.Join(stateDir, "tmux-socket")
 	if data, err := os.ReadFile(record); err == nil {
 		if socket := strings.TrimSpace(string(data)); socket != "" {
+			if err := w.recordForgeSocket(projectDir, socket); err != nil {
+				return "", err
+			}
 			return socket, nil
 		}
 	}
@@ -169,9 +203,24 @@ func (w *World) projectSocket(projectDir string) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", err
 	}
+	if err := w.recordForgeSocket(projectDir, socket); err != nil {
+		return "", err
+	}
 	w.sockets = appendUnique(w.sockets, socket)
 	w.socketDirs = append(w.socketDirs, dir)
 	return socket, nil
+}
+
+// recordForgeSocket writes the same socket into the forge root the project
+// belongs to, so a tool that reads the forge root finds the panes the project's
+// roles live in.
+func (w *World) recordForgeSocket(projectDir, socket string) error {
+	root := filepath.Dir(filepath.Dir(projectDir))
+	stateDir := filepath.Join(root, ".swarmforge")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(stateDir, "tmux-socket"), []byte(socket+"\n"), 0o644)
 }
 
 // rolePanes reads the pane each role of a project is served in.
@@ -211,14 +260,13 @@ func paneOf(projectDir, role string) (string, error) {
 	return roleColumn(projectDir, role, 3)
 }
 
-// startPane brings up one quiet session on a socket: a session that is up,
-// running something other than a shell, and printing nothing, which is what a
-// role between turns looks like.
-func startPane(socket, pane string) error {
+// startPane brings up one session on a socket running the command the fixture
+// gave it.
+func startPane(socket, pane, command string) error {
 	if _, err := tmux(socket, "has-session", "-t", pane); err == nil {
 		return nil
 	}
-	if _, err := tmux(socket, "new-session", "-d", "-s", pane, "sleep 600"); err != nil {
+	if _, err := tmux(socket, "new-session", "-d", "-s", pane, command); err != nil {
 		return fmt.Errorf("the fixture could not start the pane %s: %w", pane, err)
 	}
 	return nil

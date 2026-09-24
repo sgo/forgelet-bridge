@@ -21,7 +21,7 @@ import (
 )
 
 // kitName is how the report names the tools together.
-const kitName = "the route gate, the idler check and the stall watch"
+const kitName = "the route gate, the idler check, the stall watch and the doorbell"
 
 // Tool is one tool the kit ships: the files it is made of, and the name the
 // report uses for it. The self-check travels with the tool, so a tool the kit
@@ -38,6 +38,7 @@ func Tools() []Tool {
 		{Subject: "route gate", Files: []string{"route_card.sh", "route_card.bb"}, Check: gateSelfCheck},
 		{Subject: "idler check", Files: []string{"role_health.sh", "role_health.bb"}, Check: idlerSelfCheck},
 		{Subject: "stall watch", Files: []string{"stall_watch.sh"}, Check: watchSelfCheck},
+		{Subject: "doorbell", Files: []string{"doorbell.sh", "doorbell.bb"}, Check: doorbellSelfCheck},
 	}
 }
 
@@ -429,6 +430,30 @@ func watchSelfCheck(scripts, forgeRoot string) (string, bool) {
 		return fmt.Sprintf("self-check failed stall watch: ran %q and never named this forge (%q)", command, marker), false
 	}
 	return fmt.Sprintf("self-check stall watch: ran %q, found marker %q", command, marker), true
+}
+
+// doorbellSelfCheck runs the doorbell over the forge and reads the line it opens
+// with: which pane, of which role, it looked at. A doorbell that cannot name the
+// pane it would ring has nothing to say about a request that went missing.
+func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
+	command := "doorbell.sh " + forgeRoot
+	marker := "read the pane"
+	out, _ := run(filepath.Join(scripts, "doorbell.sh"), forgeRoot)
+	if !strings.Contains(out, marker) {
+		return fmt.Sprintf("self-check failed doorbell: ran %q and never said what it read (%q)", command, marker), false
+	}
+	return fmt.Sprintf("self-check doorbell: ran %q, and the doorbell said: %s", command, doorbellRead(out)), true
+}
+
+// doorbellRead is what the doorbell said it read, which is what its first line
+// carries.
+func doorbellRead(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "doorbell: ") {
+			return strings.TrimPrefix(line, "doorbell: ")
+		}
+	}
+	return "nothing"
 }
 
 // policy writes down the gate policy the installer found and left where it was.

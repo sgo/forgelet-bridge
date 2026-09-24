@@ -32,7 +32,7 @@ func dashboardTakesRequestStep(_ context.Context, world any, captures []string) 
 // dashboardTakesRequest gives a chat request to the forge's dashboard the way
 // its clients do, which is what wakes the lieutenant.
 func (w *World) dashboardTakesRequest(text string) error {
-	root, err := singleForge(w)
+	root, err := boardForge(w)
 	if err != nil {
 		return err
 	}

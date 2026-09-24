@@ -18,6 +18,7 @@ var kitScripts = []struct {
 	{"route gate", "route_card.sh"},
 	{"idler check", "role_health.sh"},
 	{"stall watch", "stall_watch.sh"},
+	{"doorbell", "doorbell.sh"},
 }
 
 // adapterInstallsKit runs the served forge root's adapter, which installs the
@@ -58,7 +59,7 @@ func servedForgeInstallsKit(w *World, name string) error {
 // installerInstalledTheKit checks the report says the kit landed.
 func installerInstalledTheKit(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
-	phrase := "installed the route gate, the idler check and the stall watch"
+	phrase := "installed the route gate, the idler check, the stall watch and the doorbell"
 	return outputSays(w.adapterOutput, phrase, fmt.Sprintf("the installer's output does not say %q", phrase))
 }
 

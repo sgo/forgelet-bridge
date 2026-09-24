@@ -51,6 +51,8 @@ type World struct {
 	// kitErr is what the kit installer returned: a self-check that read
 	// nothing leaves it non-zero while the report still says why.
 	kitErr error
+	// doorbellOutput is what the doorbell last said about a forge's requests.
+	doorbellOutput string
 	// keepScenarios and keepMutants are how many runs of each kind the fixture
 	// keeps; scenarioRuns and mutantRuns are the ones it made, oldest first,
 	// and runsOutput is what a clean up said.

@@ -47,9 +47,10 @@ func forgeFinishesCard(_ context.Context, world any, captures []string) error {
 	return setCardLane(root, approvalProject, captures[1], board.DoneLane)
 }
 
-// boardForge is the one forge a board step works with: the forge the bridge
-// serves when it serves one, and otherwise the one fixture forge the scenario
-// declared. A scenario about a forge's own board need not run the bridge.
+// boardForge is the one forge a step works with when the scenario is about that
+// forge's own files: the forge the bridge serves when it serves one, and
+// otherwise the one fixture forge the scenario declared. A scenario about a
+// forge's board, or its dashboard queue, need not run the bridge at all.
 func boardForge(w *World) (string, error) {
 	if len(w.configured) == 1 {
 		return w.configured[0], nil
