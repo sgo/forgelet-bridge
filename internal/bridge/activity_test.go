@@ -435,3 +435,54 @@ func TestOwedForCountsEveryKindOfWork(t *testing.T) {
 		t.Errorf("owedFor = %d, want every kind counted: 1 chat, 2 approvals, 3 clarifications", got)
 	}
 }
+
+func TestTickReportsWorkWhenItPostsNewsAndRemembersHistory(t *testing.T) {
+	board := &fakeBoard{}
+	// One card in flight, which is news, beside one that finished before the
+	// bridge got here, which is history: the tick posts the first and remembers
+	// the second, and that is a tick that carried work out.
+	board.set(boardCard("specifier"), finishedCards(1)[0])
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	if status := readStatus(t, filepath.Join(cfg.StateDir, StatusName)); status.Idle {
+		t.Errorf("status = %+v, want the tick that posted a card update and remembered history to report work", status)
+	}
+}
+
+func TestTickPostsAMoveWithoutCallingTheForgeUnhappy(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(boardCard("specifier"))
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	board.set(boardCard("coder"))
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	status := readStatus(t, filepath.Join(cfg.StateDir, StatusName))
+	if len(status.UnhappyForges) != 0 {
+		t.Errorf("unhappy forges = %v, want the notice posted without the forge called unhappy", status.UnhappyForges)
+	}
+	moved := false
+	for _, sent := range rooms.sentMessages() {
+		if sent.notice && strings.Contains(sent.body, "moved on") {
+			moved = true
+		}
+	}
+	if !moved {
+		t.Errorf("sent = %+v, want the move posted as a notice", rooms.sentMessages())
+	}
+}
