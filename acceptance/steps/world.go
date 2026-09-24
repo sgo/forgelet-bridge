@@ -56,6 +56,10 @@ type World struct {
 	// activityCount is how many card updates the activity room held when a step
 	// last counted them, which is what a restart must not add to.
 	activityCount int
+	// scheduleRoots and scheduleOutput are the forge roots the forge schedule
+	// was last run for, and what it said.
+	scheduleRoots  []string
+	scheduleOutput string
 	// keepScenarios and keepMutants are how many runs of each kind the fixture
 	// keeps; scenarioRuns and mutantRuns are the ones it made, oldest first,
 	// and runsOutput is what a clean up said.

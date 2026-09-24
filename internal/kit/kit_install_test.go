@@ -52,6 +52,7 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	writeScript(t, filepath.Join(dir, "role_health.sh"), "#!/bin/sh\necho 'coder idle-holding-card refund-card new=0 in_process=1'\n")
 	writeScript(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")
 	writeScript(t, filepath.Join(dir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+forgeRoot+"</string>'\n")
+	writeScript(t, filepath.Join(dir, "forge_schedule.sh"), "#!/bin/sh\necho 'the forge schedule ran'\n")
 	writeScript(t, filepath.Join(dir, "doorbell.sh"), "#!/bin/sh\necho 'doorbell: read the pane fixture-master of the role master'\n")
 	writeScript(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
 	return dir
