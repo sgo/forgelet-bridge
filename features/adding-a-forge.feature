@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=4bd6f0661122cce233bcfaf355ad2fe7f94284f57125c0244ed58533ba867055
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T15:01:26.292383Z","feature_name":"Adding A Forge","feature_path":"features/adding-a-forge.feature","background_hash":"d31ef266305b23e885c050863c022be588db58e2aa107cc3a31129869eff6ae1","implementation_hash":"sha256:5706c7861405e016f277433f9f5f95f1d78e35d51b26b0be653b999f91e0e109","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-24T16:30:00.778997Z","feature_name":"Adding A Forge","feature_path":"features/adding-a-forge.feature","background_hash":"d31ef266305b23e885c050863c022be588db58e2aa107cc3a31129869eff6ae1","implementation_hash":"sha256:5706c7861405e016f277433f9f5f95f1d78e35d51b26b0be653b999f91e0e109","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Adding A Forge
