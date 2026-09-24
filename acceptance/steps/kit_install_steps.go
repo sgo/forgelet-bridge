@@ -175,16 +175,40 @@ func installerFailed(_ context.Context, world any, _ []string) error {
 	return nil
 }
 
-// idlerSelfCheckReportsTheForgeNotRunning checks a forge whose roles have no
-// sessions is reported as that, rather than passing as a quiet install.
-func idlerSelfCheckReportsTheForgeNotRunning(_ context.Context, world any, _ []string) error {
+// idlerSelfCheckSaysItReadNothing checks a forge with no structure at all is
+// reported as that: no roles file, no board and no inbox is a wrong path or a
+// wrong forge, which is what the self-check exists to catch.
+func idlerSelfCheckSaysItReadNothing(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
 	line, err := kitSelfCheckLine(w.adapterOutput, "idler check")
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(line, "the forge is not running") {
-		return fmt.Errorf("the self-check does not report the forge as not running:\n%s", line)
+	if !strings.Contains(line, "read no roles, no board and no inbox") {
+		return fmt.Errorf("the self-check does not say it read nothing at all:\n%s", line)
+	}
+	return nil
+}
+
+// installerNamesTheProjectsAndThePaneItCouldNotProve checks a stopped forge is
+// still read: the report names the projects it read and the pane it could not
+// prove, so a later run can prove it.
+func installerNamesTheProjectsAndThePaneItCouldNotProve(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	line, err := kitSelfCheckLine(w.adapterOutput, "idler check")
+	if err != nil {
+		return err
+	}
+	projects, ok := kitValue(line, "read the projects")
+	if !ok || !strings.Contains(projects, "projects") {
+		return fmt.Errorf("the self-check does not name the projects it read:\n%s", line)
+	}
+	if !strings.Contains(line, "could not prove a pane") {
+		return fmt.Errorf("the self-check does not say which reading it could not prove:\n%s", line)
+	}
+	pane, ok := kitValue(line, "nothing is up on")
+	if !ok || strings.TrimSpace(pane) == "" {
+		return fmt.Errorf("the self-check does not name the pane it could not prove:\n%s", line)
 	}
 	return nil
 }

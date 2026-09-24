@@ -67,7 +67,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 	if err := os.MkdirAll(scripts, 0o755); err != nil {
 		return report, err
 	}
-	changed, installed, err := installTools(&report, kitDir, scripts)
+	changed, err := installTools(&report, kitDir, scripts)
 	if err != nil {
 		return report, err
 	}
@@ -80,7 +80,7 @@ func Install(forgeRoot, kitDir string) (Report, error) {
 		return report, err
 	}
 	report.line("left alone loading the stall watch's agent: the machine's own step, and the agent it runs is written down")
-	selfChecks(&report, scripts, forgeRoot, installed)
+	selfChecks(&report, scripts, forgeRoot)
 	policy(&report, forgeRoot)
 	return report, nil
 }
@@ -105,24 +105,20 @@ func forgeDir(forgeRoot string) (string, error) {
 }
 
 // installTools copies every file of the kit into the forge's scripts, and says
-// whether any of them changed and which tools this pass put there.
-func installTools(report *Report, kitDir, scripts string) (bool, map[string]bool, error) {
+// whether any of them changed.
+func installTools(report *Report, kitDir, scripts string) (bool, error) {
 	changed := false
-	installed := map[string]bool{}
 	for _, tool := range Tools() {
-		put := false
 		for _, file := range tool.Files {
 			outcome, err := installFile(tool.Subject, filepath.Join(kitDir, file), filepath.Join(scripts, file))
 			if err != nil {
-				return changed, installed, err
+				return changed, err
 			}
 			report.line(outcome.line)
 			changed = changed || outcome.changed
-			put = put || outcome.changed
 		}
-		installed[tool.Subject] = put
 	}
-	return changed, installed, nil
+	return changed, nil
 }
 
 // installOutcome is what copying one file did.
@@ -182,24 +178,14 @@ func installAgent(report *Report, scripts, forgeRoot string) error {
 	return nil
 }
 
-// selfChecks runs each tool this pass installed against the forge and writes
-// down what it ran and what it looked for. A reading that does not fit is a
-// failure in the report, not silence. A tool that was already current is left
-// alone: this pass put nothing there, and running the installer again is meant
-// to be safe wherever the forge happens to be.
-func selfChecks(report *Report, scripts, forgeRoot string, installed map[string]bool) {
-	checked := false
+// selfChecks runs every tool the kit ships against the forge and writes down
+// what it ran and what it looked for. A reading that does not fit is a failure
+// in the report, not silence.
+func selfChecks(report *Report, scripts, forgeRoot string) {
 	for _, tool := range Tools() {
-		if !installed[tool.Subject] {
-			continue
-		}
-		checked = true
 		line, ok := tool.Check(scripts, forgeRoot)
 		report.line(line)
 		report.failed = report.failed || !ok
-	}
-	if !checked {
-		report.line("left alone the self-checks: the kit was already installed, so there was nothing new to prove")
 	}
 }
 
@@ -221,17 +207,36 @@ func gateSelfCheck(scripts, forgeRoot string) (string, bool) {
 }
 
 // idlerSelfCheck runs the check over every project the forge serves and reports
-// the first reading that shows it read the forge: a live pane, a board row and
-// an inbox.
+// what it read. The pane is the reading most worth proving - it is the one that
+// broke when Claude Code started reporting its version instead of its name - but
+// a forge that is not running is not a fault: installing the tools before
+// starting the forge is the order most people choose. Such a pass succeeds and
+// names the projects it read and the pane it could not prove, so a later run can
+// prove it. What still fails is a forge with no structure to read at all: no
+// roles file, no board and no inbox, which is a wrong path or a wrong forge
+// rather than a quiet one.
 func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	projects, err := projects(forgeRoot)
 	if err != nil || len(projects) == 0 {
-		return "self-check failed idler check: the forge serves no project to read", false
+		return fmt.Sprintf("self-check failed idler check: %s holds no project with a roles file, so it read no roles, no board and no inbox",
+			filepath.Join(forgeRoot, "projects")), false
 	}
+	var unproved []string
 	var first string
 	for _, project := range projects {
 		command := "role_health.sh " + project + " --forge-root " + forgeRoot
 		out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
+		notRunning, readings := parseIdlerReport(out)
+		if notRunning || allSessionsGone(readings) {
+			unproved = append(unproved, project)
+			continue
+		}
+		if len(readings) == 0 {
+			if first == "" {
+				first = fmt.Sprintf("self-check failed idler check: ran %q, which read no role on a project that holds one", command)
+			}
+			continue
+		}
 		line, ok := idlerEvidence(project, command, out)
 		if ok {
 			return line, true
@@ -240,7 +245,34 @@ func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 			first = line
 		}
 	}
+	if len(unproved) > 0 {
+		command := "role_health.sh " + unproved[0] + " --forge-root " + forgeRoot
+		return fmt.Sprintf("self-check idler check: ran %q, read the projects %s and could not prove a pane: nothing is up on %s",
+			command, strings.Join(unproved, ", "), panePath(unproved[0])), true
+	}
 	return first, false
+}
+
+// allSessionsGone reports whether every reading names a pane whose session has
+// ended. A role the check read and judged is a read, whatever it judged.
+func allSessionsGone(readings []reading) bool {
+	for _, found := range readings {
+		if found.Verdict != "session-gone" {
+			return false
+		}
+	}
+	return len(readings) > 0
+}
+
+// panePath is where a project's panes live: the socket the check reads them on.
+// A forge with no socket at all says so rather than naming nothing.
+func panePath(project string) string {
+	path := filepath.Join(project, ".swarmforge", "tmux-socket")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return path + " (no socket written yet)"
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // idlerEvidence is what one run of the check read: the pane it looked at, the

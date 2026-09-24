@@ -206,7 +206,7 @@ func TestIdlerSelfCheckFailsWhenTheForgeServesNoProject(t *testing.T) {
 	writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\nexit 0\n")
 
 	line, ok := idlerSelfCheck(scripts, root)
-	if ok || !strings.Contains(line, "serves no project to read") {
+	if ok || !strings.Contains(line, "read no roles, no board and no inbox") {
 		t.Errorf("idlerSelfCheck = (%q, %v), want a failure naming the empty forge", line, ok)
 	}
 }
@@ -252,7 +252,7 @@ func TestIdlerSelfCheckFailsWhenNoProjectHasARolesFile(t *testing.T) {
 	writeScript(t, filepath.Join(scripts, "role_health.sh"), "#!/bin/sh\nexit 0\n")
 
 	line, ok := idlerSelfCheck(scripts, root)
-	if ok || !strings.Contains(line, "serves no project to read") {
+	if ok || !strings.Contains(line, "read no roles, no board and no inbox") {
 		t.Errorf("idlerSelfCheck = (%q, %v), want a failure naming the forge with nothing to read", line, ok)
 	}
 }
@@ -340,7 +340,10 @@ func TestInstallFileReportsATargetItCannotWrite(t *testing.T) {
 	}
 }
 
-func TestInstallProvesTheReadOnThePassThatInstalledTheTools(t *testing.T) {
+// Every pass proves the read, the one that put the tools there and the one that
+// found them already current: a re-run is where a person checks what a forge
+// looks like now, so it is the last pass that should go quiet.
+func TestInstallProvesTheReadOnEveryPass(t *testing.T) {
 	root := fixtureForge(t)
 	kitDir := fixtureKit(t, root)
 
@@ -351,18 +354,15 @@ func TestInstallProvesTheReadOnThePassThatInstalledTheTools(t *testing.T) {
 	if !strings.Contains(first.String(), "self-check idler check") {
 		t.Errorf("the install does not carry the self-check it ran:\n%s", first)
 	}
-	if strings.Contains(first.String(), "left alone the self-checks") {
-		t.Errorf("the install claims it left the self-checks alone although it put the tools there:\n%s", first)
-	}
 
 	second, err := Install(root, kitDir)
 	if err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
-	if !strings.Contains(second.String(), "left alone the self-checks") {
-		t.Errorf("the second install does not say it left the self-checks alone:\n%s", second)
+	if !strings.Contains(second.String(), "the kit was already current") {
+		t.Errorf("the second install does not say the kit was already current:\n%s", second)
 	}
-	if strings.Contains(second.String(), "self-check idler check") {
-		t.Errorf("the second install ran a self-check although it installed nothing:\n%s", second)
+	if !strings.Contains(second.String(), "self-check idler check") {
+		t.Errorf("the second install proves nothing about the forge:\n%s", second)
 	}
 }

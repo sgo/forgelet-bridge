@@ -47,6 +47,29 @@ func projectKeepsANoteWaitingToBePickedUp(_ context.Context, world any, captures
 		"task: "+card+"\n")
 }
 
+// theForgeHasNoProjectStructure takes the project's own structure away: no
+// roles file and no board, which is a wrong path or a wrong forge rather than a
+// forge that is merely quiet.
+func theForgeHasNoProjectStructure(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	store, err := w.declaredForge(captures[1])
+	if err != nil {
+		return err
+	}
+	for _, project := range []string{"forgelet-bridge"} {
+		for _, file := range []string{
+			filepath.Join("roles.tsv"),
+			filepath.Join("board", "tasks.tsv"),
+		} {
+			path := filepath.Join(store.Root(), "projects", project, ".swarmforge", file)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // firstCard is the first card a project's board holds, and the lane it is in.
 func firstCard(projectDir string) (string, string, error) {
 	data, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(board.TasksFile)))
