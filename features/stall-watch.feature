@@ -42,7 +42,7 @@ Feature: Stall Watch
     And the board of the forge root forge-b holds the card export-card in the project forgelet-bridge in the lane reviewer
     And the project forgelet-bridge of the forge root forge-b has handed the card export-card to the role reviewer
     When the stall watch runs for the forge roots forge-a, forge-b
-    Then the watch's agent runs the watch for the forge roots forge-a, forge-b
+    Then the installed agent runs the forge schedule for the forge roots forge-a, forge-b
     And the forge forge-b holds a chat request naming the role reviewer and the forge it came from
 
   # Stall Watch 3: a silent watcher is visible
