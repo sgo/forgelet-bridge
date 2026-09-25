@@ -41,9 +41,9 @@ type cardCompleteFixture struct {
 	err    error
 }
 
-// cardCompleteProject lays out the fixture under the scenario's own directory,
-// once per scenario: the repository, the card's branch, and the bridge's own
-// finishing step copied in as the checkout carries it.
+// cardCompleteProject is the throwaway checkout the card-complete scenarios work
+// with, laid out under the scenario's own directory the first time a scenario
+// asks for it.
 func (w *World) cardCompleteProject() (*cardCompleteFixture, error) {
 	if w.cardComplete != nil {
 		return w.cardComplete, nil
@@ -52,32 +52,52 @@ func (w *World) cardCompleteProject() (*cardCompleteFixture, error) {
 		root:   filepath.Join(w.workDir, "card-complete", "fixture"),
 		branch: "master",
 	}
-	fixture.hook = filepath.Join(fixture.root, filepath.FromSlash(cardCompleteHook))
-	if err := os.MkdirAll(filepath.Dir(fixture.hook), 0o755); err != nil {
-		return nil, err
-	}
-	shipped, err := os.ReadFile(filepath.Join(fixtures.ProjectRoot(), filepath.FromSlash(cardCompleteHook)))
-	if err != nil {
-		return nil, fmt.Errorf("the project ships no finishing step at %s: %w", cardCompleteHook, err)
-	}
-	if err := os.WriteFile(fixture.hook, shipped, 0o755); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(fixture.hook, 0o755); err != nil {
-		return nil, err
-	}
-	if _, err := git(fixture.root, "init", "--quiet", "--initial-branch="+fixture.branch); err != nil {
-		return nil, err
-	}
-	if _, err := git(fixture.root, "add", "-A"); err != nil {
-		return nil, err
-	}
-	if _, err := git(fixture.root, append(append([]string{}, gitIdentity...),
-		"commit", "--quiet", "-m", "a checkout of the bridge")...); err != nil {
+	if err := fixture.becomeACheckoutOfTheBridge(); err != nil {
 		return nil, err
 	}
 	w.cardComplete = fixture
 	return fixture, nil
+}
+
+// becomeACheckoutOfTheBridge lays the fixture out as a checkout of the bridge:
+// its own repository, the bridge's finishing step in place where the tooling
+// looks for it, and one commit holding it, so a push has something of the
+// bridge's to carry.
+func (f *cardCompleteFixture) becomeACheckoutOfTheBridge() error {
+	if err := f.shipTheHook(); err != nil {
+		return err
+	}
+	if _, err := git(f.root, "init", "--quiet", "--initial-branch="+f.branch); err != nil {
+		return err
+	}
+	return commitAll(f.root, "a checkout of the bridge")
+}
+
+// shipTheHook copies the finishing step this project ships into the fixture,
+// where the tooling runs it from.
+func (f *cardCompleteFixture) shipTheHook() error {
+	f.hook = filepath.Join(f.root, filepath.FromSlash(cardCompleteHook))
+	if err := os.MkdirAll(filepath.Dir(f.hook), 0o755); err != nil {
+		return err
+	}
+	shipped, err := os.ReadFile(filepath.Join(fixtures.ProjectRoot(), filepath.FromSlash(cardCompleteHook)))
+	if err != nil {
+		return fmt.Errorf("the project ships no finishing step at %s: %w", cardCompleteHook, err)
+	}
+	if err := os.WriteFile(f.hook, shipped, 0o755); err != nil {
+		return err
+	}
+	return os.Chmod(f.hook, 0o755)
+}
+
+// commitAll stages everything a directory holds and commits it as the fixture's
+// own identity, so a commit the fixture writes looks the same wherever it lands.
+func commitAll(dir, message string) error {
+	if _, err := git(dir, "add", "-A"); err != nil {
+		return err
+	}
+	_, err := git(dir, append(append([]string{}, gitIdentity...), "commit", "--quiet", "-m", message)...)
+	return err
 }
 
 // withOrigin gives the fixture a bare origin of its own, beside it, so the
@@ -120,11 +140,7 @@ func (f *cardCompleteFixture) landCard(card string) error {
 	if err := os.WriteFile(filepath.Join(f.root, card+".md"), []byte("# "+card+"\n"), 0o644); err != nil {
 		return err
 	}
-	if _, err := git(f.root, "add", "-A"); err != nil {
-		return err
-	}
-	if _, err := git(f.root, append(append([]string{}, gitIdentity...),
-		"commit", "--quiet", "-m", card+" landed on "+f.branch)...); err != nil {
+	if err := commitAll(f.root, card+" landed on "+f.branch); err != nil {
 		return err
 	}
 	commit, err := git(f.root, "rev-parse", "HEAD")
@@ -138,23 +154,32 @@ func (f *cardCompleteFixture) landCard(card string) error {
 // moveOriginOn gives the fixture's origin a commit of its own, so the card's
 // branch and the remote have each moved: a push that is not forced cannot land.
 func (f *cardCompleteFixture) moveOriginOn() error {
+	_, err := f.moveOriginOnBy(1)
+	return err
+}
+
+// moveOriginOnBy moves the fixture's origin on by commits of its own, so a
+// scenario can ask what the step does however far the remote has moved ahead. It
+// answers the commit the origin is left holding.
+func (f *cardCompleteFixture) moveOriginOnBy(commits int) (string, error) {
 	elsewhere := filepath.Join(filepath.Dir(f.root), "elsewhere")
 	command := exec.Command("git", "clone", "--quiet", f.origin, elsewhere)
 	if out, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("the fixture could not take a second checkout of its origin: %w: %s", err, out)
+		return "", fmt.Errorf("the fixture could not take a second checkout of its origin: %w: %s", err, out)
 	}
-	if err := os.WriteFile(filepath.Join(elsewhere, "their-own-work.md"), []byte("someone else's work\n"), 0o644); err != nil {
-		return err
+	for round := 0; round < commits; round++ {
+		theirWork := fmt.Sprintf("their-own-work-%d.md", round)
+		if err := os.WriteFile(filepath.Join(elsewhere, theirWork), []byte("someone else's work\n"), 0o644); err != nil {
+			return "", err
+		}
+		if err := commitAll(elsewhere, fmt.Sprintf("their own work, round %d", round)); err != nil {
+			return "", err
+		}
 	}
-	if _, err := git(elsewhere, "add", "-A"); err != nil {
-		return err
+	if _, err := git(elsewhere, "push", "--quiet", "origin", f.branch); err != nil {
+		return "", err
 	}
-	if _, err := git(elsewhere, append(append([]string{}, gitIdentity...),
-		"commit", "--quiet", "-m", "their own work")...); err != nil {
-		return err
-	}
-	_, err := git(elsewhere, "push", "--quiet", "origin", f.branch)
-	return err
+	return git(elsewhere, "rev-parse", "HEAD")
 }
 
 // runHook runs the project's finishing step the way the tooling runs it: no

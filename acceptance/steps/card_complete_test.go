@@ -25,6 +25,15 @@ func cardCompleteCase(t *testing.T, withOrigin bool) *cardCompleteFixture {
 		if err := fixture.withOrigin(); err != nil {
 			t.Fatalf("give the fixture a remote: %v", err)
 		}
+	} else {
+		// A checkout that had a remote and lost it is the shape a project with
+		// nowhere to push has, which is what the scenario's "no remote" means.
+		if err := fixture.withOrigin(); err != nil {
+			t.Fatalf("give the fixture a remote: %v", err)
+		}
+		if err := fixture.withNoOrigin(); err != nil {
+			t.Fatalf("leave the fixture without a remote: %v", err)
+		}
 	}
 	if err := fixture.landCard(pushCard); err != nil {
 		t.Fatalf("land the card's work: %v", err)

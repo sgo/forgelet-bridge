@@ -4,12 +4,88 @@ package steps
 
 import (
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/quick"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 )
+
+// TestPropertyTheFinishingStepNeverRewritesWhatOriginAlreadyHad is the promise
+// the step makes about a shared remote, however far the remote has moved on: a
+// push that cannot land leaves every commit origin held exactly where it was,
+// and a push that can land puts the card's commit there. What another checkout
+// put on origin is never this step's to discard.
+func TestPropertyTheFinishingStepNeverRewritesWhatOriginAlreadyHad(t *testing.T) {
+	base := t.TempDir()
+	cases := 0
+	property := func(ahead int) bool {
+		cases++
+		fixture, theirs, err := finishableFixture(base, cases, ahead)
+		if err != nil {
+			return false
+		}
+		ctx, cancel := stepContext()
+		defer cancel()
+
+		fixture.runHook(ctx, pushCard)
+
+		held, err := fixture.originHolds(fixture.branch)
+		if err != nil {
+			return false
+		}
+		if ahead > 0 {
+			// The remote had work of its own: the step refuses rather than
+			// forcing, and everything origin held is still there.
+			return fixture.err != nil && held == theirs &&
+				strings.Contains(fixture.output, "the push failed")
+		}
+		// The remote had none: the card's commit is the work the step owes it.
+		return fixture.err == nil && held == fixture.commit &&
+			strings.Contains(fixture.output, "pushed")
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 12,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(rnd.Intn(4))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// finishableFixture lays a fixture out under base, in a directory of its own: a
+// checkout of the bridge with the card's work landed and an origin, moved on by
+// however many commits another checkout has already put there. It answers the
+// fixture and the commit the origin holds before the step runs, which is empty
+// when that origin held nothing at all.
+func finishableFixture(base string, caseNumber, ahead int) (*cardCompleteFixture, string, error) {
+	dir := filepath.Join(base, strconv.Itoa(caseNumber))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, "", err
+	}
+	w := newWorld()
+	w.workDir = dir
+	fixture, err := w.cardCompleteProject()
+	if err != nil {
+		return nil, "", err
+	}
+	if err := fixture.withOrigin(); err != nil {
+		return nil, "", err
+	}
+	if err := fixture.landCard(pushCard); err != nil {
+		return nil, "", err
+	}
+	if ahead == 0 {
+		return fixture, "", nil
+	}
+	theirs, err := fixture.moveOriginOnBy(ahead)
+	return fixture, theirs, err
+}
 
 // TestPropertySameDeviceAcceptsTheListingItWasGiven checks the restart rule
 // against itself: the device listing the operator saw before the restart always
