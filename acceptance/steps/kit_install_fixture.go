@@ -7,8 +7,107 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/board"
 )
+
+// lostTheClause is what a doorbell reads when it never carried the clause: the
+// words its ring says about the gate are replaced by words that say nothing of
+// the kind, and the tool still rings. The wording is replaced rather than the
+// code that carries it, so the install meets a doorbell that lost its words
+// rather than one that cannot run.
+var lostTheClause = strings.NewReplacer(
+	"the gate is the operator's", "the gate belongs to somebody",
+	"Do not approve unless the operator says to.", "Approve it if you think it is right.",
+	"the operator's to give", "somebody's to give",
+	"Do not answer it", "Answer it yourself",
+	"unless the operator says to.", "when you think it is right.",
+)
+
+// kitCopy is the kit the next install runs from, when a scenario has given the
+// kit itself something: the project's own tools copied into the scenario's
+// directory, so what a scenario changes is a copy rather than the tree the
+// suite runs from. Its modes come with it, which is what the installer carries.
+func (w *World) kitCopy() (string, error) {
+	if w.kitDir != "" {
+		return w.kitDir, nil
+	}
+	dir := filepath.Join(w.workDir, "kit")
+	if err := copyTree(filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts"), dir); err != nil {
+		return "", err
+	}
+	w.kitDir = dir
+	return dir, nil
+}
+
+// copyTree copies a directory's files, keeping the mode each one carries.
+func copyTree(from, to string) error {
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(filepath.Join(from, entry.Name()))
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(to, entry.Name())
+		if err := os.WriteFile(target, data, info.Mode().Perm()); err != nil {
+			return err
+		}
+		if err := os.Chmod(target, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// theKitsDoorbellHasLostTheClause gives the scenario a kit whose doorbell never
+// carried the clause, which is what a forge's own copy looks like before the
+// installer replaces it with the kit's.
+func theKitsDoorbellHasLostTheClause(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	dir, err := w.kitCopy()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "doorbell.bb")
+	shipped, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lost := lostTheClause.Replace(string(shipped))
+	if lost == string(shipped) {
+		return fmt.Errorf("the kit's own doorbell carries no clause to lose: %s", path)
+	}
+	return os.WriteFile(path, []byte(lost), 0o644)
+}
+
+// theKitsCopyOfTheDoorbellCarriesItsExecutableBit gives the scenario a kit whose
+// doorbell is executable: the .bb the kit ships is run directly as often as the
+// wrapper is, so the installer has to carry the mode rather than guess it.
+func theKitsCopyOfTheDoorbellCarriesItsExecutableBit(_ context.Context, world any, _ []string) error {
+	dir, err := world.(*World).kitCopy()
+	if err != nil {
+		return err
+	}
+	for _, file := range []string{"doorbell.bb", "doorbell.sh"} {
+		if err := os.Chmod(filepath.Join(dir, file), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // lieutenantPrompt is the wording a fixture forge wrote for its own gate: this
 // forge asks about every card, which is its policy and not the installer's.

@@ -75,6 +75,21 @@ func theDashboardTypedTheRequest(_ context.Context, world any, captures []string
 	return w.typeIntoMasterPane(root, request.ID, body)
 }
 
+// theForgeHoldsTheApprovalTheBridgeWrote puts the chat request the bridge writes
+// for an approval the operator forwarded into the forge's dashboard queue: the
+// bridge writes the notification's first line, so the ring can tell what it is.
+func theForgeHoldsTheApprovalTheBridgeWrote(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	return w.dashboardTakesRequest(approvalMessageStart(captures[1], captures[2]))
+}
+
+// theForgeHoldsTheClarificationTheBridgeWrote puts the chat request the bridge
+// writes for a clarification an agent is blocked on into the same queue.
+func theForgeHoldsTheClarificationTheBridgeWrote(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	return w.dashboardTakesRequest(clarificationMessageStart(captures[1]) + captures[2])
+}
+
 // theDashboardTypedTheRequestLongAgo types a request into the pane and then
 // scrolls it out of sight, the way a request the role answered hours ago has
 // left the visible screen while the pane's scrollback still proves it arrived.

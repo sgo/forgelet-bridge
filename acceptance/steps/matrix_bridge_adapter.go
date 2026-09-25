@@ -85,12 +85,16 @@ func (w *World) adapterCommand(ctx context.Context, args ...string) (string, err
 	}
 	command := exec.CommandContext(ctx, installed, args...)
 	command.Dir = fixtures.ProjectRoot()
+	kitDir := filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts")
+	if w.kitDir != "" {
+		kitDir = w.kitDir
+	}
 	command.Env = append(os.Environ(),
 		adapterBinaryEnv+"="+binary,
 		adapterRulesBinaryEnv+"="+installer,
 		adapterRulesDirEnv+"="+filepath.Join(fixtures.ProjectRoot(), "rules"),
 		adapterKitBinaryEnv+"="+kitInstaller,
-		adapterKitDirEnv+"="+filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts"),
+		adapterKitDirEnv+"="+kitDir,
 	)
 	out, runErr := command.CombinedOutput()
 	w.adapterOutput = string(out)

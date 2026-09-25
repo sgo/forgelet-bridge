@@ -22,6 +22,21 @@ func selfChecks(report *Report, scripts, forgeRoot string) {
 // does not hold.
 const selfCheckProposal = "install-kit-self-check"
 
+// The two requests the doorbell's clause self-check rings, and the clauses their
+// rings have to carry: an approval the operator forwarded is the operator's
+// decision, and a clarification an agent is blocked on is the operator's answer.
+// The bridge writes the first line of each notification, so both shapes are
+// knowable rather than guessed at, and the ring - the one moment a session that
+// never read its prompt meets the request - is where the words have to be.
+const (
+	selfCheckApproval      = "Approval for refund-card in forgelet-bridge"
+	selfCheckClarification = "Clarification for forgelet-bridge from coder"
+	gateClause             = "the gate is the operator's"
+	gateRefusal            = "Do not approve unless the operator says to"
+	answerClause           = "the answer is the operator's to give"
+	answerRefusal          = "Do not answer it unless the operator says to"
+)
+
 // gateSelfCheck asks the gate about a proposal the forge does not hold. A gate
 // that reads this forge refuses it by name; a gate that reads nothing says
 // nothing at all. A forge that has been composed and never started has no
@@ -209,7 +224,10 @@ func watchSelfCheck(scripts, forgeRoot string) (string, bool) {
 // pane it would ring has nothing to say about a request that went missing. A
 // forge that has been composed and never started holds no pane to read, which is
 // the shape a Forgelet forge arrives in: there the report names the pane it
-// could not read, so a later run can prove it.
+// could not read, so a later run can prove it. The ring's own words are what a
+// session meets its gate through, so a pass that proves the tool ran is not
+// enough on its own: the check rings the two shapes the bridge writes and reads
+// back the clause each one carries.
 func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
 	command := "doorbell.sh " + forgeRoot
 	marker := "read the pane"
@@ -229,7 +247,60 @@ func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
 	for _, body := range doorbellRang(out) {
 		report += fmt.Sprintf("; it rang the chat request %s that had never been delivered", body)
 	}
-	return report, true
+	clauses, ok := doorbellClauseRead(scripts)
+	if !ok {
+		return clauses, false
+	}
+	return report + "; " + clauses, true
+}
+
+// clause is one gate the ring carries: the request the bridge writes it for, the
+// name the report gives the clause, and the words the ring has to say.
+type clause struct {
+	subject string
+	name    string
+	request string
+	words   []string
+}
+
+// clauses are the two notifications the bridge writes that carry a gate, in the
+// order the report names them.
+func clauses() []clause {
+	return []clause{
+		{subject: "an approval", name: "the gate clause", request: selfCheckApproval, words: []string{gateClause, gateRefusal}},
+		{subject: "a clarification", name: "the answer clause", request: selfCheckClarification, words: []string{answerClause, answerRefusal}},
+	}
+}
+
+// doorbellClauseRead asks the installed doorbell for the ring it would type for
+// each of the two requests the bridge writes, and says whether the clause is in
+// them. The ring's own words are what the check reads rather than a description
+// of them, which is what makes a kit whose doorbell lost the clause fail its own
+// install rather than shipping quietly.
+func doorbellClauseRead(scripts string) (string, bool) {
+	var found []string
+	for _, gate := range clauses() {
+		command := "doorbell.sh print-ring " + gate.request
+		out, _ := run(filepath.Join(scripts, "doorbell.sh"), "print-ring", gate.request)
+		for _, word := range gate.words {
+			if !strings.Contains(out, word) {
+				return fmt.Sprintf("self-check failed doorbell: ran %q and could not find the clause: the ring it would type for %s never says %q",
+					command, gate.subject, word), false
+			}
+		}
+		found = append(found, fmt.Sprintf("it rang %s and found %s (%s)",
+			gate.subject, gate.name, quotedWords(gate.words)))
+	}
+	return strings.Join(found, ", and "), true
+}
+
+// quotedWords is the words one clause is made of, as the report quotes them.
+func quotedWords(words []string) string {
+	quoted := make([]string, 0, len(words))
+	for _, word := range words {
+		quoted = append(quoted, fmt.Sprintf("%q", word))
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // answered is a tool's own words, as a self-check quotes them: the first line it

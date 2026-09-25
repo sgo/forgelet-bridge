@@ -62,9 +62,39 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	writeScript(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")
 	writeScript(t, filepath.Join(dir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+forgeRoot+"</string>'\n")
 	writeScript(t, filepath.Join(dir, "forge_schedule.sh"), "#!/bin/sh\necho 'the forge schedule ran'\n")
-	writeScript(t, filepath.Join(dir, "doorbell.sh"), "#!/bin/sh\necho 'doorbell: read the pane fixture-master of the role master'\n")
+	writeScript(t, filepath.Join(dir, "doorbell.sh"), fixtureDoorbell(true))
 	writeScript(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
+	// The kit ships its .bb files beside the wrappers, and the wrappers are what
+	// run: the .bb files are not executable here, as they are not in the kit the
+	// project ships.
+	for _, file := range []string{"route_card.bb", "role_health.bb", "doorbell.bb"} {
+		if err := os.Chmod(filepath.Join(dir, file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return dir
+}
+
+// fixtureDoorbell is a doorbell that answers the way the self-check reads it: a
+// pass that says which pane it read, and the ring it would type for a request
+// body - with the clauses its two gates carry, or without them, which is what a
+// kit whose doorbell lost the clause looks like.
+func fixtureDoorbell(withClauses bool) string {
+	gate, answer := "nothing", "nothing"
+	if withClauses {
+		gate = "the gate is the operator's: Do not approve unless the operator says to."
+		answer = "the answer is the operator's to give: Do not answer it unless the operator says to."
+	}
+	return "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  print-ring)\n" +
+		"    case \"$2\" in\n" +
+		"      Approval*) echo \"" + gate + "\";;\n" +
+		"      Clarification*) echo \"" + answer + "\";;\n" +
+		"    esac\n" +
+		"    ;;\n" +
+		"  *) echo 'doorbell: read the pane fixture-master of the role master';;\n" +
+		"esac\n"
 }
 
 func TestInstallCopiesTheKitAndSelfChecksIt(t *testing.T) {
@@ -310,6 +340,102 @@ func TestInstallFileReportsATargetItCannotWrite(t *testing.T) {
 
 	if _, err := installFile("route gate", filepath.Join(kitDir, "route_card.sh"), target); err == nil {
 		t.Fatal("installFile reported success for a target it could not write")
+	}
+}
+
+// What a tool is run with is the kit's own business: the kit ships the .bb
+// beside the wrapper executable, and an installer that guessed the mode from
+// the extension would lose that bit on every install.
+func TestInstallKeepsTheModeTheKitsOwnCopyCarries(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+	wanted := map[string]os.FileMode{
+		"route_card.sh":  0o755,
+		"route_card.bb":  0o755,
+		"role_health.sh": 0o750,
+		"role_health.bb": 0o640,
+		"doorbell.bb":    0o755,
+	}
+	for file, mode := range wanted {
+		if err := os.Chmod(filepath.Join(kitDir, file), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := Install(root, kitDir); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	scripts := filepath.Join(root, "swarmforge", "scripts")
+	for file, mode := range wanted {
+		info, err := os.Stat(filepath.Join(scripts, file))
+		if err != nil {
+			t.Fatalf("%s was not installed: %v", file, err)
+		}
+		if info.Mode().Perm() != mode {
+			t.Errorf("%s mode = %v, want the kit's own %v", file, info.Mode().Perm(), mode)
+		}
+	}
+}
+
+// A second install writes nothing, so it cannot take a mode away either.
+func TestInstallLeavesTheForgeCopyOfACurrentKitAlone(t *testing.T) {
+	root := fixtureForge(t)
+	kitDir := fixtureKit(t, root)
+	if err := os.Chmod(filepath.Join(kitDir, "doorbell.bb"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(root, kitDir); err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+
+	if _, err := Install(root, kitDir); err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(root, "swarmforge", "scripts", "doorbell.bb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("the reinstall rewrote the mode to %v, want the kit's own 0755", info.Mode().Perm())
+	}
+}
+
+func TestDoorbellSelfCheckProvesTheClausesItsRingCarries(t *testing.T) {
+	root := fixtureForge(t)
+	scripts := t.TempDir()
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(true))
+
+	line, ok := doorbellSelfCheck(scripts, root)
+
+	if !ok {
+		t.Fatalf("a doorbell whose ring carries both clauses passed nothing: %s", line)
+	}
+	for _, want := range []string{
+		"it rang an approval and found the gate clause",
+		"Do not approve unless the operator says to",
+		"it rang a clarification and found the answer clause",
+		"Do not answer it unless the operator says to",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the self-check does not carry %q:\n%s", want, line)
+		}
+	}
+}
+
+func TestDoorbellSelfCheckRefusesAKitWhoseDoorbellLostTheClause(t *testing.T) {
+	root := fixtureForge(t)
+	scripts := t.TempDir()
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(false))
+
+	line, ok := doorbellSelfCheck(scripts, root)
+
+	if ok {
+		t.Fatalf("a doorbell whose ring lost the clause passed its own install: %s", line)
+	}
+	if !strings.Contains(line, "could not find the clause") {
+		t.Errorf("the self-check does not say the clause was not there:\n%s", line)
 	}
 }
 

@@ -136,3 +136,71 @@ func theMasterPaneHoldsTheRequestTheDoorbellTyped(_ context.Context, world any, 
 	}
 	return nil
 }
+
+// theRingSaysTheGateIsTheOperators checks the ring carries the approval's gate:
+// the operator decides it, and the session that meets it may not approve for
+// them. The words ride with the ring rather than waiting in a prompt that may
+// never be read.
+func theRingSaysTheGateIsTheOperators(_ context.Context, world any, _ []string) error {
+	return theRingSays(world.(*World),
+		"the gate is the operator's",
+		"Do not approve unless the operator says to")
+}
+
+// theRingSaysTheAnswerIsTheOperatorsToGive checks the other half: a
+// clarification is the operator's answer to give, and the session may not answer
+// for them.
+func theRingSaysTheAnswerIsTheOperatorsToGive(_ context.Context, world any, _ []string) error {
+	return theRingSays(world.(*World),
+		"the answer is the operator's to give",
+		"Do not answer it unless the operator says to")
+}
+
+// theRingCarriesNeitherClause checks a request that is neither an approval nor a
+// clarification carries neither clause, so the words mean what they say.
+func theRingCarriesNeitherClause(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	for _, clause := range []string{
+		"the gate is the operator's",
+		"Do not approve unless the operator says to",
+		"the answer is the operator's to give",
+		"Do not answer it unless the operator says to",
+	} {
+		if strings.Contains(text, clause) {
+			return fmt.Errorf("the ring carries %q, and this request holds no such gate:\n%s", clause, text)
+		}
+	}
+	return nil
+}
+
+// theRingSays checks the ring the doorbell typed carried the words of one gate.
+func theRingSays(w *World, wants ...string) error {
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	for _, want := range wants {
+		if !strings.Contains(text, want) {
+			return fmt.Errorf("the ring does not say %q:\n%s", want, text)
+		}
+	}
+	return nil
+}
+
+// ringInTheMasterPane is what the doorbell typed into the master role's pane:
+// the ring itself, which is the only place a clause reaches a session.
+func (w *World) ringInTheMasterPane() (string, error) {
+	root, err := w.theForgeRoot()
+	if err != nil {
+		return "", err
+	}
+	pane, socket, err := w.masterPane(root)
+	if err != nil {
+		return "", err
+	}
+	return paneText(socket, pane)
+}

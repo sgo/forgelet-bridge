@@ -24,6 +24,13 @@
        "the role is not mid-turn); or not rung because the role is busy — injecting\n"
        "into a role mid-turn is exactly the case that loses a request.\n"
        "\n"
+       "The ring carries what the request is: the command that answers it, and the\n"
+       "gate it holds, when it holds one — an approval the operator forwarded is\n"
+       "the operator's decision and a clarification the operator's answer. Printing\n"
+       "what a ring would carry, without a pane to ring:\n"
+       "\n"
+       "  doorbell.sh print-ring <body>\n"
+       "\n"
        "It never rings twice for one request: what it has seen and what it has rung\n"
        "live in <forge-root>/.swarmforge/doorbell.edn.\n"))
 
@@ -166,25 +173,58 @@
 ;; The ring carries the answering command with it for the same reason the
 ;; dashboard's wake does: a request a pane holds without that command is a
 ;; request whose answer never reaches the operator's phone.
-(defn answer-reminder [id]
+;;
+;; It carries the gate for the same reason, and in the same words the
+;; dashboard's wake uses: an approval notification the operator forwarded looks
+;; like any other chat request, but it is a gate, and the gate is the operator's,
+;; not the lieutenant's to take. The bridge writes the notification's first
+;; line, so the shape is knowable rather than guessed at - and the ring is where
+;; a session that never read its prompt, or read a stale copy in a pane that has
+;; been up for days, meets that gate.
+(defn approval-request? [text]
+  (boolean (re-find #"(?m)^Approval for .+ in .+" (or text ""))))
+
+(defn clarification-request? [text]
+  (boolean (re-find #"(?m)^Clarification for .+ from .+" (or text ""))))
+
+(defn answer-reminder [id text]
   (str "Answer with: pack_dashboard_request.sh answer " id " ./tmp/answer.txt"
-       " (a reply only in this pane reaches nobody)."))
+       " (a reply only in this pane reaches nobody)."
+       (when (approval-request? text)
+         (str " This one is an approval gate, and the gate is the operator's: read the"
+              " pending handoff, then reply with your assessment and a recommendation."
+              " Do not approve unless the operator says to."))
+       (when (clarification-request? text)
+         (str " This one is a clarification an agent is blocked on, and the answer is"
+              " the operator's to give: read the question, ground it in the project's"
+              " state, then reply with what you would answer and why. Do not answer it"
+              " unless the operator says to."))))
 
 (defn wake-text [id body]
   (str (if (str/includes? (or body "") "\n")
          (str "[" id "]\n" body)
          (str "[" id "] " body))
        "\n"
-       (answer-reminder id)))
+       (answer-reminder id body)))
 
 (defn ring! [socket pane id body]
   (tmux socket "send-keys" "-t" pane "-l" (wake-text id body))
   (tmux socket "send-keys" "-t" pane "C-m")
   (tmux socket "send-keys" "-t" pane "C-j"))
 
+;; The ring one request would be typed with, for a reader with no pane to ring:
+;; the installer's self-check asks for this rather than standing up a session,
+;; and reads back the words the ring carries. The id is the pass's own name for
+;; the request it has not written down.
+(defn print-ring [body]
+  (println (wake-text "self-check" (or body ""))))
+
 (defn -main [& args]
   (when (some #{"--help" "-h"} args)
     (println usage-text)
+    (System/exit 0))
+  (when (= "print-ring" (first args))
+    (print-ring (second args))
     (System/exit 0))
   (let [root (forge-root args)
         idler (flag-value args "--idler")

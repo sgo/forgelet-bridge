@@ -111,8 +111,15 @@ type installOutcome struct {
 
 // installFile puts one file of the kit into the forge's scripts, and says what
 // it did: a file that already holds exactly what the kit ships is current, and
-// anything else is replaced.
+// anything else is replaced, carrying the mode the kit's own copy has. The mode
+// is the kit's business rather than the extension's - the kit ships a .bb
+// beside each wrapper, and an installer that guessed from the extension would
+// lose the bit the forge keeps on every install.
 func installFile(subject, source, target string) (installOutcome, error) {
+	shipped, err := os.Stat(source)
+	if err != nil {
+		return installOutcome{}, fmt.Errorf("the kit is missing %s: %w", filepath.Base(source), err)
+	}
 	wanted, err := os.ReadFile(source)
 	if err != nil {
 		return installOutcome{}, fmt.Errorf("the kit is missing %s: %w", filepath.Base(source), err)
@@ -124,10 +131,7 @@ func installFile(subject, source, target string) (installOutcome, error) {
 	case err != nil && !os.IsNotExist(err):
 		return installOutcome{}, err
 	}
-	mode := os.FileMode(0o644)
-	if strings.HasSuffix(target, ".sh") {
-		mode = 0o755
-	}
+	mode := shipped.Mode().Perm()
 	if err := os.WriteFile(target, wanted, mode); err != nil {
 		return installOutcome{}, err
 	}

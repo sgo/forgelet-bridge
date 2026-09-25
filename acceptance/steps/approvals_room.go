@@ -37,8 +37,8 @@ func (w *World) approvalsRoom(ctx context.Context) (string, error) {
 }
 
 // approvalMessageStart is the opening line of the bridge's approval message.
-func approvalMessageStart(card string) string {
-	return fmt.Sprintf("Approval for %s in %s", card, approvalProject)
+func approvalMessageStart(card, project string) string {
+	return fmt.Sprintf("Approval for %s in %s", card, project)
 }
 
 // approvalMessage finds the approval message the operator has for a card, in
@@ -63,7 +63,7 @@ func (w *World) forgeApprovalMessage(ctx context.Context, forgeName, card string
 	if err != nil {
 		return "", "", "", err
 	}
-	start := approvalMessageStart(card)
+	start := approvalMessageStart(card, approvalProject)
 	err = waitFor(ctx, fmt.Sprintf("the operator never saw the approval message for %s in %s", card, forgeName), func() (bool, error) {
 		for _, message := range operator.Messages(roomID) {
 			if strings.HasPrefix(message.Body, start) {

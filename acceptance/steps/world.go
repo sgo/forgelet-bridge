@@ -77,6 +77,9 @@ type World struct {
 	// cardComplete is the throwaway project the card-complete scenarios work
 	// with: a repository of its own holding the bridge's own finishing step.
 	cardComplete *cardCompleteFixture
+	// kitDir is the kit the next install runs from, when a scenario has given
+	// the kit itself something; empty means the tools the project ships.
+	kitDir string
 	// watchRoots are the forge roots the stall watch was last run for, and
 	// watchOutput and watchAgent are what its run and its agent said.
 	watchRoots  []string

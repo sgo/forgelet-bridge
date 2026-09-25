@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+	"github.com/unclebob/forgelet-bridge/internal/kit"
 )
 
 // kitScripts are the files the kit leaves in the forge's own scripts, one per
@@ -255,6 +258,79 @@ func selfCheckNamesWhatItCouldNotRead(_ context.Context, world any, captures []s
 	want := "the " + thing + " it could not read"
 	if !strings.Contains(line, want) {
 		return fmt.Errorf("the self-check of the %s does not say %q:\n%s", subject, want, line)
+	}
+	return nil
+}
+
+// doorbellSelfCheckSays checks the installer's line about the doorbell's own
+// self-check carried a phrase: the pass it ran, or the clause it read out of the
+// ring.
+func doorbellSelfCheckSays(w *World, wants ...string) error {
+	line, err := kitSelfCheckLine(w.adapterOutput, "doorbell")
+	if err != nil {
+		return err
+	}
+	for _, want := range wants {
+		if !strings.Contains(line, want) {
+			return fmt.Errorf("the self-check of the doorbell does not say %q:\n%s", want, line)
+		}
+	}
+	return nil
+}
+
+// doorbellSelfCheckFoundTheGateClause checks the report proves one clause by
+// name: the check rings the approval the bridge writes, and the words it reads
+// back are what a kit whose doorbell lost them fails on.
+func doorbellSelfCheckFoundTheGateClause(_ context.Context, world any, _ []string) error {
+	return doorbellSelfCheckSays(world.(*World),
+		"it rang an approval and found the gate clause",
+		"Do not approve unless the operator says to")
+}
+
+// doorbellSelfCheckFoundTheAnswerClause checks the other: a clarification's ring
+// carries the answer's clause, and the check says which words it read.
+func doorbellSelfCheckFoundTheAnswerClause(_ context.Context, world any, _ []string) error {
+	return doorbellSelfCheckSays(world.(*World),
+		"it rang a clarification and found the answer clause",
+		"Do not answer it unless the operator says to")
+}
+
+// doorbellSelfCheckCouldNotFindTheClause checks the other verdict: a ring that
+// lost the clause is a failure on the installer's page rather than a quiet pass.
+func doorbellSelfCheckCouldNotFindTheClause(_ context.Context, world any, _ []string) error {
+	return doorbellSelfCheckSays(world.(*World), "could not find the clause")
+}
+
+// toolsKeepTheKitsModes checks the installer carried the mode the kit's own copy
+// has: a tool the kit ships executable is executable in the forge, whatever its
+// extension suggests, and the update leaves no noise behind.
+func toolsKeepTheKitsModes(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, err := w.forgeRootOf(captures[1])
+	if err != nil {
+		return err
+	}
+	kitDir := w.kitDir
+	if kitDir == "" {
+		kitDir = filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts")
+	}
+	// The files the kit installs are the files its tools are made of, which the
+	// kit itself answers rather than the step reading the directory again.
+	for _, tool := range kit.Tools() {
+		for _, file := range tool.Files {
+			shipped, err := os.Stat(filepath.Join(kitDir, file))
+			if err != nil {
+				return err
+			}
+			installed, err := os.Stat(filepath.Join(root, "swarmforge", "scripts", file))
+			if err != nil {
+				return fmt.Errorf("the forge root %s carries no %s: %w", captures[1], file, err)
+			}
+			if installed.Mode().Perm() != shipped.Mode().Perm() {
+				return fmt.Errorf("the %s the forge root %s carries is %v, and the kit's own copy is %v",
+					file, captures[1], installed.Mode().Perm(), shipped.Mode().Perm())
+			}
+		}
 	}
 	return nil
 }

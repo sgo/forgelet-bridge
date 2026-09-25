@@ -49,7 +49,13 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	write(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")
 	write(t, filepath.Join(dir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+forgeRoot+"</string>'\n")
 	write(t, filepath.Join(dir, "forge_schedule.sh"), "#!/bin/sh\necho 'the forge schedule ran'\n")
-	write(t, filepath.Join(dir, "doorbell.sh"), "#!/bin/sh\necho 'doorbell: read the pane fixture-master of the role master'\n")
+	write(t, filepath.Join(dir, "doorbell.sh"),
+		"#!/bin/sh\n"+
+			"case \"$1\" in\n"+
+			"  print-ring) echo \"the gate is the operator's: Do not approve unless the operator says to."+
+			" the answer is the operator's to give: Do not answer it unless the operator says to.\";;\n"+
+			"esac\n"+
+			"echo 'doorbell: read the pane fixture-master of the role master'\n")
 	write(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
 	return dir
 }
