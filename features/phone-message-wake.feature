@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=f08fa9fc6af1e8535290c279939f81633a369d512722a9aa311b65e4af81236d
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-25T16:58:11.133483Z","feature_name":"Phone Message Wake","feature_path":"features/phone-message-wake.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:67b27f1a12e55a0fdb1b3f2bb2f46cb29cf5c1601459c8be57d948c0942edf5c","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-25T20:48:08.642434Z","feature_name":"Phone Message Wake","feature_path":"features/phone-message-wake.feature","background_hash":"0957242f3378ed649219759eae4a7458319ffb474195e865247a544bbf0769a4","implementation_hash":"sha256:67b27f1a12e55a0fdb1b3f2bb2f46cb29cf5c1601459c8be57d948c0942edf5c","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Phone Message Wake

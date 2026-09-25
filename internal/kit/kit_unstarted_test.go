@@ -64,11 +64,17 @@ func toolsThatReadTheForge() []toolThatReadsTheForge {
 
 // saysItCouldNotReadTheForge writes one tool's stand-in: a script that says the
 // forge root holds no state of its own and refuses, the way a tool says it could
-// not read the thing it works on.
+// not read the thing it works on. The doorbell's stand-in still answers the ring
+// the self-check asks it for: the pass is what cannot read this forge, and the
+// ring is the tool's own words, which are provable there too.
 func saysItCouldNotReadTheForge(t *testing.T, scripts, script, exit, root string) {
 	t.Helper()
+	ring := ""
+	if script == "doorbell.sh" {
+		ring = "case \"$1\" in\n  print-ring) echo \"" + gateClauseWords + " " + answerClauseWords + "\";;\nesac\n"
+	}
 	writeScript(t, filepath.Join(scripts, script),
-		"#!/bin/sh\necho '"+notAForgeRoot+root+"' >&2\nexit "+exit+"\n")
+		"#!/bin/sh\n"+ring+"echo '"+notAForgeRoot+root+"' >&2\nexit "+exit+"\n")
 }
 
 func TestSelfCheckReadsWhatItCouldNotReadOnAForgeThatHasNotBeenStarted(t *testing.T) {
@@ -99,9 +105,15 @@ func TestSelfCheckFailsAStartedForgeWhoseToolReadNothing(t *testing.T) {
 			root := composedButNotStarted(t)
 			start(t, root)
 			scripts := t.TempDir()
-			// A tool that reads nothing says nothing at all, on a forge that has
-			// been started: that is the silence the self-check exists to catch.
-			writeScript(t, filepath.Join(scripts, tool.script), "#!/bin/sh\nexit 0\n")
+			// A tool that reads nothing says nothing at all on its own pass, on a
+			// forge that has been started: that is the silence the self-check
+			// exists to catch. The doorbell's ring still answers the clause, so
+			// what fails here is the pass rather than the words.
+			silent := "#!/bin/sh\nexit 0\n"
+			if tool.script == "doorbell.sh" {
+				silent = fixtureDoorbell(true, "exit 0")
+			}
+			writeScript(t, filepath.Join(scripts, tool.script), silent)
 
 			line, ok := tool.check(scripts, root)
 
@@ -210,7 +222,8 @@ func TestInstallInstallsIntoAForgeThatHasNotBeenStarted(t *testing.T) {
 	writeScript(t, filepath.Join(kitDir, "role_health.bb"), "# the idler check\n")
 	writeScript(t, filepath.Join(kitDir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+root+"</string>'\n")
 	writeScript(t, filepath.Join(kitDir, "forge_schedule.sh"), "#!/bin/sh\necho 'the forge schedule ran'\n")
-	writeScript(t, filepath.Join(kitDir, "doorbell.sh"), "#!/bin/sh\necho '"+notAForgeRoot+root+"' >&2\nexit 2\n")
+	writeScript(t, filepath.Join(kitDir, "doorbell.sh"),
+		fixtureDoorbell(true, "echo '"+notAForgeRoot+root+"' >&2; exit 2"))
 	writeScript(t, filepath.Join(kitDir, "doorbell.bb"), "# the doorbell\n")
 
 	report, err := Install(root, kitDir)
@@ -227,9 +240,57 @@ func TestInstallInstallsIntoAForgeThatHasNotBeenStarted(t *testing.T) {
 		"which has not been started",
 		"could not prove a pane",
 		"the pane it could not read",
+		"it rang an approval and found the gate clause",
+		"it rang a clarification and found the answer clause",
 	} {
 		if !strings.Contains(report.String(), want) {
 			t.Errorf("the report does not carry %q:\n%s", want, report)
 		}
+	}
+}
+
+// TestDoorbellSelfCheckProvesTheClauseOnAForgeThatHasNotBeenStarted is the other
+// side of the pass over an unstarted forge: the pane is the forge's and stands
+// down, and the ring's clauses are the tool's own words, which are provable
+// there - a kit whose doorbell lost them ships quietly nowhere.
+func TestDoorbellSelfCheckProvesTheClauseOnAForgeThatHasNotBeenStarted(t *testing.T) {
+	root := composedButNotStarted(t)
+	scripts := t.TempDir()
+	pass := "echo '" + notAForgeRoot + root + "' >&2; exit 2"
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(true, pass))
+
+	line, ok := doorbellSelfCheck(scripts, root)
+
+	if !ok {
+		t.Fatalf("a doorbell whose ring carries both clauses failed on a forge that has not been started: %s", line)
+	}
+	for _, want := range []string{
+		"the pane it could not read",
+		"it rang an approval and found the gate clause",
+		"it rang a clarification and found the answer clause",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the self-check does not carry %q:\n%s", want, line)
+		}
+	}
+}
+
+// TestDoorbellSelfCheckRefusesAKitThatLostTheClauseOnAForgeThatHasNotBeenStarted
+// is the failure the clause check exists for, on the forge a composition
+// installs into: the kit's own words are read whatever the forge has to prove,
+// so a doorbell that lost them fails its own install here too.
+func TestDoorbellSelfCheckRefusesAKitThatLostTheClauseOnAForgeThatHasNotBeenStarted(t *testing.T) {
+	root := composedButNotStarted(t)
+	scripts := t.TempDir()
+	pass := "echo '" + notAForgeRoot + root + "' >&2; exit 2"
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(false, pass))
+
+	line, ok := doorbellSelfCheck(scripts, root)
+
+	if ok {
+		t.Fatalf("a doorbell whose ring lost the clause passed on a forge that has not been started: %s", line)
+	}
+	if !strings.Contains(line, "could not find the clause") {
+		t.Errorf("the self-check does not say the clause was not there:\n%s", line)
 	}
 }

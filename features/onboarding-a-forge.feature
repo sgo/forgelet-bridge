@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=afac64697b27fdedfb10c603d722e5acc51a8e853a2f2ccdd2286633ce14aa12
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-25T16:55:33.766684Z","feature_name":"Onboarding A Forge","feature_path":"features/onboarding-a-forge.feature","background_hash":"439544b01217c52119ca255eceefb109bc030e063df0a961696694ed5f5b692e","implementation_hash":"sha256:d6fc5c009ceda6825656b7df8124eaa29fe813afb87ac1c23558657455f30967","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-25T20:44:55.745061Z","feature_name":"Onboarding A Forge","feature_path":"features/onboarding-a-forge.feature","background_hash":"439544b01217c52119ca255eceefb109bc030e063df0a961696694ed5f5b692e","implementation_hash":"sha256:d6fc5c009ceda6825656b7df8124eaa29fe813afb87ac1c23558657455f30967","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Onboarding A Forge

@@ -62,7 +62,7 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	writeScript(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")
 	writeScript(t, filepath.Join(dir, "stall_watch.sh"), "#!/bin/sh\necho '<string>"+forgeRoot+"</string>'\n")
 	writeScript(t, filepath.Join(dir, "forge_schedule.sh"), "#!/bin/sh\necho 'the forge schedule ran'\n")
-	writeScript(t, filepath.Join(dir, "doorbell.sh"), fixtureDoorbell(true))
+	writeScript(t, filepath.Join(dir, "doorbell.sh"), fixtureDoorbell(true, readsThePane))
 	writeScript(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
 	// The kit ships its .bb files beside the wrappers, and the wrappers are what
 	// run: the .bb files are not executable here, as they are not in the kit the
@@ -75,15 +75,26 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 	return dir
 }
 
-// fixtureDoorbell is a doorbell that answers the way the self-check reads it: a
-// pass that says which pane it read, and the ring it would type for a request
-// body - with the clauses its two gates carry, or without them, which is what a
-// kit whose doorbell lost the clause looks like.
-func fixtureDoorbell(withClauses bool) string {
+// The clauses the ring carries for the two notifications the bridge writes, as
+// the kit's own doorbell says them: what a kit whose doorbell lost the clause
+// does not say.
+const (
+	gateClauseWords   = "the gate is the operator's: Do not approve unless the operator says to."
+	answerClauseWords = "the answer is the operator's to give: Do not answer it unless the operator says to."
+)
+
+// readsThePane is the line the doorbell's own pass opens with on a forge a
+// session is up on, which is the reading the self-check looks for.
+const readsThePane = "echo 'doorbell: read the pane fixture-master of the role master'"
+
+// fixtureDoorbell is a doorbell that answers the way the self-check reads it: the
+// line its own pass opens with, and the ring it would type for a request body -
+// with the clauses its two gates carry, or without them, which is what a kit
+// whose doorbell lost the clause looks like.
+func fixtureDoorbell(withClauses bool, pass string) string {
 	gate, answer := "nothing", "nothing"
 	if withClauses {
-		gate = "the gate is the operator's: Do not approve unless the operator says to."
-		answer = "the answer is the operator's to give: Do not answer it unless the operator says to."
+		gate, answer = gateClauseWords, answerClauseWords
 	}
 	return "#!/bin/sh\n" +
 		"case \"$1\" in\n" +
@@ -93,7 +104,7 @@ func fixtureDoorbell(withClauses bool) string {
 		"      Clarification*) echo \"" + answer + "\";;\n" +
 		"    esac\n" +
 		"    ;;\n" +
-		"  *) echo 'doorbell: read the pane fixture-master of the role master';;\n" +
+		"  *) " + pass + ";;\n" +
 		"esac\n"
 }
 
@@ -405,7 +416,7 @@ func TestInstallLeavesTheForgeCopyOfACurrentKitAlone(t *testing.T) {
 func TestDoorbellSelfCheckProvesTheClausesItsRingCarries(t *testing.T) {
 	root := fixtureForge(t)
 	scripts := t.TempDir()
-	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(true))
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(true, readsThePane))
 
 	line, ok := doorbellSelfCheck(scripts, root)
 
@@ -427,7 +438,7 @@ func TestDoorbellSelfCheckProvesTheClausesItsRingCarries(t *testing.T) {
 func TestDoorbellSelfCheckRefusesAKitWhoseDoorbellLostTheClause(t *testing.T) {
 	root := fixtureForge(t)
 	scripts := t.TempDir()
-	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(false))
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"), fixtureDoorbell(false, readsThePane))
 
 	line, ok := doorbellSelfCheck(scripts, root)
 
