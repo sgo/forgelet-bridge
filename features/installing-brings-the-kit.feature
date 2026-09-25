@@ -30,6 +30,14 @@ Feature: Installing Brings The Kit
   # a request really was never delivered, and installing is a moment when somebody
   # is reading. That is a deliberate repair, not a surprise, so the report says
   # which requests it rang on the way in.
+  #
+  # A forge that has been composed and never started is the other end of the same
+  # check: nothing has been started there, so there is no roles file, no board, no
+  # inbox and no pane to read anywhere, and a tool that can prove nothing must say
+  # so rather than failing the install. That is the shape a Forgelet forge arrives
+  # in, where the kit is installed before anything is started, and it has to
+  # install the way a forge between cards does. Reading nothing at all is still a
+  # failure: a forge with no project to read is a wrong path or a wrong forge.
 
   Background:
     Given the fixture forge root forge-a carries its own lieutenant prompt
@@ -90,4 +98,13 @@ Feature: Installing Brings The Kit
     When the adapter for the forge root forge-a installs the kit
     Then the master role's pane holds the chat request "is the build green?" the doorbell typed
     And the installer's output says it rang the chat request "is the build green?" that had never been delivered
+    And the installer succeeded
+
+  # Installing Brings The Kit 7: a forge that has not been started installs, and says what it could not prove
+  Scenario: Installing Brings The Kit 7: a forge that has not been started installs, and says what it could not prove
+    Given the fixture forge root forge-a has been composed but never started
+    When the adapter for the forge root forge-a installs the kit
+    Then the self-check of the route gate says the proposal store it could not read
+    And the self-check of the idler check says it read the project, which has not been started, and the pane it could not prove
+    And the self-check of the doorbell says the pane it could not read
     And the installer succeeded
