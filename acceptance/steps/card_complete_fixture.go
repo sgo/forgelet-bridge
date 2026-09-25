@@ -84,9 +84,12 @@ func (f *cardCompleteFixture) shipTheHook() error {
 	if err != nil {
 		return fmt.Errorf("the project ships no finishing step at %s: %w", cardCompleteHook, err)
 	}
-	if err := os.WriteFile(f.hook, shipped, 0o755); err != nil {
+	if err := os.WriteFile(f.hook, shipped, 0o644); err != nil {
 		return err
 	}
+	// Being run is what the tooling asks of the path, and the mode a write
+	// leaves behind is the machine's own umask's business, so the fixture makes
+	// the hook runnable rather than hoping the write did.
 	return os.Chmod(f.hook, 0o755)
 }
 
@@ -225,3 +228,7 @@ func (f *cardCompleteFixture) originHolds(branch string) (string, error) {
 	// for one it does: no branch and no commit, rather than a git error.
 	return git(f.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/"+branch)
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-25T18:54:12+02:00","module_hash":"2c774f1df9ca04ff5722f266203bc22503e5cc21f30ccf601329537d89428f2e","functions":[{"id":"func/World.cardCompleteProject","name":"World.cardCompleteProject","line":47,"end_line":60,"hash":"16d1ce96e5f2eccb53530a82ebea257e22027f7b9f4434aba6bec3884280b146"},{"id":"func/cardCompleteFixture.becomeACheckoutOfTheBridge","name":"cardCompleteFixture.becomeACheckoutOfTheBridge","line":66,"end_line":74,"hash":"ef5437e7e34238e59af01d3c767137e8da79be872fd9e5eec8d28d0ec123ebc7"},{"id":"func/cardCompleteFixture.shipTheHook","name":"cardCompleteFixture.shipTheHook","line":78,"end_line":94,"hash":"3f044b5232b355d56ff72526ecd78aee12c3b679c30891b0e7fc6e3c60116eff"},{"id":"func/commitAll","name":"commitAll","line":98,"end_line":104,"hash":"8d8002a6811c7e591233af4a0c2a542164568c95cc8b091ff3a551bd07bd086a"},{"id":"func/cardCompleteFixture.withOrigin","name":"cardCompleteFixture.withOrigin","line":109,"end_line":122,"hash":"bb7ad71224d819a366407181ef28580c437b78d2069fc1d1eb0c3e44fc6a026c"},{"id":"func/cardCompleteFixture.withNoOrigin","name":"cardCompleteFixture.withNoOrigin","line":126,"end_line":138,"hash":"97bc811c7a973dbe60bada318b8322c0f72a32148f99759cc3cb2317b8501f9f"},{"id":"func/cardCompleteFixture.landCard","name":"cardCompleteFixture.landCard","line":142,"end_line":155,"hash":"cb9bbdf357b5e01f60df2c87e273373eb159ab663ba61b90e862326f18f578cd"},{"id":"func/cardCompleteFixture.moveOriginOn","name":"cardCompleteFixture.moveOriginOn","line":159,"end_line":162,"hash":"b43afd0336a793115a6ccb748d45c4c5d8f5c1e9daa77c05d32bd99fd1d8c631"},{"id":"func/cardCompleteFixture.moveOriginOnBy","name":"cardCompleteFixture.moveOriginOnBy","line":167,"end_line":186,"hash":"12ff1612215f9b8e801b7bf01c4bc5978eaf20b4ceeda54dfa5ee93d9956d3bd"},{"id":"func/cardCompleteFixture.runHook","name":"cardCompleteFixture.runHook","line":191,"end_line":206,"hash":"f6f0bb4df8e0b020fc9c62dc4e2743cd1edead406bd1126d27d2c79e77de4a04"},{"id":"func/cardCompleteFixture.branchCommit","name":"cardCompleteFixture.branchCommit","line":210,"end_line":212,"hash":"fffb898c5ab364b1c6c9a51330f4dd85be66a7bfcaf2ecc9020b0b3bb6ea678b"},{"id":"func/cardCompleteFixture.treeChanged","name":"cardCompleteFixture.treeChanged","line":216,"end_line":222,"hash":"78836a8c02e30739c578b2e3b7755f20f8c488cdc963dd750f7a357f86a0533f"},{"id":"func/cardCompleteFixture.originHolds","name":"cardCompleteFixture.originHolds","line":226,"end_line":230,"hash":"f083d06f64a42944e3a2ba9217d577e05b774df2f74a9e45ad11e8dbb13b01c2"}]}
+// mutate4go-manifest-end

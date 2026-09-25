@@ -1,3 +1,8 @@
+# mutation-stamp: sha256=82ee9f2030768df39fda0484c107bcc5a8d79c593929f85a9bf9e4d884ed727f
+# acceptance-mutation-manifest-begin
+# {"version":1,"tested_at":"2026-09-25T16:58:11.424063Z","feature_name":"Pushing The Bridge When A Card Lands","feature_path":"features/pushing-the-bridge-when-a-card-lands.feature","background_hash":"07b994a4ea48203c5fc7327b67631cc72ed486da87fb84833c66b0b898b451db","implementation_hash":"sha256:415f972838d910ef5ccbadc9c98811ab51f374efee43de5820e27665a1a8f14e","scenarios":[]}
+# acceptance-mutation-manifest-end
+
 Feature: Pushing The Bridge When A Card Lands
 
   # The composition builds a forge's bridge from GitHub's master, so a card

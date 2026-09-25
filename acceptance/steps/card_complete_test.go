@@ -15,12 +15,7 @@ import (
 // the bridge's own finishing step in place.
 func cardCompleteCase(t *testing.T, withOrigin bool) *cardCompleteFixture {
 	t.Helper()
-	w := newWorld()
-	w.workDir = t.TempDir()
-	fixture, err := w.cardCompleteProject()
-	if err != nil {
-		t.Fatalf("lay out the fixture project: %v", err)
-	}
+	fixture := checkoutOfTheBridge(t)
 	if withOrigin {
 		if err := fixture.withOrigin(); err != nil {
 			t.Fatalf("give the fixture a remote: %v", err)
@@ -37,6 +32,21 @@ func cardCompleteCase(t *testing.T, withOrigin bool) *cardCompleteFixture {
 	}
 	if err := fixture.landCard(pushCard); err != nil {
 		t.Fatalf("land the card's work: %v", err)
+	}
+	return fixture
+}
+
+// checkoutOfTheBridge lays the fixture project out the way the scenario's own
+// first step does, in a directory of its own, and leaves the card unlanded so a
+// test can look at what a checkout of the bridge is before anything happens to
+// it.
+func checkoutOfTheBridge(t *testing.T) *cardCompleteFixture {
+	t.Helper()
+	w := newWorld()
+	w.workDir = t.TempDir()
+	fixture, err := w.cardCompleteProject()
+	if err != nil {
+		t.Fatalf("lay out the fixture project: %v", err)
 	}
 	return fixture
 }
@@ -161,5 +171,102 @@ func TestTheProjectShipsItsFinishingStepWhereTheToolingLooks(t *testing.T) {
 	}
 	if info.Mode()&0o111 == 0 {
 		t.Errorf("the finishing step at %s cannot be run: %s", cardCompleteHook, info.Mode())
+	}
+}
+
+// TestTheFixtureStartsAsACheckoutWithTheBridgesOwnCommit pins the shape every
+// scenario stands on: the fixture is a checkout of the bridge before a card
+// lands, so what a push carries is a card on top of the bridge rather than the
+// first thing the repository has ever held.
+func TestTheFixtureStartsAsACheckoutWithTheBridgesOwnCommit(t *testing.T) {
+	fixture := checkoutOfTheBridge(t)
+
+	commits, err := git(fixture.root, "rev-list", "--count", "HEAD")
+	if err != nil {
+		t.Fatalf("the fixture is not a checkout: it holds no commit: %v", err)
+	}
+	if commits != "1" {
+		t.Errorf("the fixture holds %s commits, want the bridge's own before a card lands", commits)
+	}
+}
+
+// TestTheFixtureWithoutARemoteKeepsNoRemote pins what the no-remote scenario
+// means: a fixture asked for no remote has none, so the hook stands down for the
+// remote's absence rather than for a fixture that only says so.
+func TestTheFixtureWithoutARemoteKeepsNoRemote(t *testing.T) {
+	fixture := checkoutOfTheBridge(t)
+	if err := fixture.withOrigin(); err != nil {
+		t.Fatalf("give the fixture a remote: %v", err)
+	}
+	if err := fixture.withNoOrigin(); err != nil {
+		t.Fatalf("leave the fixture without a remote: %v", err)
+	}
+
+	remotes, err := git(fixture.root, "remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remotes != "" {
+		t.Errorf("the fixture still has %q as a remote", remotes)
+	}
+	if fixture.origin != "" {
+		t.Errorf("the fixture still names %q as the origin it pushes to", fixture.origin)
+	}
+}
+
+// TestMovingTheOriginOnMovesItByTheCommitsItWasAskedFor pins the fixture's own
+// arithmetic, which the scenarios that move a remote on rest on: the remote ends
+// up holding the commits the scenario asked for, and the commit the fixture
+// answers with is the one the remote holds.
+func TestMovingTheOriginOnMovesItByTheCommitsItWasAskedFor(t *testing.T) {
+	fixture := cardCompleteCase(t, true)
+
+	theirs, err := fixture.moveOriginOnBy(2)
+	if err != nil {
+		t.Fatalf("move the remote on: %v", err)
+	}
+
+	if theirs == "" {
+		t.Fatal("the fixture answers with no commit for a remote it moved on")
+	}
+	held, err := fixture.originHolds(fixture.branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held != theirs {
+		t.Errorf("the remote holds %q, and the fixture answers with %q", held, theirs)
+	}
+	commits, err := git(fixture.origin, "rev-list", "--count", fixture.branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commits != "2" {
+		t.Errorf("the remote holds %s commits, want the 2 the scenario asked for", commits)
+	}
+}
+
+// TestTheFixtureSeesAChangedTree is the reading the step's promise rests on: a
+// fixture the step has written to says its tree changed, so "changed nothing"
+// can fail when the step leaves something behind.
+func TestTheFixtureSeesAChangedTree(t *testing.T) {
+	fixture := cardCompleteCase(t, true)
+	changed, err := fixture.treeChanged()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("the fixture is dirty before the finishing step runs")
+	}
+
+	if err := os.WriteFile(filepath.Join(fixture.root, "left-behind.md"), []byte("the step's own file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err = fixture.treeChanged()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Error("the fixture does not see a file left behind in its tree")
 	}
 }

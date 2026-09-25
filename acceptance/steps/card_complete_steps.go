@@ -22,21 +22,13 @@ func theFixtureProjectIsACheckoutOfTheBridge(_ context.Context, world any, _ []s
 // theFixtureProjectHasARemote gives the fixture the origin its push has to
 // reach.
 func theFixtureProjectHasARemote(_ context.Context, world any, _ []string) error {
-	fixture, err := world.(*World).cardCompleteProject()
-	if err != nil {
-		return err
-	}
-	return fixture.withOrigin()
+	return cardCompleteStep(world, (*cardCompleteFixture).withOrigin)
 }
 
 // theFixtureProjectHasNoRemote leaves the fixture with nowhere to push, which
 // is not a failure: there is no remote rather than work that was lost.
 func theFixtureProjectHasNoRemote(_ context.Context, world any, _ []string) error {
-	fixture, err := world.(*World).cardCompleteProject()
-	if err != nil {
-		return err
-	}
-	return fixture.withNoOrigin()
+	return cardCompleteStep(world, (*cardCompleteFixture).withNoOrigin)
 }
 
 // theFixtureProjectHoldsTheFinishedCardOnItsMaster lands the card's work on the
@@ -53,11 +45,18 @@ func theFixtureProjectHoldsTheFinishedCardOnItsMaster(_ context.Context, world a
 // the card's branch and the remote have each moved: pushing is refused unless
 // the step forces, and forcing is not the step's business.
 func theFixtureProjectsRemoteHasACommitOfItsOwn(_ context.Context, world any, _ []string) error {
+	return cardCompleteStep(world, (*cardCompleteFixture).moveOriginOn)
+}
+
+// cardCompleteStep is the shape the steps that ask one thing of the fixture
+// take: the project the scenario works with, and the one thing this step asks of
+// it, so the step itself says only what it wants rather than how to find it.
+func cardCompleteStep(world any, action func(*cardCompleteFixture) error) error {
 	fixture, err := world.(*World).cardCompleteProject()
 	if err != nil {
 		return err
 	}
-	return fixture.moveOriginOn()
+	return action(fixture)
 }
 
 // theCardsWorkHasAlreadyReachedTheRemote pushes the fixture's branch the way a
