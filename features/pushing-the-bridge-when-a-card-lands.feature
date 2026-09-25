@@ -11,12 +11,14 @@ Feature: Pushing The Bridge When A Card Lands
   # runs. A push that fails says so instead of passing quietly, a card whose work
   # is already pushed does not mind being pushed again, and a project with no
   # remote has nowhere to push and stands down rather than reporting a failure.
+  # It never forces: a remote that has moved on is a failure to report, not an
+  # overwrite.
   # Deploying a running bridge is not this step's business: the binary a bridge
   # is serving from still needs replacing when a card changed it, and the push
   # says nothing about that either way.
 
   Background:
-    Given the fixture project is a bridge checkout
+    Given the fixture project is a checkout of the bridge
 
   # Pushing The Bridge When A Card Lands 1: a card's work reaches the remote when the card is done
   Scenario: Pushing The Bridge When A Card Lands 1: a card's work reaches the remote when the card is done
@@ -32,7 +34,7 @@ Feature: Pushing The Bridge When A Card Lands
   Scenario: Pushing The Bridge When A Card Lands 2: a push that fails says so rather than passing quietly
     Given the fixture project has a remote
     And the fixture project holds the finished card push-the-bridge-when-a-card-lands on its master
-    And the fixture project's remote refuses the push
+    And the fixture project's remote has a commit of its own
     When the finishing step runs for the card push-the-bridge-when-a-card-lands
     Then the finishing step says the push failed
     And the finishing step failed
