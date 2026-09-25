@@ -74,6 +74,9 @@ type World struct {
 	gateOutput   string
 	gateWords    string
 	gateErr      error
+	// cardComplete is the throwaway project the card-complete scenarios work
+	// with: a repository of its own holding the bridge's own finishing step.
+	cardComplete *cardCompleteFixture
 	// watchRoots are the forge roots the stall watch was last run for, and
 	// watchOutput and watchAgent are what its run and its agent said.
 	watchRoots  []string
