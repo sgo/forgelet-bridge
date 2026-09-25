@@ -118,4 +118,4 @@ Feature: Doorbell
     Given the forge root forge-a gives the role coder a live session
     When the doorbell runs for the forge root forge-a
     Then the master role's pane holds the chat request "is the build green?" the doorbell typed
-    And the ring says nothing about a gate
+    And the ring carries neither clause
