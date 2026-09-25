@@ -223,6 +223,50 @@ func projects(forgeRoot string) ([]string, error) {
 	return found, nil
 }
 
+// started says whether the forge has been started at all: its own roles file is
+// what the first start writes down, and what the tools the kit ships read a
+// forge root by. A forge that has been composed but never started holds none,
+// so there a tool that can prove nothing has proved all there is to prove.
+func started(forgeRoot string) bool {
+	_, err := os.Stat(filepath.Join(forgeRoot, ".swarmforge", "roles.tsv"))
+	return err == nil
+}
+
+// unstartedProjects are the projects a forge holds and has not started: the
+// project's own composition is there and the roles file a start writes is not.
+// They are what the check names when it reads a forge whose projects have never
+// run, in name order.
+func unstartedProjects(forgeRoot string) []string {
+	entries, err := os.ReadDir(filepath.Join(forgeRoot, "projects"))
+	if err != nil {
+		return nil
+	}
+	var found []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		project := filepath.Join(forgeRoot, "projects", entry.Name())
+		if !composed(project) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(project, ".swarmforge", "roles.tsv")); err == nil {
+			continue
+		}
+		found = append(found, project)
+	}
+	sort.Strings(found)
+	return found
+}
+
+// composed says whether a directory under projects/ holds a project: composing
+// one leaves its own swarmforge/ beside it, so a directory without one is not a
+// project the forge serves and does not excuse an install that read nothing.
+func composed(project string) bool {
+	info, err := os.Stat(filepath.Join(project, "swarmforge"))
+	return err == nil && info.IsDir()
+}
+
 // paneOf is the pane one role of a project is served in, as the project's own
 // roles file records it.
 func paneOf(project, role string) string {

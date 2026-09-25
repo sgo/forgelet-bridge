@@ -24,12 +24,19 @@ const selfCheckProposal = "install-kit-self-check"
 
 // gateSelfCheck asks the gate about a proposal the forge does not hold. A gate
 // that reads this forge refuses it by name; a gate that reads nothing says
-// nothing at all.
+// nothing at all. A forge that has been composed and never started has no
+// proposal store to read, and installing into one is the order most people
+// choose: there the report names the store it could not read, so a later run
+// can prove it.
 func gateSelfCheck(scripts, forgeRoot string) (string, bool) {
 	command := "route_card.sh commit " + selfCheckProposal + " --forge-root " + forgeRoot
 	marker := "No proposal record for " + selfCheckProposal
 	out, _ := run(filepath.Join(scripts, "route_card.sh"), "commit", selfCheckProposal, "--forge-root", forgeRoot)
 	if !strings.Contains(out, marker) {
+		if !started(forgeRoot) {
+			return fmt.Sprintf("self-check route gate: ran %q, and the proposal store it could not read: the gate said %q, so the forge has not been started",
+				command, answered(out)), true
+		}
 		return fmt.Sprintf("self-check failed route gate: ran %q and never said %q, so it did not read this forge's proposal store", command, marker), false
 	}
 	return fmt.Sprintf("self-check route gate: ran %q, found marker %q", command, marker), true
@@ -47,6 +54,16 @@ func gateSelfCheck(scripts, forgeRoot string) (string, bool) {
 func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	projects, err := projects(forgeRoot)
 	if err != nil || len(projects) == 0 {
+		// A forge that has been composed and never started is the far end of
+		// the same check: nothing has been started there, so there is no pane
+		// to prove and the project it read is the reading the report carries.
+		// Reading nothing at all where no project exists is still a wrong path
+		// or a wrong forge, and fails.
+		if !started(forgeRoot) {
+			if line, ok := idlerUnstartedRead(scripts, forgeRoot); ok {
+				return line, true
+			}
+		}
 		return fmt.Sprintf("self-check failed idler check: %s holds no project with a roles file, so it read no roles, no board and no inbox",
 			filepath.Join(forgeRoot, "projects")), false
 	}
@@ -71,6 +88,40 @@ func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 		return idlerUnprovedSummary(forgeRoot, unproved), true
 	}
 	return first, false
+}
+
+// idlerUnstartedRead is what the check says about a forge that has been
+// composed and never started: the projects the forge holds are the reading, the
+// pane it could not prove is named, and there is nothing to fail on, so a later
+// run can prove what this one could not. A forge that holds no project at all
+// is not this: that is a wrong path or a wrong forge.
+func idlerUnstartedRead(scripts, forgeRoot string) (string, bool) {
+	unstarted := unstartedProjects(forgeRoot)
+	if len(unstarted) == 0 {
+		return "", false
+	}
+	project := unstarted[0]
+	command := "role_health.sh " + project + " --forge-root " + forgeRoot
+	out, _ := run(filepath.Join(scripts, "role_health.sh"), project, "--forge-root", forgeRoot)
+	return fmt.Sprintf("self-check idler check: ran %q, read %s, which %s not been started, and could not prove a pane: the check said %q and nothing is up on %s",
+		command, projectsRead(unstarted), plural(len(unstarted), "has", "have"), answered(out), panePath(project)), true
+}
+
+// projectsRead names the projects a reading covered, the way the report says
+// them: one project, or the projects it read when the forge holds several.
+func projectsRead(projects []string) string {
+	if len(projects) == 1 {
+		return "the project " + projects[0]
+	}
+	return "the projects " + strings.Join(projects, ", ")
+}
+
+// plural is the wording one reading takes for one thing or for several.
+func plural(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+	return many
 }
 
 // idlerProjectRead runs the check over one project and says what it read: a
@@ -137,12 +188,19 @@ func watchSelfCheck(scripts, forgeRoot string) (string, bool) {
 
 // doorbellSelfCheck runs the doorbell over the forge and reads the line it opens
 // with: which pane, of which role, it looked at. A doorbell that cannot name the
-// pane it would ring has nothing to say about a request that went missing.
+// pane it would ring has nothing to say about a request that went missing. A
+// forge that has been composed and never started holds no pane to read, which is
+// the shape a Forgelet forge arrives in: there the report names the pane it
+// could not read, so a later run can prove it.
 func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
 	command := "doorbell.sh " + forgeRoot
 	marker := "read the pane"
 	out, _ := run(filepath.Join(scripts, "doorbell.sh"), forgeRoot)
 	if !strings.Contains(out, marker) {
+		if !started(forgeRoot) {
+			return fmt.Sprintf("self-check doorbell: ran %q, and the pane it could not read: the doorbell said %q, so the forge has not been started and no socket is written at %s",
+				command, answered(out), filepath.Join(forgeRoot, ".swarmforge", "tmux-socket")), true
+		}
 		return fmt.Sprintf("self-check failed doorbell: ran %q and never said what it read (%q)", command, marker), false
 	}
 	report := fmt.Sprintf("self-check doorbell: ran %q, and the doorbell said: %s", command, doorbellRead(out))
@@ -154,6 +212,16 @@ func doorbellSelfCheck(scripts, forgeRoot string) (string, bool) {
 		report += fmt.Sprintf("; it rang the chat request %s that had never been delivered", body)
 	}
 	return report, true
+}
+
+// answered is a tool's own words, as a self-check quotes them: the first line it
+// said, or "nothing" when it said nothing at all. The report carries the tool's
+// words rather than the installer's guess at them.
+func answered(out string) string {
+	if strings.TrimSpace(out) == "" {
+		return "nothing"
+	}
+	return firstLine(out)
 }
 
 // doorbellRang is the requests one pass rang, as the doorbell named them.

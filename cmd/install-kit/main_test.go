@@ -7,11 +7,19 @@ import (
 	"testing"
 )
 
-// fixtureForge is a forge root the installer can read: one project with a roles
-// file, and the lieutenant prompt that holds the forge's gate policy.
+// fixtureForge is a forge root the installer can read: a forge that has been
+// started, so it holds its own roles file, one project with a roles file of its
+// own, and the lieutenant prompt that holds the forge's gate policy.
 func fixtureForge(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	forgeRoles := "lieutenant\tmaster\t" + root + "\tfixture-lieutenant\tLieutenant\tcodex\ttask\tforward-only\n"
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "roles.tsv"), []byte(forgeRoles), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	project := filepath.Join(root, "projects", "forgelet-bridge")
 	if err := os.MkdirAll(filepath.Join(project, ".swarmforge"), 0o755); err != nil {
 		t.Fatal(err)

@@ -70,6 +70,36 @@ func theForgeHasNoProjectStructure(_ context.Context, world any, captures []stri
 	return nil
 }
 
+// theForgeHasBeenComposedButNeverStarted takes the forge back to the shape it
+// arrives in: its composition and its projects are there, and nothing a start
+// writes down is - no roles file, no board, no inbox and no socket anywhere.
+// That is the shape a Forgelet forge has when the kit is installed into it
+// before anything is started.
+func theForgeHasBeenComposedButNeverStarted(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	store, err := w.declaredForge(captures[1])
+	if err != nil {
+		return err
+	}
+	root := store.Root()
+	if err := os.RemoveAll(filepath.Join(root, ".swarmforge")); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "projects"))
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(root, "projects", entry.Name(), ".swarmforge")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // firstCard is the first card a project's board holds, and the lane it is in.
 func firstCard(projectDir string) (string, string, error) {
 	data, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(board.TasksFile)))

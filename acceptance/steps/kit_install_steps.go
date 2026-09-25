@@ -234,6 +234,48 @@ func installerSaysTheSelfCheckFailed(_ context.Context, world any, _ []string) e
 	return outputSays(w.adapterOutput, "self-check failed", "the installer's output never says a self-check failed")
 }
 
+// selfCheckNamesWhatItCouldNotRead checks a tool that could not read the thing
+// it works on says so rather than failing the install: a forge that has been
+// composed and never started has no proposal store and no pane, and a check
+// that names what it could not read is a check that read what was there.
+func selfCheckNamesWhatItCouldNotRead(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	subject, thing := captures[1], captures[2]
+	line, err := kitSelfCheckLine(w.adapterOutput, subject)
+	if err != nil {
+		return err
+	}
+	want := "the " + thing + " it could not read"
+	if !strings.Contains(line, want) {
+		return fmt.Errorf("the self-check of the %s does not say %q:\n%s", subject, want, line)
+	}
+	return nil
+}
+
+// idlerSelfCheckNamesTheProjectThatHasNotBeenStarted checks the idler check's
+// reading of a forge nothing has been started in: it names the project it read,
+// says it has not been started, and names the pane it could not prove, which is
+// what a later run proves.
+func idlerSelfCheckNamesTheProjectThatHasNotBeenStarted(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	line, err := kitSelfCheckLine(w.adapterOutput, "idler check")
+	if err != nil {
+		return err
+	}
+	project, ok := kitValue(line, "read the project")
+	if !ok || strings.TrimSpace(project) == "" {
+		return fmt.Errorf("the self-check does not name the project it read:\n%s", line)
+	}
+	if !strings.Contains(line, "which has not been started") {
+		return fmt.Errorf("the self-check does not say the project has not been started:\n%s", line)
+	}
+	pane, ok := kitValue(line, "nothing is up on")
+	if !ok || strings.TrimSpace(pane) == "" {
+		return fmt.Errorf("the self-check does not name the pane it could not prove:\n%s", line)
+	}
+	return nil
+}
+
 // installerLeftTheGatePolicyAlone checks the report names the policy it found
 // in the forge's own lieutenant prompt and left where it was.
 func installerLeftTheGatePolicyAlone(_ context.Context, world any, _ []string) error {

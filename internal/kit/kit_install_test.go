@@ -18,11 +18,20 @@ func writeScript(t *testing.T, path, body string) {
 	}
 }
 
-// fixtureForge is a forge root with one project the tools can read, and the
-// lieutenant prompt that holds its gate policy.
+// fixtureForge is a forge root that has been started - its own roles file is
+// there, which is what the tools the kit ships read a forge root by - with one
+// project the tools can read, and the lieutenant prompt that holds its gate
+// policy.
 func fixtureForge(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	forgeRoles := "lieutenant\tmaster\t" + root + "\tfixture-lieutenant\tLieutenant\tcodex\ttask\tforward-only\n"
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "roles.tsv"), []byte(forgeRoles), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	project := filepath.Join(root, "projects", "forgelet-bridge")
 	if err := os.MkdirAll(filepath.Join(project, ".swarmforge"), 0o755); err != nil {
 		t.Fatal(err)
