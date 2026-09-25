@@ -38,6 +38,17 @@ Feature: Installing Brings The Kit
   # in, where the kit is installed before anything is started, and it has to
   # install the way a forge between cards does. Reading nothing at all is still a
   # failure: a forge with no project to read is a wrong path or a wrong forge.
+  #
+  # The kit's copy of a tool is the copy a forge ends up with, because the
+  # installer replaces a forge's whenever it differs: a forge's own words are
+  # discarded on the next install, and nothing says so. So the doorbell's words
+  # about a gate - an approval is the operator's decision, a clarification the
+  # operator's answer - ship in the kit, and the self-check proves them rather
+  # than only the pass: it rings an approval and a clarification and looks for
+  # the clause, so a kit whose doorbell lost it fails its own install instead of
+  # shipping quietly. The installer also keeps the mode the kit's own copy
+  # carries, so a tool the kit ships executable stays executable in the forge
+  # rather than being rewritten to the mode its extension suggests.
 
   Background:
     Given the fixture forge root forge-a carries its own lieutenant prompt
@@ -107,4 +118,26 @@ Feature: Installing Brings The Kit
     Then the self-check of the route gate says the proposal store it could not read
     And the self-check of the idler check says it read the project, which has not been started, and the pane it could not prove
     And the self-check of the doorbell says the pane it could not read
+    And the installer succeeded
+
+  # Installing Brings The Kit 8: the doorbell's self-check proves the clauses its ring carries
+  Scenario: Installing Brings The Kit 8: the doorbell's self-check proves the clauses its ring carries
+    When the adapter for the forge root forge-a installs the kit
+    Then the self-check of the doorbell says it rang an approval and found the gate clause
+    And the self-check of the doorbell says it rang a clarification and found the answer clause
+    And the installer succeeded
+
+  # Installing Brings The Kit 9: a kit whose doorbell lost the clause fails its own install
+  Scenario: Installing Brings The Kit 9: a kit whose doorbell lost the clause fails its own install
+    Given the kit's doorbell has lost the clause
+    When the adapter for the forge root forge-a installs the kit
+    Then the self-check of the doorbell says it could not find the clause
+    And the installer's output says the self-check failed
+    And the installer failed
+
+  # Installing Brings The Kit 10: the installer keeps the mode the kit's own copy carries
+  Scenario: Installing Brings The Kit 10: the installer keeps the mode the kit's own copy carries
+    Given the kit's copy of the doorbell carries its executable bit
+    When the adapter for the forge root forge-a installs the kit
+    Then the tools the forge root forge-a carries keep the modes the kit's copies carry
     And the installer succeeded

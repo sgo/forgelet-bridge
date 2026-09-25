@@ -38,6 +38,16 @@ Feature: Doorbell
   # exists to repair. So the three outcomes stay three — delivered, rung, and not
   # rung because the role was busy — and a later pass, once the role is free,
   # rings what the earlier one had to leave.
+  #
+  # The ring also carries the answering command's neighbour: the two
+  # notifications the bridge writes carry a gate. An approval the operator
+  # forwarded is the operator's decision, not the lieutenant's to take, and a
+  # clarification an agent is blocked on is the operator's answer to give. The
+  # dashboard's wake says so, and the doorbell keeps the same words in its ring
+  # for the same reason it carries the answering command: a session that never
+  # read its prompt, or read a stale copy in a pane that has been up for days,
+  # meets the gate at the ring and nowhere else. A request that is neither says
+  # nothing of the kind.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -86,3 +96,26 @@ Feature: Doorbell
     Then the doorbell says the chat request "is the build green?" was never delivered and rung
     And the master role's pane holds the chat request "is the build green?" the doorbell typed
     And the doorbell's ledger says the chat request "is the build green?" was rung
+
+  # Doorbell 6: an approval the operator forwarded is rung with the gate clause
+  Scenario: Doorbell 6: an approval the operator forwarded is rung with the gate clause
+    Given the forge root forge-a gives the role coder a live session
+    And the forge's dashboard already holds the chat request the bridge wrote for the approval of the card refund-card in the project forgelet-bridge
+    When the doorbell runs for the forge root forge-a
+    Then the master role's pane holds the chat request "Approval for refund-card in forgelet-bridge" the doorbell typed
+    And the ring says the gate is the operator's, and not to approve unless the operator says to
+
+  # Doorbell 7: a clarification is rung with the answer clause
+  Scenario: Doorbell 7: a clarification is rung with the answer clause
+    Given the forge root forge-a gives the role coder a live session
+    And the forge's dashboard already holds the chat request the bridge wrote for the clarification of the project forgelet-bridge from the role coder
+    When the doorbell runs for the forge root forge-a
+    Then the master role's pane holds the chat request "Clarification for forgelet-bridge from coder" the doorbell typed
+    And the ring says the answer is the operator's to give, and not to answer unless the operator says to
+
+  # Doorbell 8: a request that carries no gate says nothing of the kind
+  Scenario: Doorbell 8: a request that carries no gate says nothing of the kind
+    Given the forge root forge-a gives the role coder a live session
+    When the doorbell runs for the forge root forge-a
+    Then the master role's pane holds the chat request "is the build green?" the doorbell typed
+    And the ring says nothing about a gate
