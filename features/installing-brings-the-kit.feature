@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=17b081ade9e4b84ef91fb80b1de530fc565b9212efd90297a529ddee331cf4f3
+# mutation-stamp: sha256=fc2327abd30b7b3133fceecb3e0f025d83a839810076bd488bd3f86806af79d7
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T17:21:07.861089Z","feature_name":"Installing Brings The Kit","feature_path":"features/installing-brings-the-kit.feature","background_hash":"c3482943d65c6e74891e8db70a351607d417005d9f06d1e0503d20e76ef94221","implementation_hash":"sha256:b06eb840e702902aa11dc4320cbd52c393011f05f9942a67600131be6d4d6107","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-25T15:22:04.468605Z","feature_name":"Installing Brings The Kit","feature_path":"features/installing-brings-the-kit.feature","background_hash":"c3482943d65c6e74891e8db70a351607d417005d9f06d1e0503d20e76ef94221","implementation_hash":"sha256:b06eb840e702902aa11dc4320cbd52c393011f05f9942a67600131be6d4d6107","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Installing Brings The Kit

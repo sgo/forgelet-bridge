@@ -75,32 +75,26 @@ func idlerNothingStarted(scripts, forgeRoot string) (string, bool) {
 		filepath.Join(forgeRoot, "projects")), false
 }
 
-// idlerProjectsRead reads every started project the forge serves and says what
-// it read: the first reading that proves the tool read the forge, the first that
-// did not when none proved it, or every project whose pane could not be proved,
-// which is not a fault - nothing is up there, and a later run can prove it.
+// idlerProjectsRead reads every started project the forge serves - the caller
+// hands it at least one - and says what it read: the reading that proves the
+// tool read the forge, or, when none proved it, every project whose pane could
+// not be proved, which is not a fault - nothing is up there, and a later run can
+// prove it. A project the tool could not read at all is a fault whatever else
+// the forge holds: a pane that is not up is the only reading excused.
 func idlerProjectsRead(scripts, forgeRoot string, projects []string) (string, bool) {
 	var unproved []string
-	var first string
 	for _, project := range projects {
 		line, proved, skipped := idlerProjectRead(scripts, forgeRoot, project)
+		if proved {
+			return line, true
+		}
 		if skipped {
 			unproved = append(unproved, project)
 			continue
 		}
-		if proved {
-			return line, true
-		}
-		if first == "" {
-			first = line
-		}
+		return line, false
 	}
-	// A project the tool could not read at all is a fault whatever else the
-	// forge holds: a pane that is not up is the only reading excused.
-	if len(unproved) > 0 && first == "" {
-		return idlerUnprovedSummary(forgeRoot, unproved), true
-	}
-	return first, false
+	return idlerUnprovedSummary(forgeRoot, unproved), true
 }
 
 // idlerUnstartedRead is what the check says about a forge that has been
@@ -265,5 +259,5 @@ func doorbellRead(out string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-24T19:20:34+02:00","module_hash":"c91c2eb9988248d5149ac78bebc8d2c6c1fa7a28633c79ebc95c0a59ec005558","functions":[{"id":"func/selfChecks","name":"selfChecks","line":13,"end_line":19,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":28,"end_line":36,"hash":"1e619c76e525fca762a817046990f848b0debe2aa7fbc215f84bde379a0a3976"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":47,"end_line":74,"hash":"6bcb44297ad17825e70054d9dc5d2abdde9a2de785106e1abae1dbcb596313b9"},{"id":"func/idlerProjectRead","name":"idlerProjectRead","line":80,"end_line":92,"hash":"4795cb1006101abb3045316ee06ab7564e1c3c7421c22af76c56f86ae27889f2"},{"id":"func/idlerUnprovedSummary","name":"idlerUnprovedSummary","line":97,"end_line":101,"hash":"1dfeb139a94f5b979af1b697dbd84f46a3f156fde6d99094a26619757ceffd7a"},{"id":"func/allSessionsGone","name":"allSessionsGone","line":105,"end_line":112,"hash":"77d7bb47ccd76367f8c088752a0c84dd09c4e03229e24cfaf348e2bc3e652066"},{"id":"func/panePath","name":"panePath","line":116,"end_line":123,"hash":"7422b4755c59d8535f04bb2d8ae2b2e58e0b580543ef0c14aecf48b1fdca62ff"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":128,"end_line":136,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/doorbellSelfCheck","name":"doorbellSelfCheck","line":141,"end_line":157,"hash":"e56d8375cca5072525a670ce76edb207b452d573359cc0fe87222c90f15b5a8a"},{"id":"func/doorbellRang","name":"doorbellRang","line":160,"end_line":173,"hash":"f3a49277529cc51598dba6042ef9222e25299cfa5945ed1fff3ce04835dd7732"},{"id":"func/doorbellRead","name":"doorbellRead","line":177,"end_line":184,"hash":"441093ea34681efcb6c72418a22d812498bb637aac4d855bd71342f3242eb018"}]}
+// {"version":1,"tested_at":"2026-09-25T17:18:04+02:00","module_hash":"5262158391441b57e4f60469c0af2d9e4de02aa3d708171f7a624b1ef7131ab3","functions":[{"id":"func/selfChecks","name":"selfChecks","line":13,"end_line":19,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":31,"end_line":43,"hash":"4e0abca726ae840a692d39b48eba1e3a40805c310db4e30814659550593e4355"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":54,"end_line":60,"hash":"5ded6d084da208e4911ab7cb2c54234f8bf73c70952483d430214c527fea87c0"},{"id":"func/idlerNothingStarted","name":"idlerNothingStarted","line":68,"end_line":76,"hash":"4fd54e5463585af41d1f7f40400c09382722e54c5392f987c8bb9ebc7ed2c38e"},{"id":"func/idlerProjectsRead","name":"idlerProjectsRead","line":84,"end_line":98,"hash":"4ac1f4ad9185b4d23102acf45bdf1ec6a8768c07a3524bd5e1734817399be64a"},{"id":"func/idlerUnstartedRead","name":"idlerUnstartedRead","line":105,"end_line":115,"hash":"435b92f0953e24ee237a55d2ee5952c48d83a5cbbd16cc2491e0d327d65a2bce"},{"id":"func/projectsRead","name":"projectsRead","line":119,"end_line":124,"hash":"b6240d6e5a516fd14781cd28d8fc28bba0485bb45da4c5c44829aa163ed40341"},{"id":"func/plural","name":"plural","line":127,"end_line":132,"hash":"9e69b96fbd931b64063f7d8152a7700ae8f043bce14b2f7121c4df62270cbb65"},{"id":"func/idlerProjectRead","name":"idlerProjectRead","line":138,"end_line":150,"hash":"4795cb1006101abb3045316ee06ab7564e1c3c7421c22af76c56f86ae27889f2"},{"id":"func/idlerUnprovedSummary","name":"idlerUnprovedSummary","line":155,"end_line":159,"hash":"1dfeb139a94f5b979af1b697dbd84f46a3f156fde6d99094a26619757ceffd7a"},{"id":"func/allSessionsGone","name":"allSessionsGone","line":163,"end_line":170,"hash":"77d7bb47ccd76367f8c088752a0c84dd09c4e03229e24cfaf348e2bc3e652066"},{"id":"func/panePath","name":"panePath","line":174,"end_line":181,"hash":"7422b4755c59d8535f04bb2d8ae2b2e58e0b580543ef0c14aecf48b1fdca62ff"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":186,"end_line":194,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/doorbellSelfCheck","name":"doorbellSelfCheck","line":202,"end_line":222,"hash":"2b1cfef781617c4e643040c493fff97a771bb13eb60848e85e7af0f642da392f"},{"id":"func/answered","name":"answered","line":227,"end_line":232,"hash":"314e8b572f0c8ab4da8cefb1f9522e0e297304a15877714ebf603e629b130934"},{"id":"func/doorbellRang","name":"doorbellRang","line":235,"end_line":248,"hash":"f3a49277529cc51598dba6042ef9222e25299cfa5945ed1fff3ce04835dd7732"},{"id":"func/doorbellRead","name":"doorbellRead","line":252,"end_line":259,"hash":"441093ea34681efcb6c72418a22d812498bb637aac4d855bd71342f3242eb018"}]}
 // mutate4go-manifest-end

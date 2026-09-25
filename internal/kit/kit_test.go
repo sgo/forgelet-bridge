@@ -321,6 +321,22 @@ func TestDoorbellReadSaysNothingWhenTheDoorbellSaidNoReading(t *testing.T) {
 	}
 }
 
+// TestAnsweredQuotesAToolsWordsOrNamesItsSilence pins what a self-check says a
+// tool said: the first line the tool opened with, so the report carries the
+// tool's own wording, and "nothing" when the tool said nothing at all, so a
+// silent tool is named rather than quoted as an empty string.
+func TestAnsweredQuotesAToolsWordsOrNamesItsSilence(t *testing.T) {
+	said := answered("Not a forge root (no .swarmforge/roles.tsv): /a/forge\nand more below\n")
+	if said != "Not a forge root (no .swarmforge/roles.tsv): /a/forge" {
+		t.Errorf("answered = %q, want the first line the tool opened with", said)
+	}
+	for _, silent := range []string{"", "\n", "   \n\t\n"} {
+		if got := answered(silent); got != "nothing" {
+			t.Errorf("answered(%q) = %q, want a silent tool named", silent, got)
+		}
+	}
+}
+
 func TestIdlerEvidenceCarriesAReadingWithSomethingInFlight(t *testing.T) {
 	project := fixtureProject(t)
 	// One role has an empty lane and an empty inbox, the next holds a card with

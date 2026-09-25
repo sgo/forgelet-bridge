@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=ad853bbf5c0a1c5e05bdf89c31b6812539e8e7a402e14520bf203eca7d9ed8ea
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-24T17:21:05.530086Z","feature_name":"Card Activity Feed","feature_path":"features/card-activity-feed.feature","background_hash":"3a21e1611adb7d74b7f72e2f10edaeb952848835a2c3cc745f7a8c3d2b8bbdd8","implementation_hash":"sha256:e213ba696a2ebf2a3e0490b40d444727b817bceb5de9fe0d883e68c1a4ae69ec","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-25T15:22:02.114674Z","feature_name":"Card Activity Feed","feature_path":"features/card-activity-feed.feature","background_hash":"3a21e1611adb7d74b7f72e2f10edaeb952848835a2c3cc745f7a8c3d2b8bbdd8","implementation_hash":"sha256:e213ba696a2ebf2a3e0490b40d444727b817bceb5de9fe0d883e68c1a4ae69ec","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Card Activity Feed
