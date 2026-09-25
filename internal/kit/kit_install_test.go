@@ -347,28 +347,68 @@ func TestIdlerSelfCheckProvesAReadingThatIsUp(t *testing.T) {
 	}
 }
 
-func TestIdlerSelfCheckFailsOnAProjectItCannotReadEvenWhenAnotherIsStopped(t *testing.T) {
-	root := fixtureForge(t)
-	stopped := filepath.Join(root, "projects", "stopped-project")
-	if err := os.MkdirAll(filepath.Join(stopped, ".swarmforge"), 0o755); err != nil {
-		t.Fatal(err)
+// TestIdlerSelfCheckReadsEveryProjectTheForgeServes is the pass over a forge
+// with two started projects, one of which the check cannot read at all: the
+// project it did read is the reading the report carries, and a project it could
+// not read is a fault when no project proved one, whatever quiet projects sit
+// beside it.
+func TestIdlerSelfCheckReadsEveryProjectTheForgeServes(t *testing.T) {
+	const (
+		quiet    = "forge not-running no role session is up"
+		aReading = "coder idle-holding-card refund-card new=0 in_process=1"
+		nothing  = "exit 0"
+	)
+	cases := []struct {
+		what    string
+		second  string
+		answers string
+		wantOK  bool
+		want    string
+	}{
+		{
+			what:    "a project the check cannot read beside one between sessions",
+			second:  "stopped-project",
+			answers: "echo '" + quiet + "'",
+			wantOK:  false,
+			want:    "which read no role on a project that holds one",
+		},
+		{
+			what:    "a reading beside a project the check cannot read",
+			second:  "aa-unreadable",
+			answers: "echo '" + aReading + "'",
+			wantOK:  true,
+			want:    "board refund-card",
+		},
 	}
-	roles := "coder\tcoder\t" + stopped + "\tfixture-coder\tCoder\tcodex\ttask\tforward-only\n"
-	if err := os.WriteFile(filepath.Join(stopped, ".swarmforge", "roles.tsv"), []byte(roles), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	scripts := t.TempDir()
-	// One project between sessions, beside one the check cannot read at all:
-	// the quiet project is not a fault, and it does not excuse the other.
-	writeScript(t, filepath.Join(scripts, "role_health.sh"),
-		"#!/bin/sh\ncase \"$1\" in\n*stopped-project*) echo 'forge not-running no role session is up';;\n*) exit 0;;\nesac\n")
+	for _, tc := range cases {
+		t.Run(tc.what, func(t *testing.T) {
+			root := fixtureForge(t)
+			servedProject(t, root, tc.second)
+			scripts := t.TempDir()
+			// The second project reads nothing; every other project answers
+			// with what this case is about.
+			writeScript(t, filepath.Join(scripts, "role_health.sh"),
+				"#!/bin/sh\ncase \"$1\" in\n*"+tc.second+"*) "+nothing+";;\n*) "+tc.answers+";;\nesac\n")
 
-	line, ok := idlerSelfCheck(scripts, root)
-	if ok {
-		t.Fatalf("a project the check could not read passed because another was stopped: %s", line)
+			line, ok := idlerSelfCheck(scripts, root)
+
+			if ok != tc.wantOK {
+				t.Fatalf("idlerSelfCheck = %v, want %v:\n%s", ok, tc.wantOK, line)
+			}
+			if !strings.Contains(line, tc.want) {
+				t.Errorf("the self-check does not carry %q:\n%s", tc.want, line)
+			}
+		})
 	}
-	if !strings.Contains(line, "which read no role on a project that holds one") {
-		t.Errorf("the failure does not name the project the check could not read:\n%s", line)
+}
+
+// TestIdlerProjectsReadFailsAPassHandedNoProject pins the shape the caller rules
+// out before it gets here: a reading with no project to read is not a reading,
+// and it fails rather than naming a pane that was never there.
+func TestIdlerProjectsReadFailsAPassHandedNoProject(t *testing.T) {
+	line, ok := idlerProjectsRead(t.TempDir(), t.TempDir(), nil)
+	if ok || line != "" {
+		t.Errorf("idlerProjectsRead(nil) = (%q, %v), want a pass with nothing to read to fail", line, ok)
 	}
 }
 

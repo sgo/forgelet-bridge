@@ -31,6 +31,19 @@ func startProject(t *testing.T, project string) {
 	}
 }
 
+// servedProject lays out one more project beside the ones a fixture forge
+// already serves, named by the test: the roles file a start writes is what makes
+// a directory under projects/ a project the check runs over, in name order.
+func servedProject(t *testing.T, forgeRoot, project string) string {
+	t.Helper()
+	dir := filepath.Join(forgeRoot, "projects", project)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	startProject(t, dir)
+	return dir
+}
+
 func TestProjectsNamesTheProjectsThatHaveRolesFiles(t *testing.T) {
 	root := t.TempDir()
 	withRoles := filepath.Join(root, "projects", "forgelet-bridge", ".swarmforge")
