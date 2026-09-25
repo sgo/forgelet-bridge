@@ -163,10 +163,19 @@
     (or (contains? (:rung ledger) id) (contains? (:delivered ledger) id)) "the ledger"
     :else nil))
 
+;; The ring carries the answering command with it for the same reason the
+;; dashboard's wake does: a request a pane holds without that command is a
+;; request whose answer never reaches the operator's phone.
+(defn answer-reminder [id]
+  (str "Answer with: pack_dashboard_request.sh answer " id " ./tmp/answer.txt"
+       " (a reply only in this pane reaches nobody)."))
+
 (defn wake-text [id body]
-  (if (str/includes? (or body "") "\n")
-    (str "[" id "]\n" body)
-    (str "[" id "] " body)))
+  (str (if (str/includes? (or body "") "\n")
+         (str "[" id "]\n" body)
+         (str "[" id "] " body))
+       "\n"
+       (answer-reminder id)))
 
 (defn ring! [socket pane id body]
   (tmux socket "send-keys" "-t" pane "-l" (wake-text id body))

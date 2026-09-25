@@ -34,7 +34,14 @@
                 :go-package "github.com/unclebob/mutate4go/cmd/mutate4go"}
    "crap4java" {:source "github.com/unclebob/crap4java" :bb-task "crap4java"}
    "dry4java" {:source "github.com/unclebob/dry4java" :bb-task "dry4java"}
-   "mutate4java" {:source "github.com/unclebob/mutate4java" :bb-task "mutate4java"}})
+   "mutate4java" {:source "github.com/unclebob/mutate4java" :bb-task "mutate4java"}
+   ;; forgelet: the Kotlin recipe below is ours. Upstream's registry names Go, Clojure and Java tools
+   ;; only, and a Kotlin project needs slopguard built from source; if this file is ever refreshed from
+   ;; upstream, re-apply this entry and the two functions that serve it. The commit is pinned because
+   ;; slopguard has no release tags yet, and it is one line to change at a tag.
+   "slopguard" {:source "github.com/JeevanThandi/slopguard-kotlin"
+                :gradle-install "app:installDist"
+                :commit "40204ef8f382ed02ca5b143a55dfab1671840383"}})
 
 (def usage-text
   (str "Usage:\n"
@@ -245,12 +252,71 @@
           "fi\n"
           "exec \"$bin\" \"$@\"\n"))))
 
+;; Kotlin tools are built by their own Gradle wrapper, from source: slopguard ships a CLI
+;; (`:app:installDist`) and brings the Kotlin compiler embeddable it parses with. Nothing here is a
+;; metric of our own making; it is the tool the constitution names, built the way its README says.
+;;
+;; Two things a Gradle source needs that a babashka one does not. Its sources are recognised by their
+;; own wrapper rather than by bb.edn, so the clone is checked for a gradlew. And a third-party project's
+;; wrapper usually lags the newest JDK — slopguard's 8.10.2 refuses Java 25 outright — so the build runs
+;; under a JDK the wrapper supports, chosen deliberately below rather than inherited from the ambient
+;; java. Set SWARMFORGE_GRADLE_JAVA_HOME to override the choice.
+(defn gradle-java-home []
+  (let [sdk (fs/path (System/getenv "HOME") ".sdkman" "candidates" "java")
+        supported? #(re-matches #"(?:1[7-9]|2[0-3])\..*" (str (fs/file-name %)))]
+    (or (not-empty (System/getenv "SWARMFORGE_GRADLE_JAVA_HOME"))
+        (some (fn [dir] (when (supported? dir) (str dir)))
+              (reverse (when (fs/directory? sdk) (sort-by str (fs/list-dir sdk)))))
+        (not-empty (System/getenv "JAVA_HOME")))))
+
+(defn ensure-gradle-source! [root source]
+  (let [dir (source-dir root source)]
+    (when-not (fs/exists? (fs/path dir "gradlew"))
+      (clone-source! dir source))
+    dir))
+
+(defn install-gradle-package! [root spec]
+  (let [src (ensure-gradle-source! root (:source spec))
+        task (str ":" (:gradle-install spec))
+        launcher (fs/path src "app" "build" "install" "slopguard-kotlin" "bin" "slopguard-kotlin")]
+    (when-not (fs/which "java")
+      (exit! 1 (str "JDK not found on PATH (17 or newer). Install it, then run: swarm_tool.sh ensure slopguard")))
+    (when-let [commit (:commit spec)]
+      (let [result (sh/sh "git" "-C" (str src) "checkout" "--quiet" commit)]
+        (when-not (zero? (:exit result))
+          (exit! 1 (str "Failed to check out " commit " in " src "\n" (:err result))))))
+    ;; clojure.java.shell replaces the environment rather than merging it, so pass
+    ;; the current environment through with JAVA_HOME set, the way the Go recipe
+    ;; adds GOBIN; otherwise the build sees an unsupported JDK and fails cryptically.
+    (let [java-home (gradle-java-home)
+          env (if java-home (assoc (into {} (System/getenv)) "JAVA_HOME" java-home)
+                  (into {} (System/getenv)))
+          result (sh/sh (str (fs/path src "gradlew")) task :dir (str src) :env env)]
+      (when-not (zero? (:exit result))
+        (exit! 1 (str "Failed to build " (:source spec)
+                      (when java-home (str " (JAVA_HOME=" java-home ")"))
+                      "\n" (:err result) (:out result)))))
+    (str launcher)))
+
+(defn write-gradle-wrapper! [root tool spec]
+  (let [bin (install-gradle-package! root spec)
+        target (wrapper-path root tool)]
+    (write-wrapper!
+     target
+     (str "bin=" (sq bin) "\n"
+          "if [ ! -x \"$bin\" ]; then\n"
+          "  echo \"swarm_tool: missing $bin; run: swarm_tool.sh ensure " tool "\" >&2\n"
+          "  exit 1\n"
+          "fi\n"
+          "exec \"$bin\" \"$@\"\n"))))
+
 (defn install-one! [tool]
   (let [spec (tool-spec tool)
         root (project-root)
         name (canonical-tool tool)
         target (cond
                  (:go-package spec) (write-go-wrapper! root name spec)
+                 (:gradle-install spec) (write-gradle-wrapper! root name spec)
                  (:bb-task spec) (write-bb-wrapper! root name (:bb-task spec)
                                                     (ensure-source! root (:source spec)))
                  :else (write-mvn-wrapper! root name spec))]

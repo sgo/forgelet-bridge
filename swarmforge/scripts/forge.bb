@@ -155,22 +155,69 @@
               (fs/copy file (fs/path dest "swarmforge" "constitution" "articles" name)
                        {:replace-existing true}))))))))
 
+(defn ensure-line-in-file! [file line]
+  (let [lines (when (fs/exists? file) (set (str/split-lines (slurp (str file)))))]
+    (when-not (contains? lines line)
+      (spit (str file) (str line "\n") :append true))))
+
+;; A pack may carry a `gitignore` file: the lines its language needs ignored
+;; before the first build, so build output never becomes the first commit.
+;; They are merged into the project's .gitignore rather than copied over it -
+;; a line the project added later stays, and no line arrives twice.
+(defn copy-pack-ignores! [pack-root dest]
+  (let [src (fs/path pack-root "gitignore")]
+    (when (fs/regular-file? src)
+      (let [file (fs/path dest ".gitignore")]
+        (fs/create-dirs dest)
+        (fs/create-dirs (fs/parent file))
+        (when-not (fs/exists? file)
+          (spit (str file) ""))
+        (doseq [raw (str/split-lines (slurp (str src)))]
+          (let [line (str/trim raw)]
+            (when-not (str/blank? line)
+              (ensure-line-in-file! file line))))))))
+
 (defn overlay-pack! [forge dest pack keep-conf?]
   (copy-shared-scripts! forge dest)
   (copy-shared-articles! forge dest)
-  (copy-pack-local! (pack-dir forge pack) dest keep-conf?))
+  (copy-pack-local! (pack-dir forge pack) dest keep-conf?)
+  (copy-pack-ignores! (pack-dir forge pack) dest))
+
+(defn git-identity
+  "The identity git would use for a commit here, or nil when the machine has
+  none configured."
+  []
+  (let [asked (fn [key]
+                (str/trim (:out (sh {:continue true} "git" "config" "--get" key))))
+        name (asked "user.name")
+        email (asked "user.email")]
+    (when (and (not (str/blank? name)) (not (str/blank? email)))
+      [name email])))
 
 (defn init-git-if-needed! [dir]
   (when-not (fs/exists? (fs/path dir ".git"))
     (sh "git" "init" (str dir))
-    (sh "git" "-C" (str dir) "config" "user.email" "swarmforge@local")
-    (sh "git" "-C" (str dir) "config" "user.name" "SwarmForge")
     (sh "git" "-C" (str dir) "branch" "-M" "master")
     (let [gitignore (fs/path dir ".gitignore")]
       (when-not (fs/exists? gitignore)
         (spit (str gitignore) ".swarmforge/\n.worktrees/\n")))
     (sh {:continue true} "git" "-C" (str dir) "add" ".")
-    (sh {:continue true} "git" "-C" (str dir) "commit" "-q" "-m" "Initial swarmforge project")))
+    ;; Never write an identity into the project's config: the commits in this
+    ;; repository are the operator's work, not the scaffolding tool's, and a
+    ;; repository-local identity would silently claim every later commit too.
+    ;; Only when the machine has no identity at all do we lend one, and then
+    ;; for this single commit rather than for the repository.
+    (let [commit (if (git-identity)
+                   (sh {:continue true} "git" "-C" (str dir)
+                       "commit" "-q" "-m" "Initial swarmforge project")
+                   (sh {:continue true} "git" "-C" (str dir)
+                       "-c" "user.name=SwarmForge Scaffold"
+                       "-c" "user.email=swarmforge@localhost"
+                       "commit" "-q" "-m" "Initial swarmforge project"))]
+      (when-not (zero? (:exit commit))
+        (throw (ex-info (str "Scaffold commit failed in " dir ": "
+                             (str/trim (str (:err commit) (:out commit))))
+                        {:exit (:exit commit)}))))))
 
 (defn clone-github! [url dest]
   (let [result (sh "git" "clone" "--" url (str dest))]
