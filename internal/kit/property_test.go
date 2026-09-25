@@ -103,21 +103,17 @@ func TestPropertyStartedAndUnstartedProjectsSplitTheComposedOnes(t *testing.T) {
 
 // TestPropertyAnInstalledFileIsCurrentTheSecondTime is the installer's own
 // promise: a file that already holds exactly what the kit ships is left alone
-// however it was written, whatever its name and whatever bytes it holds, and a
-// script keeps the mode a script needs while anything else is plain.
+// however it was written, and whatever its name and whatever bytes it holds.
 func TestPropertyAnInstalledFileIsCurrentTheSecondTime(t *testing.T) {
 	root := t.TempDir()
 	// Each case gets its own directory: a name and a body may come round again,
 	// and a file that already holds what the kit ships is not this case's first
 	// install.
 	cases := 0
-	property := func(name string, body []byte, script bool) bool {
+	property := func(name string, body []byte) bool {
 		cases++
 		dir := filepath.Join(root, strconv.Itoa(cases))
 		name = plainFileName(name)
-		if script {
-			name += ".sh"
-		}
 		source := filepath.Join(dir, "kit", name)
 		target := filepath.Join(dir, "forge", name)
 		// Install writes into scripts the installer made first, so lay both
@@ -141,21 +137,65 @@ func TestPropertyAnInstalledFileIsCurrentTheSecondTime(t *testing.T) {
 		if second.line != "already current a tool in "+target {
 			return false
 		}
-		info, err := os.Stat(target)
-		if err != nil {
-			return false
-		}
-		want := os.FileMode(0o644)
-		if strings.HasSuffix(target, ".sh") {
-			want = 0o755
-		}
-		return info.Mode().Perm() == want
+		return true
 	}
 	if err := quick.Check(property, &quick.Config{
 		MaxCount: 200,
 		Values: func(values []reflect.Value, rnd *rand.Rand) {
 			values[0] = reflect.ValueOf(plainFileName(randString(rnd)))
 			values[1] = reflect.ValueOf(randBytes(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestPropertyTheForgeCarriesTheModeTheKitsCopyCarries is what a tool is run
+// with: whatever mode the kit's own copy of a file carries, and whatever the
+// name suggests it is, the forge's copy carries the kit's mode rather than one
+// the installer guessed - an install that rewrote a tool's bit would lose it
+// again on the next one.
+func TestPropertyTheForgeCarriesTheModeTheKitsCopyCarries(t *testing.T) {
+	root := t.TempDir()
+	cases := 0
+	property := func(name string, mode uint32, script bool) bool {
+		cases++
+		dir := filepath.Join(root, strconv.Itoa(cases))
+		name = plainFileName(name)
+		if script {
+			name += ".sh"
+		}
+		source := filepath.Join(dir, "kit", name)
+		target := filepath.Join(dir, "forge", name)
+		for _, laidOut := range []string{filepath.Dir(source), filepath.Dir(target)} {
+			if err := os.MkdirAll(laidOut, 0o755); err != nil {
+				return false
+			}
+		}
+		// The owner keeps read and write, so the file the kit ships can be read
+		// and replaced; everything else about the mode is the kit's business.
+		shipped := os.FileMode(mode&0o777) | 0o600
+		if err := os.WriteFile(source, []byte("a tool\n"), shipped); err != nil {
+			return false
+		}
+		carried, err := os.Stat(source)
+		if err != nil {
+			return false
+		}
+		if _, err := installFile("a tool", source, target); err != nil {
+			return false
+		}
+		installed, err := os.Stat(target)
+		if err != nil {
+			return false
+		}
+		return installed.Mode().Perm() == carried.Mode().Perm()
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 200,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(plainFileName(randString(rnd)))
+			values[1] = reflect.ValueOf(uint32(rnd.Intn(0o777)))
 			values[2] = reflect.ValueOf(rnd.Intn(2) == 0)
 		},
 	}); err != nil {
