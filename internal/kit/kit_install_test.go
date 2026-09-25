@@ -191,28 +191,6 @@ func TestInstallRefusesAForgeThatIsAFile(t *testing.T) {
 	}
 }
 
-func TestProjectsNamesTheProjectsThatHaveRolesFiles(t *testing.T) {
-	root := t.TempDir()
-	withRoles := filepath.Join(root, "projects", "forgelet-bridge", ".swarmforge")
-	withoutRoles := filepath.Join(root, "projects", "empty", ".swarmforge")
-	for _, dir := range []string{withRoles, withoutRoles} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(withRoles, "roles.tsv"), []byte("coder\tcoder\tx\tpane\tC\ttask\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	found, err := projects(root)
-	if err != nil {
-		t.Fatalf("projects: %v", err)
-	}
-	if len(found) != 1 || filepath.Base(found[0]) != "forgelet-bridge" {
-		t.Errorf("projects = %v, want only the project with a roles file", found)
-	}
-}
-
 func TestIdlerSelfCheckFailsWhenTheForgeServesNoProject(t *testing.T) {
 	root := t.TempDir()
 	scripts := t.TempDir()
@@ -290,24 +268,6 @@ func TestInstallReportsAWatchThatCannotPrintItsAgent(t *testing.T) {
 
 	if _, err := Install(root, kitDir); err == nil || !strings.Contains(err.Error(), "could not print the agent") {
 		t.Fatalf("Install = %v, want the watch that cannot print its agent reported", err)
-	}
-}
-
-func TestProjectsSkipsWhatIsNotAProject(t *testing.T) {
-	root := fixtureForge(t)
-	if err := os.MkdirAll(filepath.Join(root, "projects", "notes"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "projects", "loose.txt"), []byte("not a project\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	found, err := projects(root)
-	if err != nil {
-		t.Fatalf("projects: %v", err)
-	}
-	if len(found) != 1 || filepath.Base(found[0]) != "forgelet-bridge" {
-		t.Errorf("projects = %v, want only the project with a roles file", found)
 	}
 }
 

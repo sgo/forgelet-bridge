@@ -42,70 +42,76 @@ func start(t *testing.T, root string) {
 	}
 }
 
-func TestGateSelfCheckReadsTheProposalStoreItCouldNotRead(t *testing.T) {
-	root := composedButNotStarted(t)
-	scripts := t.TempDir()
-	writeScript(t, filepath.Join(scripts, "route_card.sh"), "#!/bin/sh\necho '"+notAForgeRoot+root+"' >&2\nexit 1\n")
+// toolThatReadsTheForge is one of the tools whose self-check reads the forge's
+// own store: the script it is made of, and the names the report uses for the
+// tool and for the thing it could not read.
+type toolThatReadsTheForge struct {
+	script  string
+	check   func(scripts, forgeRoot string) (string, bool)
+	subject string
+	thing   string
+	exit    string
+}
 
-	line, ok := gateSelfCheck(scripts, root)
-
-	if !ok {
-		t.Fatalf("a forge that has not been started has no proposal store to read, so it installs: %s", line)
-	}
-	if !strings.Contains(line, "the proposal store it could not read") {
-		t.Errorf("the self-check does not say which store it could not read:\n%s", line)
-	}
-	if !strings.Contains(line, "has not been started") {
-		t.Errorf("the self-check does not say why the store was not there:\n%s", line)
+// toolsThatReadTheForge are those tools: the gate reads the proposal store and
+// the doorbell reads the pane.
+func toolsThatReadTheForge() []toolThatReadsTheForge {
+	return []toolThatReadsTheForge{
+		{script: "route_card.sh", check: gateSelfCheck, subject: "route gate", thing: "proposal store", exit: "1"},
+		{script: "doorbell.sh", check: doorbellSelfCheck, subject: "doorbell", thing: "pane", exit: "2"},
 	}
 }
 
-func TestGateSelfCheckFailsAStartedForgeWhoseStoreItCannotRead(t *testing.T) {
-	root := composedButNotStarted(t)
-	start(t, root)
-	scripts := t.TempDir()
-	// A gate that reads nothing says nothing at all, on a forge that has been
-	// started: that is the silence the self-check exists to catch.
-	writeScript(t, filepath.Join(scripts, "route_card.sh"), "#!/bin/sh\nexit 0\n")
+// saysItCouldNotReadTheForge writes one tool's stand-in: a script that says the
+// forge root holds no state of its own and refuses, the way a tool says it could
+// not read the thing it works on.
+func saysItCouldNotReadTheForge(t *testing.T, scripts, script, exit, root string) {
+	t.Helper()
+	writeScript(t, filepath.Join(scripts, script),
+		"#!/bin/sh\necho '"+notAForgeRoot+root+"' >&2\nexit "+exit+"\n")
+}
 
-	line, ok := gateSelfCheck(scripts, root)
+func TestSelfCheckReadsWhatItCouldNotReadOnAForgeThatHasNotBeenStarted(t *testing.T) {
+	for _, tool := range toolsThatReadTheForge() {
+		t.Run(tool.subject, func(t *testing.T) {
+			root := composedButNotStarted(t)
+			scripts := t.TempDir()
+			saysItCouldNotReadTheForge(t, scripts, tool.script, tool.exit, root)
 
-	if ok {
-		t.Fatalf("a gate that read nothing passed on a forge that has been started: %s", line)
-	}
-	if !strings.Contains(line, "self-check failed route gate") {
-		t.Errorf("the failure does not name the gate:\n%s", line)
+			line, ok := tool.check(scripts, root)
+
+			if !ok {
+				t.Fatalf("a forge that has not been started holds no %s to read, so it installs: %s", tool.thing, line)
+			}
+			if !strings.Contains(line, "the "+tool.thing+" it could not read") {
+				t.Errorf("the self-check does not say which %s it could not read:\n%s", tool.thing, line)
+			}
+			if !strings.Contains(line, "has not been started") {
+				t.Errorf("the self-check does not say why the %s was not there:\n%s", tool.thing, line)
+			}
+		})
 	}
 }
 
-func TestDoorbellSelfCheckReadsThePaneItCouldNotRead(t *testing.T) {
-	root := composedButNotStarted(t)
-	scripts := t.TempDir()
-	writeScript(t, filepath.Join(scripts, "doorbell.sh"), "#!/bin/sh\necho '"+notAForgeRoot+root+"' >&2\nexit 2\n")
+func TestSelfCheckFailsAStartedForgeWhoseToolReadNothing(t *testing.T) {
+	for _, tool := range toolsThatReadTheForge() {
+		t.Run(tool.subject, func(t *testing.T) {
+			root := composedButNotStarted(t)
+			start(t, root)
+			scripts := t.TempDir()
+			// A tool that reads nothing says nothing at all, on a forge that has
+			// been started: that is the silence the self-check exists to catch.
+			writeScript(t, filepath.Join(scripts, tool.script), "#!/bin/sh\nexit 0\n")
 
-	line, ok := doorbellSelfCheck(scripts, root)
+			line, ok := tool.check(scripts, root)
 
-	if !ok {
-		t.Fatalf("a forge that has not been started holds no pane to read, so it installs: %s", line)
-	}
-	if !strings.Contains(line, "the pane it could not read") {
-		t.Errorf("the self-check does not say which pane it could not read:\n%s", line)
-	}
-}
-
-func TestDoorbellSelfCheckFailsAStartedForgeWhosePaneItCannotRead(t *testing.T) {
-	root := composedButNotStarted(t)
-	start(t, root)
-	scripts := t.TempDir()
-	writeScript(t, filepath.Join(scripts, "doorbell.sh"), "#!/bin/sh\nexit 0\n")
-
-	line, ok := doorbellSelfCheck(scripts, root)
-
-	if ok {
-		t.Fatalf("a doorbell that said nothing passed on a forge that has been started: %s", line)
-	}
-	if !strings.Contains(line, "self-check failed doorbell") {
-		t.Errorf("the failure does not name the doorbell:\n%s", line)
+			if ok {
+				t.Fatalf("a %s that read nothing passed on a forge that has been started: %s", tool.subject, line)
+			}
+			if !strings.Contains(line, "self-check failed "+tool.subject) {
+				t.Errorf("the failure does not name the %s:\n%s", tool.subject, line)
+			}
+		})
 	}
 }
 

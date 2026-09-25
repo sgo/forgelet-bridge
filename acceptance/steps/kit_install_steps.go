@@ -207,6 +207,13 @@ func installerNamesTheProjectsAndThePaneItCouldNotProve(_ context.Context, world
 	if !strings.Contains(line, "could not prove a pane") {
 		return fmt.Errorf("the self-check does not say which reading it could not prove:\n%s", line)
 	}
+	return idlerSelfCheckNamesThePaneItCouldNotProve(line)
+}
+
+// idlerSelfCheckNamesThePaneItCouldNotProve checks the idler check's reading of
+// a forge nothing is up on names the pane it could not prove, which is the
+// reading a later run proves.
+func idlerSelfCheckNamesThePaneItCouldNotProve(line string) error {
 	pane, ok := kitValue(line, "nothing is up on")
 	if !ok || strings.TrimSpace(pane) == "" {
 		return fmt.Errorf("the self-check does not name the pane it could not prove:\n%s", line)
@@ -269,11 +276,7 @@ func idlerSelfCheckNamesTheProjectThatHasNotBeenStarted(_ context.Context, world
 	if !strings.Contains(line, "which has not been started") {
 		return fmt.Errorf("the self-check does not say the project has not been started:\n%s", line)
 	}
-	pane, ok := kitValue(line, "nothing is up on")
-	if !ok || strings.TrimSpace(pane) == "" {
-		return fmt.Errorf("the self-check does not name the pane it could not prove:\n%s", line)
-	}
-	return nil
+	return idlerSelfCheckNamesThePaneItCouldNotProve(line)
 }
 
 // installerLeftTheGatePolicyAlone checks the report names the policy it found

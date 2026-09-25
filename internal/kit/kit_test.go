@@ -291,6 +291,36 @@ func TestDoorbellRangNamesOnlyTheRequestsThePassRang(t *testing.T) {
 	}
 }
 
+// TestDoorbellSelfCheckSaysWhichRequestsItRang is the repair the doorbell's own
+// pass makes on the way in: installing is a moment when somebody is reading, so
+// the report names the requests that had never been delivered and were rung.
+func TestDoorbellSelfCheckSaysWhichRequestsItRang(t *testing.T) {
+	root := fixtureForge(t)
+	scripts := t.TempDir()
+	writeScript(t, filepath.Join(scripts, "doorbell.sh"),
+		"#!/bin/sh\n"+
+			"echo 'doorbell: read the pane fixture-master of the role master for "+root+"'\n"+
+			"echo 'the chat request \"is the build green?\" was never delivered and rung into fixture-master'\n")
+
+	line, ok := doorbellSelfCheck(scripts, root)
+
+	if !ok {
+		t.Fatalf("a doorbell that read the pane failed its self-check: %s", line)
+	}
+	if !strings.Contains(line, `it rang the chat request "is the build green?" that had never been delivered`) {
+		t.Errorf("the self-check does not say which request it rang:\n%s", line)
+	}
+}
+
+// TestDoorbellReadSaysNothingWhenTheDoorbellSaidNoReading pins the silence a
+// doorbell that read nothing leaves: the report says nothing rather than naming
+// a reading that was never there.
+func TestDoorbellReadSaysNothingWhenTheDoorbellSaidNoReading(t *testing.T) {
+	if got := doorbellRead("a doorbell that said something else\n"); got != "nothing" {
+		t.Errorf("doorbellRead = %q, want the doorbell's silence named", got)
+	}
+}
+
 func TestIdlerEvidenceCarriesAReadingWithSomethingInFlight(t *testing.T) {
 	project := fixtureProject(t)
 	// One role has an empty lane and an empty inbox, the next holds a card with

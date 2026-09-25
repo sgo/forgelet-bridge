@@ -54,19 +54,32 @@ func gateSelfCheck(scripts, forgeRoot string) (string, bool) {
 func idlerSelfCheck(scripts, forgeRoot string) (string, bool) {
 	projects, err := projects(forgeRoot)
 	if err != nil || len(projects) == 0 {
-		// A forge that has been composed and never started is the far end of
-		// the same check: nothing has been started there, so there is no pane
-		// to prove and the project it read is the reading the report carries.
-		// Reading nothing at all where no project exists is still a wrong path
-		// or a wrong forge, and fails.
-		if !started(forgeRoot) {
-			if line, ok := idlerUnstartedRead(scripts, forgeRoot); ok {
-				return line, true
-			}
-		}
-		return fmt.Sprintf("self-check failed idler check: %s holds no project with a roles file, so it read no roles, no board and no inbox",
-			filepath.Join(forgeRoot, "projects")), false
+		return idlerNothingStarted(scripts, forgeRoot)
 	}
+	return idlerProjectsRead(scripts, forgeRoot, projects)
+}
+
+// idlerNothingStarted is what the check says about a forge that serves no
+// started project. A forge that has been composed and never started is the far
+// end of the same check: nothing has been started there, so there is no pane to
+// prove and the project it read is the reading the report carries. Reading
+// nothing at all where no project exists is still a wrong path or a wrong
+// forge, and fails.
+func idlerNothingStarted(scripts, forgeRoot string) (string, bool) {
+	if !started(forgeRoot) {
+		if line, ok := idlerUnstartedRead(scripts, forgeRoot); ok {
+			return line, true
+		}
+	}
+	return fmt.Sprintf("self-check failed idler check: %s holds no project with a roles file, so it read no roles, no board and no inbox",
+		filepath.Join(forgeRoot, "projects")), false
+}
+
+// idlerProjectsRead reads every started project the forge serves and says what
+// it read: the first reading that proves the tool read the forge, the first that
+// did not when none proved it, or every project whose pane could not be proved,
+// which is not a fault - nothing is up there, and a later run can prove it.
+func idlerProjectsRead(scripts, forgeRoot string, projects []string) (string, bool) {
 	var unproved []string
 	var first string
 	for _, project := range projects {
