@@ -9,12 +9,12 @@ Feature: Installing Brings The Kit
   # behave, the way it already brings the rules: the route gate, the idler check,
   # the stall watch and the doorbell, in the forge's own scripts, with the
   # watch's agent.
-  # Each one is self-checked against the forge it was installed into - one live
-  # pane, one board row, one inbox - so a tool that reads nothing is a failure on
-  # the page rather than a clean-looking silence, and the self-check prints the
-  # command and the marker it looked for. The installer ships tools; it never
-  # decides policy: the gate's strictness stays in the forge's own lieutenant
-  # prompt, and the report says which policy it found and left alone.
+  # Each one is self-checked against the forge it was installed into - the pane,
+  # the board row and the inbox it read - so a tool that reads nothing is a
+  # failure on the page rather than a clean-looking silence, and the self-check
+  # prints the command and the marker it looked for. The installer ships tools;
+  # it never decides policy: the gate's strictness stays in the forge's own
+  # lieutenant prompt, and the report says which policy it found and left alone.
   # A forge between cards is the other end of the same check: an empty board and
   # an empty inbox are things the tool *did* read, so a quiet forge installs, and
   # the self-check says what it read rather than calling the read unread. What

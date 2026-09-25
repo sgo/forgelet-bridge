@@ -121,11 +121,13 @@ is made, and put a stall on the phone. Install them with the adapter:
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" install-kit
 ```
 
-It installs the route gate, the idler check, the stall watch and the doorbell into the forge's
-own scripts, with the watch's agent, and self-checks each one against the forge
-it was installed into — one live pane, one board row, one inbox — printing the
-command and the marker it looked for, so a tool that reads nothing fails on the
-page instead of looking quiet.
+It installs the route gate, the idler check, the stall watch and the doorbell into
+the forge's own scripts, with the watch's agent, and self-checks each one against
+the forge it was installed into — the pane, the board row and the inbox it read —
+printing the command and the marker it looked for, so a tool that reads nothing
+fails on the page instead of looking quiet. A forge composed but not yet started
+has no pane, no board row and no inbox to read, and installs all the same, each
+check saying what it could not prove so a later run can prove it.
 
 It ships tools, not policy: which proposals need asking is the forge's own
 lieutenant prompt, so the gate a forge gets is the gate its prompt asks for, and
