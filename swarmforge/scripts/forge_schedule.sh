@@ -60,14 +60,18 @@ newest_mtime() {
 }
 
 # trim_scratch sweeps the forge's own tmp: whatever nobody has touched for longer
-# than the bound goes, whatever its name, and the pass says what it removed. A
-# tree the pass just watched somebody write in is left without walking it, which
-# is what keeps a minute's pass off a scratch directory of any size.
+# than the bound goes, whatever its name, and the pass says what it removed. Only
+# a directory goes: what a failed run leaves is a directory, and a loose file in
+# the forge's tmp is somebody's own - the answers a person writes for the
+# dashboard live there. A tree the pass just watched somebody write in is left
+# without walking it, which keeps a minute's pass off a scratch directory of any
+# size.
 trim_scratch() {
   local root="$1" entry own newest cutoff days
   [[ -d "$root/tmp" ]] || return 0
   cutoff=$(( $(date +%s) - KEEP_DAYS * 86400 ))
   for entry in "$root"/tmp/*(N); do
+    [[ -d "$entry" ]] || continue
     own="$(stat -f %m "$entry" 2>/dev/null)"
     [[ -n "$own" ]] || continue
     (( own < cutoff )) || continue

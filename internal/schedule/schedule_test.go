@@ -210,6 +210,28 @@ func TestThePassLeavesAScratchARunIsStillFilling(t *testing.T) {
 	}
 }
 
+// TestThePassLeavesALooseFileInTheForgeTmpAlone pins what the sweep is not: what
+// a failed run leaves is a directory, and a file in the forge's own tmp is
+// somebody's own - the answers a person writes for the dashboard are kept there,
+// and a pass that swept them by age would take the operator's own work.
+func TestThePassLeavesALooseFileInTheForgeTmpAlone(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(f.root, "tmp", "answer-1309.txt")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.write(path, "the answer a person gave\n")
+	if err := os.Chtimes(path, time.Now().UTC().Add(-weeks), time.Now().UTC().Add(-weeks)); err != nil {
+		t.Fatal(err)
+	}
+
+	f.run()
+
+	if f.gone(path) {
+		t.Errorf("the pass removed a file somebody kept in the forge's tmp: %s", path)
+	}
+}
+
 // TestThePassPrunesTheProjectsOnceADay pins the cadence the projects take: the
 // walk over every worktree is not a thing to do every minute, so a pass that has
 // already pruned today leaves it to the next day - and a forge whose layer ships
