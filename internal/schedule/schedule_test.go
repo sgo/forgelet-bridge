@@ -190,6 +190,39 @@ func TestThePassKeepsAWeekOfItsOwnLog(t *testing.T) {
 	}
 }
 
+// TestThePassDropsTheOneLogFromBeforeTheDaysWereInItsName pins the file the
+// bound exists for: the pass used to write one unbounded log, so the first pass
+// after the day went into the name takes it once nothing has written it for
+// longer than the week - and a forge whose agent still appends to it keeps it,
+// because then its own time is always now.
+func TestThePassDropsTheOneLogFromBeforeTheDaysWereInItsName(t *testing.T) {
+	f := newFixture(t)
+	legacy := filepath.Join(f.root, ".swarmforge", "stall-watch.log")
+	f.write(legacy, "checked 3 projects across 2 forges\n")
+	if err := os.Chtimes(legacy, time.Now().UTC().Add(-weeks), time.Now().UTC().Add(-weeks)); err != nil {
+		t.Fatal(err)
+	}
+
+	out := f.run()
+
+	if !f.gone(legacy) {
+		t.Errorf("the pass kept the one log it wrote before the day went into the name: %s", legacy)
+	}
+	if !strings.Contains(out, "dropped the schedule's own log "+legacy) {
+		t.Errorf("the pass does not say it dropped %s:\n%s", legacy, out)
+	}
+
+	f.write(legacy, "the agent a forge has not updated yet\n")
+	out = f.run()
+
+	if f.gone(legacy) {
+		t.Errorf("the pass dropped a log something is still writing: %s", legacy)
+	}
+	if strings.Contains(out, "dropped the schedule's own log "+legacy) {
+		t.Errorf("the pass says it dropped a log it left alone:\n%s", out)
+	}
+}
+
 // TestThePassLeavesAScratchARunIsStillFilling pins the other side of the age
 // rule: what a failed run left is swept because nobody is looking at it, so a
 // scratch somebody wrote in a moment ago is left alone however old the directory
@@ -247,6 +280,13 @@ func TestThePassPrunesTheProjectsOnceADay(t *testing.T) {
 	}
 	if !strings.Contains(first, "pruned the projects of "+f.root) {
 		t.Errorf("the first pass does not say it pruned the projects:\n%s", first)
+	}
+	// The pruner's own last line is what the pass's words carry, so what the
+	// pruner decided - what it took, and what it left because a run is still
+	// using it - is what the forge's log holds rather than the pass's summary of
+	// it.
+	if !strings.Contains(first, "with the layer's pruner: pruned 0 directories") {
+		t.Errorf("the pass does not carry the pruner's own words:\n%s", first)
 	}
 }
 

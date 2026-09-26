@@ -42,20 +42,21 @@ func (w *World) scratchDirectory(name, directory string, once time.Time) (string
 		return "", err
 	}
 	path := filepath.Join(tmp, directory)
-	if err := os.MkdirAll(filepath.Join(path, "inner"), 0o755); err != nil {
+	inner := filepath.Join(path, "inner")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(path, "inner", "work.txt"), []byte("a run's scratch\n"), 0o644); err != nil {
+	work := filepath.Join(inner, "work.txt")
+	if err := os.WriteFile(work, []byte("a run's scratch\n"), 0o644); err != nil {
 		return "", err
 	}
-	if err := os.Chtimes(filepath.Join(path, "inner", "work.txt"), once, once); err != nil {
-		return "", err
-	}
-	if err := os.Chtimes(filepath.Join(path, "inner"), once, once); err != nil {
-		return "", err
-	}
-	if err := os.Chtimes(path, once, once); err != nil {
-		return "", err
+	// The sweep reads a scratch by when anything in it was last touched, so the
+	// work, the room it sits in, and the scratch itself all read as the
+	// fixture's own time rather than as the moment this step ran.
+	for _, touched := range []string{work, inner, path} {
+		if err := os.Chtimes(touched, once, once); err != nil {
+			return "", err
+		}
 	}
 	return path, nil
 }
@@ -233,3 +234,7 @@ func projectHoldsAcceptanceBinaries(_ context.Context, world any, captures []str
 	}
 	return nil
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-09-26T23:37:48+02:00","module_hash":"14d93250af5b4e3bf11415a8898b24f2d4295b805c703945aaff049677062572","functions":[{"id":"func/World.forgeTmp","name":"World.forgeTmp","line":29,"end_line":35,"hash":"03bc5ef8afa47a49d8f0d77557774c7c7665e0d69aefb94cbe647dd103bed7f6"},{"id":"func/World.scratchDirectory","name":"World.scratchDirectory","line":39,"end_line":62,"hash":"80b5373c50bd2de2fe4dedda5eabb71bb30d735d19d403543549c027cc64d295"},{"id":"func/forgeTmpHoldsAScratchNobodyHasTouched","name":"forgeTmpHoldsAScratchNobodyHasTouched","line":66,"end_line":74,"hash":"c1218f5f30a3a2e0e6ca99e0281d5c1a41d02529d84426a7ac82a7fd72f93fa4"},{"id":"func/forgeTmpHoldsAFreshScratch","name":"forgeTmpHoldsAFreshScratch","line":78,"end_line":86,"hash":"3ad0c154fcb4f29b4792f55130ec1808a67a6653b93827ae660cb5d621e6ed58"},{"id":"func/dayOf","name":"dayOf","line":90,"end_line":100,"hash":"1f275d00974c0bee9cc6db3b8cabe604f886716904cd1a66ec7780b63e302e26"},{"id":"func/scheduleLogPath","name":"scheduleLogPath","line":106,"end_line":109,"hash":"e2dfa4fff30f3a72d05e2199214d99099dd389dc46671eb23c9b44a98ff67c47"},{"id":"func/forgeHoldsTheScheduleLogFor","name":"forgeHoldsTheScheduleLogFor","line":113,"end_line":132,"hash":"1fe10586e8ad5bea15cf0765138e83e64e83673f3a8ddf93c4aff7d5a8c5bef3"},{"id":"func/forgeCarriesTheLayerPruner","name":"forgeCarriesTheLayerPruner","line":137,"end_line":157,"hash":"2e9eccf972ccdd25e3eefe608917f858b6183fe10128ad557907bb2dfcd674d5"},{"id":"func/forgeCarriesNoPruner","name":"forgeCarriesNoPruner","line":161,"end_line":172,"hash":"563b6827f4a0960d14cf5d1f69a1149429ee36099b0f109881004d38fd5a251a"},{"id":"func/oldTree","name":"oldTree","line":175,"end_line":191,"hash":"263574dd1fac5710a5be54fe008b8ebaad7ae727254acd87241ad69920787ed0"},{"id":"func/projectHoldsTargetDirs","name":"projectHoldsTargetDirs","line":196,"end_line":214,"hash":"0e6eab4cbd2174687711180ccd54ad2480a7deed1246e67f57f3c60588c9b2aa"},{"id":"func/projectHoldsAcceptanceBinaries","name":"projectHoldsAcceptanceBinaries","line":218,"end_line":236,"hash":"fb74c5d33d71575343ee47bad5afc8ad6c14d806e88cbda303b8ab2d9587fc51"}]}
+// mutate4go-manifest-end

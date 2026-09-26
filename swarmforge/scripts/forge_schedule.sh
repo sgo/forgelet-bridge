@@ -90,7 +90,7 @@ trim_scratch() {
 rotate_log() {
   # Not `path`: in zsh that name is the array behind PATH, and assigning it
   # would leave the pass unable to run anything it says it runs.
-  local root="$1" file day cutoff
+  local root="$1" file day cutoff legacy own
   mkdir -p "$root/.swarmforge"
   cutoff="$(date -u -r $(( $(date +%s) - KEEP_DAYS * 86400 )) '+%Y-%m-%d')"
   for file in "$root"/.swarmforge/stall-watch-*.log(N); do
@@ -100,6 +100,16 @@ rotate_log() {
     rm -f -- "$file"
     say "dropped the schedule's own log $file, older than $KEEP_DAYS days"
   done
+  # The one file the pass wrote before the day went into the name, which is the
+  # file that grew without limit and put this bound on the pass's own log. Age
+  # judges it now, because nothing writes it every minute any more: a forge whose
+  # agent still appends to it is left alone, since then its mtime is always now.
+  legacy="$root/.swarmforge/stall-watch.log"
+  own="$(stat -f %m "$legacy" 2>/dev/null || true)"
+  if [[ -n "$own" ]] && (( own < $(date +%s) - KEEP_DAYS * 86400 )); then
+    rm -f -- "$legacy"
+    say "dropped the schedule's own log $legacy, older than $KEEP_DAYS days"
+  fi
 }
 
 # prune_projects hands the projects to the layer's own pruner, whose rule - the
