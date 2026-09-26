@@ -61,6 +61,14 @@ func theForgeGivesAWorkingSession(_ context.Context, world any, captures []strin
 	return forgeGivesSession(world.(*World), captures[1], captures[2], busyPaneCommand)
 }
 
+// theForgeGivesASessionThatLosesTheEnter gives the role the terminal the
+// dashboard and the doorbell type into, with the Enter a ring sends dropped the
+// way a pane still taking the paste drops it: the whole ring stays in the
+// composer, and no session has seen it.
+func theForgeGivesASessionThatLosesTheEnter(_ context.Context, world any, captures []string) error {
+	return forgeGivesSession(world.(*World), captures[1], captures[2], composerPaneCommand+" --lose-enter")
+}
+
 // theDashboardTypedTheRequest types a pending request into the master role's
 // pane the way the dashboard does - the id in brackets, then the words - which
 // is the delivery evidence a later pass looks for. The fixture's dashboard
@@ -108,26 +116,40 @@ func theDashboardTypedTheRequestLongAgo(_ context.Context, world any, captures [
 	if err != nil {
 		return err
 	}
-	// A pane's screen is a few dozen lines; enough blank lines push what was
-	// typed up into the history the pane keeps.
+	// A pane's screen is a few dozen lines; enough turns push what was typed up
+	// into the history the pane keeps. A terminal takes a turn when its composer
+	// holds something, so the fixture fills it the way a session that answered
+	// several times would have.
 	for line := 0; line < screenFullOfLines; line++ {
+		if _, err := tmux(socket, "send-keys", "-t", pane, "-l", fillerTurn); err != nil {
+			return err
+		}
 		if _, err := tmux(socket, "send-keys", "-t", pane, "C-m"); err != nil {
 			return err
 		}
 	}
-	text, err := paneText(socket, pane)
-	if err != nil {
-		return err
-	}
-	if strings.Contains(text, "["+request.ID+"]") {
-		return fmt.Errorf("the request the dashboard typed is still on the screen, so the scenario cannot tell the two apart:\n%s", text)
-	}
-	return nil
+	// The terminal draws a turn as it takes it, so the screen is filled as the
+	// pane catches up with what was typed: the request has scrolled off it once
+	// the pane has drawn the turns behind it.
+	ctx, cancel := stepContext()
+	defer cancel()
+	return waitFor(ctx, fmt.Sprintf("the request the dashboard typed %s is still on the pane's screen", request.ID), func() (bool, error) {
+		text, err := paneText(socket, pane)
+		if err != nil {
+			return false, err
+		}
+		return !strings.Contains(text, "["+request.ID+"]"), nil
+	})
 }
 
 // screenFullOfLines is how many blank lines the fixture sends to push what was
 // typed off a pane's visible screen.
 const screenFullOfLines = 60
+
+// fillerTurn is what the fixture types to fill a pane's screen: a session that
+// answered several times leaves turns behind it, and a turn is what pushes what
+// came before it off the screen.
+const fillerTurn = "a turn the pane took"
 
 // requestByBody is the pending delivery request that reads body, and the forge
 // whose queue is holding it: a scenario that serves several forges names the
@@ -249,16 +271,7 @@ func theDashboardAnsweredTheRequest(_ context.Context, world any, captures []str
 // master row of the forge root, where the dashboard types the operator's own
 // messages.
 func (w *World) masterPane(root string) (pane, socket string, err error) {
-	data, err := os.ReadFile(filepath.Join(root, ".swarmforge", "roles.tsv"))
-	if err != nil {
-		return "", "", err
-	}
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
-		columns := strings.Split(line, "\t")
-		if len(columns) >= 4 && columns[1] == "master" {
-			pane = columns[3]
-		}
-	}
+	pane = forgeMasterPane(root)
 	if pane == "" {
 		return "", "", fmt.Errorf("the forge root %s records no master role", root)
 	}
