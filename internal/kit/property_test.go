@@ -150,6 +150,41 @@ func TestPropertyAnInstalledFileIsCurrentTheSecondTime(t *testing.T) {
 	}
 }
 
+// TestPropertyALostCharacterInAClauseFailsTheSelfCheck is the clause reading's
+// own promise: the ring proves a clause by carrying its words whole, so a ring
+// that lost any one character of any word - a copy of the sentence that predates
+// the clarification the refusal names, or any other drift - is read as a kit
+// whose doorbell lost the clause, and its own install fails rather than passing
+// quietly. Every word and every position in it is a case, because "the whole
+// phrase" is exactly the range this reading has to be exact over.
+func TestPropertyALostCharacterInAClauseFailsTheSelfCheck(t *testing.T) {
+	scripts := t.TempDir()
+	doorbell := filepath.Join(scripts, "doorbell.sh")
+	ring := gateClause + ": " + gateRefusal + ". " + answerClause + ": " + answerRefusal + "."
+	cases := 0
+	for _, gate := range clauses() {
+		for _, word := range gate.words {
+			for position := range word {
+				cases++
+				lost := strings.Replace(ring, word, word[:position]+word[position+1:], 1)
+				writeScript(t, doorbell, "#!/bin/sh\necho \""+lost+"\"\n")
+				line, ok := doorbellClauseRead(scripts)
+				if ok {
+					t.Fatalf("a ring that lost a character of %s passed its own self-check: %s",
+						strconv.Quote(word), line)
+				}
+				if !strings.Contains(line, strconv.Quote(word)) {
+					t.Fatalf("the self-check does not name the whole word it wanted (%s): %s",
+						strconv.Quote(word), line)
+				}
+			}
+		}
+	}
+	if want := len(gateClause) + len(gateRefusal) + len(answerClause) + len(answerRefusal); cases != want {
+		t.Fatalf("the reading was proved over %d characters of the clauses, and they hold %d", cases, want)
+	}
+}
+
 // TestPropertyTheForgeCarriesTheModeTheKitsCopyCarries is what a tool is run
 // with: whatever mode the kit's own copy of a file carries, and whatever the
 // name suggests it is, the forge's copy carries the kit's mode rather than one
