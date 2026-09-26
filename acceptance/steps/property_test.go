@@ -15,6 +15,47 @@ import (
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 )
 
+// TestPropertyThePanesReadingDoesNotDependOnTheWrapping is how a pane's own text
+// is read: a pane wraps what it holds, so the same words at any width have to
+// read the same, and reading a reading again has to change nothing. It is what
+// lets a step look for the words of a ring rather than for its line breaks.
+func TestPropertyThePanesReadingDoesNotDependOnTheWrapping(t *testing.T) {
+	property := func(words []string) bool {
+		joined := strings.Join(words, " ")
+		// The same words where a pane could have broken the line instead.
+		wrapped := strings.Join(words, "\n   ")
+		if squashed(wrapped) != squashed(joined) {
+			return false
+		}
+		if squashed(squashed(joined)) != squashed(joined) {
+			return false
+		}
+		return strings.Contains(squashed(wrapped), squashed(joined))
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randWords(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// randWords is the words a reading is made of, wrapping and all.
+func randWords(rnd *rand.Rand) []string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789.-\t "
+	words := make([]string, rnd.Intn(8))
+	for index := range words {
+		word := make([]byte, 1+rnd.Intn(6))
+		for at := range word {
+			word[at] = alphabet[rnd.Intn(len(alphabet))]
+		}
+		words[index] = string(word)
+	}
+	return words
+}
+
 // TestPropertyTheFinishingStepNeverRewritesWhatOriginAlreadyHad is the promise
 // the step makes about a shared remote, however far the remote has moved on: a
 // push that cannot land leaves every commit origin held exactly where it was,

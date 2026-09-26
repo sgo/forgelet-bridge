@@ -18,35 +18,29 @@ const idlerCheckCommand = "role_health.sh"
 
 // idlerCheckRuns runs the check against one project, the way the forge runs it.
 func idlerCheckRuns(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	projectDir, err := w.pathOf(captures[2], captures[1])
-	if err != nil {
-		return err
-	}
-	ctx, cancel := stepContext()
-	defer cancel()
-	command := exec.CommandContext(ctx,
-		filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts", idlerCheckCommand), projectDir)
-	command.Dir = projectDir
-	command.Env = append(os.Environ(), "ROLE_HEALTH_CLAUDE_PROJECTS="+w.claudeProjects())
-	out, err := command.CombinedOutput()
-	w.idlerOutput = string(out)
-	w.idlerErr = err
-	return nil
+	project, forge := captures[1], captures[2]
+	return runIdlerCheck(world.(*World), forge, project)
 }
 
 // idlerCheckRaisesTheAlerts runs the check the way the forge's schedule does
 // when it wants the operator told: one pass that raises the alert for a stall.
 func idlerCheckRaisesTheAlerts(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	projectDir, err := w.pathOf(captures[2], captures[1])
+	project, forge := captures[1], captures[2]
+	return runIdlerCheck(world.(*World), forge, project, "--notify")
+}
+
+// runIdlerCheck runs this repository's own idler check against one project of a
+// forge root, with the flags the scenario asks for, and remembers what it said.
+func runIdlerCheck(w *World, forgeRoot, project string, args ...string) error {
+	projectDir, err := w.pathOf(forgeRoot, project)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := stepContext()
 	defer cancel()
 	command := exec.CommandContext(ctx,
-		filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts", idlerCheckCommand), projectDir, "--notify")
+		filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts", idlerCheckCommand),
+		append([]string{projectDir}, args...)...)
 	command.Dir = projectDir
 	command.Env = append(os.Environ(), "ROLE_HEALTH_CLAUDE_PROJECTS="+w.claudeProjects())
 	out, err := command.CombinedOutput()
