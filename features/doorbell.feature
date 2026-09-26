@@ -62,6 +62,21 @@ Feature: Doorbell
   # meets the gate at the ring and nowhere else. A request that is neither says
   # nothing of the kind.
 
+  # A ring is not delivered by being typed. The doorbell types the whole request,
+  # and a request runs to lines: the body's own, the answering command, and the
+  # gate when it holds one. A terminal still taking that text swallows the Enter
+  # that follows it, so the whole ring sits in the composer, unsent, and the pass
+  # counts it as delivered - the composer is drawn on the screen, which is where
+  # the proof of delivery reads, and the first ring's submitted copy is in the
+  # scrollback behind it, so every later ring is left alone as already delivered.
+  # A request is then counted as delivered when no session has seen it, which is
+  # the failure this tool exists to prevent. So the ring goes in as one paste,
+  # which a body of many lines cannot submit on its own newlines, and the pass
+  # reads what it did: an empty composer is a ring that landed, and text still in
+  # the composer is a ring that did not - rung again, or reported as owed rather
+  # than written down as a delivery. Text found only in the composer is not
+  # evidence that anything was delivered.
+
   Background:
     Given the fixture forge root forge-a has its dashboard running
     And the project forgelet-bridge of the forge root forge-a is mastered by the role coder
@@ -168,3 +183,20 @@ Feature: Doorbell
     When the doorbell runs for the forge root forge-a
     Then the doorbell says the chat request "is the build green?" was never answered and rung into the master role's pane
     And the master role's pane holds the chat request "is the build green?" the doorbell typed
+
+  # Doorbell 13: a ring whose text runs to lines lands as one submitted turn, and the composer is empty
+  Scenario: Doorbell 13: a ring whose text runs to lines lands as one submitted turn, and the composer is empty
+    Given the forge root forge-a gives the role coder a live session
+    And the forge's dashboard already holds the chat request the bridge wrote for the clarification of the project forgelet-bridge from the role coder
+    When the doorbell runs for the forge root forge-a
+    Then the master role's pane holds the chat request "Clarification for forgelet-bridge from coder" as one submitted turn
+    And the master role's pane holds nothing in the composer
+
+  # Doorbell 14: a ring whose Enter is lost leaves the request owed, and says so
+  Scenario: Doorbell 14: a ring whose Enter is lost leaves the request owed, and says so
+    Given the forge root forge-a gives the role coder a live session that loses the Enter the doorbell sends
+    And the forge's dashboard already holds the chat request the bridge wrote for the clarification of the project forgelet-bridge from the role coder
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "Clarification for forgelet-bridge from coder" was rung and the ring did not land
+    When the doorbell runs for the forge root forge-a again
+    Then the doorbell's ledger says the chat request "Clarification for forgelet-bridge from coder" is still owed
