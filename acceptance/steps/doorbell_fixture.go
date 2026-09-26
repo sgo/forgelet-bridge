@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // projectIsMasteredByTheRole makes one role the master of a project: the role
@@ -152,6 +153,97 @@ func (w *World) requestByBody(body string) (root string, request deliveryRequest
 // deliveryRequest is the little of a dashboard request the doorbell needs.
 type deliveryRequest struct {
 	ID string
+}
+
+// longAgo is when the fixture says an earlier ring or an earlier request
+// happened: far past any gap a doorbell might keep, so a request it wrote is
+// due to be rung rather than merely recent.
+var longAgo = func() time.Time { return time.Now().UTC().Add(-24 * time.Hour) }
+
+// theDoorbellHasRungTheRequest writes the state a previous pass left: the
+// doorbell has rung this request this many times, the last of them long ago,
+// and nobody has answered it. The ledger is the tool's own record, so the
+// fixture writes it in the shape the tool reads.
+func theDoorbellHasRungTheRequest(_ context.Context, world any, captures []string) error {
+	return world.(*World).writeLedgerOfRings(captures[1], 1)
+}
+
+// theRequestWasRungItsFill writes a ledger that has rung one request more times
+// than any fill allows, which is a request the doorbell has already tried its
+// last ring on.
+func theRequestWasRungItsFill(_ context.Context, world any, captures []string) error {
+	return world.(*World).writeLedgerOfRings(captures[1], rungItsFill)
+}
+
+// rungItsFill is more rings than a doorbell keeps: the fixture names a number
+// past any fill rather than the fill itself, so a tool that changed its fill is
+// still asked the question the scenario asks.
+const rungItsFill = 99
+
+// writeLedgerOfRings leaves the forge a ledger saying the doorbell rang one
+// request this many times, the last of them a day ago.
+func (w *World) writeLedgerOfRings(body string, times int) error {
+	root, request, err := w.requestByBody(body)
+	if err != nil {
+		return err
+	}
+	at := longAgo().Format(time.RFC3339Nano)
+	ledger := fmt.Sprintf(`{:delivered [] :owed [] :rings {"%s" {:count %d :at "%s"}} :rung ["%s"]}`,
+		request.ID, times, at, request.ID)
+	return writeFile(filepath.Join(root, ".swarmforge", "doorbell.edn"), ledger)
+}
+
+// theRequestWaitedPastTheGap moves the request's own record back: the dashboard
+// wrote down when it created it, and a request that has waited unanswered past
+// the doorbell's gap is one whose delivery is a day old.
+func theRequestWaitedPastTheGap(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, request, err := w.requestByBody(captures[1])
+	if err != nil {
+		return err
+	}
+	if err := ageRequest(root, request.ID, longAgo()); err != nil {
+		return err
+	}
+	return w.writeLedgerOfRings(captures[1], 1)
+}
+
+// ageRequest moves the moment a request's own record says it was created, which
+// is when the dashboard typed it into the pane.
+func ageRequest(root, id string, at time.Time) error {
+	path := filepath.Join(root, ".swarmforge", "dashboard", "requests", "pending", id+".request")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var lines []string
+	replaced := false
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if strings.HasPrefix(line, "created_at: ") {
+			line = "created_at: " + at.UTC().Format(time.RFC3339Nano)
+			replaced = true
+		}
+		lines = append(lines, line)
+	}
+	if !replaced {
+		return fmt.Errorf("the request %s carries no created_at to move: %s", id, path)
+	}
+	return writeFile(path, strings.Join(lines, "\n")+"\n")
+}
+
+// theDashboardAnsweredTheRequest answers a chat request the way the lieutenant
+// does, which takes it out of the dashboard's pending queue.
+func theDashboardAnsweredTheRequest(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, request, err := w.requestByBody(captures[1])
+	if err != nil {
+		return err
+	}
+	store := w.dashboards[filepath.Base(root)]
+	if store == nil {
+		return fmt.Errorf("the fixture forge root %s has no dashboard queue", root)
+	}
+	return store.Answer(request.ID, "yes, it is green")
 }
 
 // masterPane is the pane the doorbell rings and the socket it lives on: the

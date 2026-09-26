@@ -100,6 +100,78 @@ func doorbellWaitedForTheRole(_ context.Context, world any, captures []string) e
 	return doorbellSaid(world.(*World), captures[1], "was not rung because the role")
 }
 
+// doorbellRungTheUnansweredRequest checks the pass read a delivered request the
+// dashboard still holds as unanswered and rang it again: words arriving is not
+// a session acting on them.
+func doorbellRungTheUnansweredRequest(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was never answered and was rung again")
+}
+
+// doorbellReportsItIsStillUnanswered checks a request that has been rung its
+// fill is reported rather than rung forever.
+func doorbellReportsItIsStillUnanswered(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "is still unanswered")
+}
+
+// theRingSaysWhichRingItIs checks the ring itself says this is not the first
+// time, so a pane that has seen the same alert before knows it is not new.
+func theRingSaysWhichRingItIs(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	// A pane wraps what it holds, so the words are read the way a reader reads
+	// them: with the wrapping taken out.
+	read := squashed(text)
+	for _, want := range []string{"the doorbell's second ring", captures[1]} {
+		if !strings.Contains(read, squashed(want)) {
+			return fmt.Errorf("the ring does not say %q:\n%s", want, text)
+		}
+	}
+	return nil
+}
+
+// theDoorbellDidNotRingItAgain checks the pass left the pane as it was: a ring
+// carries the command that answers the request, so a ring of this one would show
+// it, and the pass says it rang nothing.
+func theDoorbellDidNotRingItAgain(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	body := captures[1]
+	_, request, err := w.requestByBody(body)
+	if err != nil {
+		return err
+	}
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	if ring := squashed("Answer with: pack_dashboard_request.sh answer " + request.ID); strings.Contains(squashed(text), ring) {
+		return fmt.Errorf("the pane holds a ring for the request %q, and the pass had already rung it its fill:\n%s\n\nthe pass said:\n%s",
+			body, text, w.doorbellOutput)
+	}
+	if strings.Contains(w.doorbellOutput, "rung again") || strings.Contains(w.doorbellOutput, "rung into") {
+		return fmt.Errorf("the doorbell rang a request it had already rung its fill:\n%s", w.doorbellOutput)
+	}
+	return nil
+}
+
+// squashed is a reading with its whitespace taken out: a pane wraps what it
+// holds, and the words are the same words whatever the width.
+func squashed(text string) string {
+	return strings.Join(strings.Fields(text), "")
+}
+
+// doorbellSaysNothingIsPending checks a queue with nothing left in it is read as
+// exactly that: a request that was answered is gone, not pending.
+func doorbellSaysNothingIsPending(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	if !strings.Contains(w.doorbellOutput, "nothing pending") {
+		return fmt.Errorf("the doorbell does not say nothing is pending:\n%s", w.doorbellOutput)
+	}
+	return nil
+}
+
 // doorbellSaid checks the doorbell's report about one request carried a phrase.
 func doorbellSaid(w *World, body, phrase string) error {
 	if w.doorbellOutput == "" {

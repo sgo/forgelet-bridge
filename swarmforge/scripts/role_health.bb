@@ -2,7 +2,9 @@
 
 (ns role-health
   (:require [babashka.fs :as fs]
+            [babashka.http-client :as http]
             [babashka.process :as process]
+            [cheshire.core :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]))
 
@@ -20,9 +22,13 @@
        "stalls again or starts work nobody asked for.\n"
        "\n"
        "--notify raises a chat request naming the stall, so it reaches the operator\n"
-       "through the bridge's chat room the same way any forge question does. It is\n"
-       "once per stall, and it is a question to the operator, never a nudge to the\n"
-       "role.\n"
+       "through the bridge's chat room the same way any forge question does. The\n"
+       "request is raised through the dashboard, which writes it down and wakes the\n"
+       "master pane as it creates it, so an alert has the same two chances to be\n"
+       "seen that the operator's own message has - the wake, and the doorbell's\n"
+       "ring. A forge whose dashboard is not running still gets the alert: it is\n"
+       "then written straight into the dashboard's queue. It is once per stall, and\n"
+       "it is a question to the operator, never a nudge to the role.\n"
        "\n"
        "Verdicts: working; waiting on a decision or on the operator; waiting for\n"
        "pickup (mail in new/); idle holding a card; quiet between turns; idle with\n"
@@ -337,10 +343,31 @@
        " (this watch covers several). Nothing has been nudged — decide whether to "
        "ask it what blocks it, send it back, or leave it."))
 
-;; A chat request, in the shape the forge's dashboard writes for the operator's
-;; own messages, so the bridge carries it to the phone the way it carries any
-;; request. The answer is the lieutenant's, and the body says who is asking.
-(defn raise-chat-request! [forge text]
+;; The alert is raised the way every other request is: through the dashboard,
+;; which writes the request down and wakes the master pane as it creates it, so
+;; the alert has the same two chances to be seen that the operator's own message
+;; has - the wake, and the doorbell's ring. The dashboard's address is the one it
+;; announces when it serves.
+(defn dashboard-url [forge]
+  (let [file (fs/path forge ".swarmforge" "dashboard-url")]
+    (when (fs/regular-file? file)
+      (not-empty (str/trim (slurp (str file)))))))
+
+(defn take-through-dashboard? [url text]
+  (try
+    (let [response (http/post (str url "/api/chat")
+                              {:headers {"Content-Type" "application/json"}
+                               :body (json/generate-string {:text text})})]
+      (<= 200 (:status response) 299))
+    (catch Exception _ false)))
+
+;; A forge whose dashboard is not running still gets the alert: the direct write
+;; is kept as the fallback rather than as the only path, because a dashboard that
+;; cannot be reached must not lose an alarm. The request is written in the shape
+;; the dashboard writes for the operator's own messages, so the bridge carries it
+;; to the phone the way it carries any request. The answer is the lieutenant's,
+;; and the body says who is asking.
+(defn write-chat-request! [forge text]
   (let [id (str "req-"
                 (-> (java.time.format.DateTimeFormatter/ofPattern "yyyyMMdd'T'HHmmss.SSSSSS")
                     (.withZone (java.time.ZoneOffset/UTC))
@@ -355,6 +382,12 @@
                "\n"
                text "\n"))
     (str file)))
+
+(defn raise-chat-request! [forge text]
+  (let [url (dashboard-url forge)]
+    (if (and url (take-through-dashboard? url text))
+      (str "the dashboard at " url)
+      (write-chat-request! forge text))))
 
 (defn survey [project forge ask? notify?]
   (let [socket (tmux-socket project)

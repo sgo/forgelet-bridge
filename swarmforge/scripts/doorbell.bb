@@ -6,6 +6,13 @@
             [clojure.edn :as edn]
             [clojure.string :as str]))
 
+;; The gap and the fill of a request nobody has answered: how long a delivered
+;; request waits before the doorbell rings it again - a session that is away is
+;; not battered - and how many rings it takes before the pass reports it as
+;; still unanswered rather than ringing it forever.
+(def gap-minutes 10)
+(def fill 3)
+
 (def usage-text
   (str "Ring a chat request that was written down but never reached the role.\n"
        "\n"
@@ -31,8 +38,16 @@
        "\n"
        "  doorbell.sh print-ring <body>\n"
        "\n"
-       "It never rings twice for one request: what it has seen and what it has rung\n"
-       "live in <forge-root>/.swarmforge/doorbell.edn.\n"))
+       "It rings a request it has already rung only once the gap has passed, and\n"
+       "only up to its fill: what it has seen, what it has rung, and when, live in\n"
+       "<forge-root>/.swarmforge/doorbell.edn.\n"
+       "\n"
+       "Delivered is not answered. A request the dashboard still holds as pending\n"
+       "is one nobody answered, whatever the pane can prove, so a delivered request\n"
+       "is rung again once the gap has passed — a session that is away is not\n"
+       "battered — and up to its fill, after which the pass reports it as still\n"
+       "unanswered rather than ringing it forever. Each ring says which one it is.\n"
+       "  gap: " gap-minutes " minutes   fill: " fill " rings\n"))
 
 (defn exit! [status message]
   (binding [*out* *err*]
@@ -90,7 +105,10 @@
                         (when (str/starts-with? line (str name ": "))
                           (subs line (+ 2 (count name)))))
                       (str/split-lines headers)))]
-    {:id (field "id") :body (str/trim (or body "")) :file (str file)}))
+    {:id (field "id")
+     :created-at (field "created_at")
+     :body (str/trim (or body ""))
+     :file (str file)}))
 
 (defn pending-requests [root]
   (->> (request-files root)
@@ -102,17 +120,25 @@
   (fs/path root ".swarmforge" "doorbell.edn"))
 
 ;; The ledger keeps the three outcomes apart, because they mean different
-;; things: a request the pane proved is delivered and done, one this pass rang
-;; has been delivered by the doorbell, and one that was only looked at - seen
-;; while the role was mid-turn - is still owed. Recording a skip as delivery
-;; would let a message the operator sent and that never arrived be written off
-;; silently, which is the failure this tool exists to repair.
+;; things: a request the pane proved is delivered, one this pass rang has been
+;; delivered by the doorbell, and one that was only looked at - seen while the
+;; role was mid-turn - is still owed. Recording a skip as delivery would let a
+;; message the operator sent and that never arrived be written off silently,
+;; which is the failure this tool exists to repair.
+;;
+;; It also keeps the rings themselves - how many, and when the last one was -
+;; because delivery is not an answer: a request the dashboard still holds is
+;; rung again once the gap has passed, up to the fill.
 (defn ledger [root]
   (let [path (ledger-path root)
         stored (if (fs/regular-file? path)
                  (try (edn/read-string (slurp (str path))) (catch Exception _ {}))
                  {})]
-    {:delivered (set (:delivered stored)) :rung (set (:rung stored)) :owed (set (:owed stored))}))
+    {:delivered (set (:delivered stored))
+     :rung (set (:rung stored))
+     :owed (set (:owed stored))
+     :rings (into {} (for [[id ring] (:rings stored)]
+                       [id {:count (or (:count ring) 0) :at (:at ring)}]))}))
 
 (defn save-ledger! [root ledger]
   (let [path (ledger-path root)]
@@ -120,7 +146,20 @@
     (spit (str path) (pr-str (into (sorted-map)
                                    {:delivered (vec (sort (:delivered ledger)))
                                     :rung (vec (sort (:rung ledger)))
-                                    :owed (vec (sort (:owed ledger)))})))))
+                                    :owed (vec (sort (:owed ledger)))
+                                    :rings (:rings ledger)})))))
+
+(defn now [] (java.time.Instant/now))
+
+;; When a request was last heard of: the doorbell's own last ring, or the moment
+;; the dashboard wrote the request down, which is when it typed it. A time the
+;; record does not carry is no reason to hold back - ringing is the repair
+;; working - so anything unreadable counts as long past.
+(defn past-gap? [at]
+  (let [then (try (java.time.Instant/parse (str/trim (str at)))
+                  (catch Exception _ nil))]
+    (or (nil? then)
+        (>= (.toMinutes (java.time.Duration/between then (now))) gap-minutes))))
 
 ;; The check that knows what "working" means for each tool is the idler check;
 ;; the doorbell asks it rather than repeating its rules, and treats anything but
@@ -200,15 +239,32 @@
               " state, then reply with what you would answer and why. Do not answer it"
               " unless the operator says to."))))
 
-(defn wake-text [id body]
-  (str (if (str/includes? (or body "") "\n")
-         (str "[" id "]\n" body)
-         (str "[" id "] " body))
-       "\n"
-       (answer-reminder id body)))
+(defn ordinal [n]
+  (case (int n)
+    1 "first"
+    2 "second"
+    3 "third"
+    (str n "th")))
 
-(defn ring! [socket pane id body]
-  (tmux socket "send-keys" "-t" pane "-l" (wake-text id body))
+;; A request that has been rung before says so, so a pane that has seen the same
+;; alert three times knows it is not new.
+(defn ring-note [ring]
+  (when (> ring 1)
+    (str " This is the doorbell's " (ordinal ring) " ring of this request:"
+         " the earlier one reached this pane and nothing acted on it.")))
+
+(defn wake-text
+  ([id body] (wake-text id body 1))
+  ([id body ring]
+   (str (if (str/includes? (or body "") "\n")
+          (str "[" id "]\n" body)
+          (str "[" id "] " body))
+        "\n"
+        (answer-reminder id body)
+        (ring-note ring))))
+
+(defn ring! [socket pane id body ring]
+  (tmux socket "send-keys" "-t" pane "-l" (wake-text id body ring))
   (tmux socket "send-keys" "-t" pane "C-m")
   (tmux socket "send-keys" "-t" pane "C-j"))
 
@@ -240,15 +296,29 @@
                   " for " (str root)))
     (if (empty? requests)
       (println "nothing pending: no chat request is waiting to be delivered")
-      (doseq [{:keys [id body]} requests]
+      (doseq [{:keys [id body created-at]} requests]
         (let [quoted (str "\"" body "\"")
-              proved (delivered-evidence id screen scrollback @kept)]
+              proved (delivered-evidence id screen scrollback @kept)
+              rung (get (:rings @kept) id)
+              rings (or (:count rung) 0)
+              ;; A request is due again once the gap has passed since it was last
+              ;; heard of: the doorbell's own last ring, or the moment the
+              ;; dashboard wrote it down.
+              due (past-gap? (or (:at rung) created-at))]
           (cond
-            proved
+            ;; The dashboard still holds it, so nobody answered it, and the
+            ;; pane's words are not an answer.
+            (and proved (>= rings fill))
+            (do (swap! kept update :owed conj id)
+                (println (str "the chat request " quoted " is still unanswered: the doorbell has rung it its"
+                              " fill of " fill " rings and no session has acted on it")))
+
+            (and proved (not due))
             (do (when-not (contains? (:rung @kept) id) (swap! kept update :delivered conj id))
                 (swap! kept update :owed (fnil disj #{}) id)
                 (println (str "the chat request " quoted " was already delivered from " proved
-                              " and left alone")))
+                              " and left alone: nobody has answered it, and the doorbell rings it"
+                              " again once the gap has passed")))
 
             (nil? pane)
             (do (swap! kept update :owed conj id)
@@ -263,10 +333,17 @@
                               (or role "-") " was busy")))
 
             :else
-            (do (ring! socket pane id body)
+            (do (ring! socket pane id body (inc rings))
+                (swap! kept update :rings assoc id {:count (inc rings) :at (str (now))})
                 (swap! kept update :rung conj id)
                 (swap! kept update :owed (fnil disj #{}) id)
-                (println (str "the chat request " quoted " was never delivered and rung into " pane)))))))
+                (println (cond
+                           (pos? rings)
+                           (str "the chat request " quoted " was never answered and was rung again")
+                           proved
+                           (str "the chat request " quoted " was never answered and rung into " pane)
+                           :else
+                           (str "the chat request " quoted " was never delivered and rung into " pane))))))))
     (save-ledger! root @kept)
     (System/exit 0)))
 

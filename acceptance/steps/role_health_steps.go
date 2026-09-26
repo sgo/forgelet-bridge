@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
+	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 // idlerCheckCommand is this repository's idler check: the tool a forge's own
@@ -32,6 +33,108 @@ func idlerCheckRuns(_ context.Context, world any, captures []string) error {
 	w.idlerOutput = string(out)
 	w.idlerErr = err
 	return nil
+}
+
+// idlerCheckRaisesTheAlerts runs the check the way the forge's schedule does
+// when it wants the operator told: one pass that raises the alert for a stall.
+func idlerCheckRaisesTheAlerts(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	projectDir, err := w.pathOf(captures[2], captures[1])
+	if err != nil {
+		return err
+	}
+	ctx, cancel := stepContext()
+	defer cancel()
+	command := exec.CommandContext(ctx,
+		filepath.Join(fixtures.ProjectRoot(), "swarmforge", "scripts", idlerCheckCommand), projectDir, "--notify")
+	command.Dir = projectDir
+	command.Env = append(os.Environ(), "ROLE_HEALTH_CLAUDE_PROJECTS="+w.claudeProjects())
+	out, err := command.CombinedOutput()
+	w.idlerOutput = string(out)
+	w.idlerErr = err
+	return nil
+}
+
+// theForgeHoldsTheAlertTheIdlerRaised checks the alert reached the forge's own
+// dashboard queue, naming the role and the card it is about.
+func theForgeHoldsTheAlertTheIdlerRaised(_ context.Context, world any, captures []string) error {
+	_, body, err := world.(*World).idlersAlert("Stall watch: "+captures[1], captures[2])
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(body, "Stall watch") {
+		return fmt.Errorf("the alert in the dashboard's queue does not read as a stall watch: %s", body)
+	}
+	return nil
+}
+
+// theDashboardTypedTheIdlersAlert checks the alert arrived the way every other
+// request does: the dashboard woke the master pane as it wrote the request
+// down, so the alert has two chances to be seen rather than one.
+func theDashboardTypedTheIdlersAlert(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	root, body, err := w.idlersAlert()
+	if err != nil {
+		return err
+	}
+	dashboard, err := w.dashboardOf(filepath.Base(root))
+	if err != nil {
+		return err
+	}
+	woke, err := dashboard.WokeWith(body)
+	if err != nil {
+		return err
+	}
+	if !woke {
+		return fmt.Errorf("the dashboard did not type the alert it took into the master role's pane: %s", body)
+	}
+	return nil
+}
+
+// idlersAlert is the alert a stall left in the forge's dashboard queue: the
+// pending request that reads as a stall watch, and the forge whose queue holds
+// it. What the alert is about narrows it further when a scenario names that.
+func (w *World) idlersAlert(about ...string) (root, body string, err error) {
+	root, err = w.theForgeRoot()
+	if err != nil {
+		return "", "", err
+	}
+	store := w.dashboards[filepath.Base(root)]
+	if store == nil {
+		return "", "", fmt.Errorf("the fixture forge root %s has no dashboard queue", root)
+	}
+	pending, err := store.Pending()
+	if err != nil {
+		return "", "", err
+	}
+	for _, request := range pending {
+		if !strings.Contains(request.Body, "Stall watch") {
+			continue
+		}
+		matched := true
+		for _, want := range about {
+			if !strings.Contains(request.Body, want) {
+				matched = false
+			}
+		}
+		if matched {
+			return root, request.Body, nil
+		}
+	}
+	return "", "", fmt.Errorf("the forge root %s holds no stall alert about %s:\n%s",
+		root, strings.Join(about, " "), idlerBodies(pending))
+}
+
+// idlerBodies is what the queue holds, for a failure that says what was there.
+func idlerBodies(requests []dashboard.Request) string {
+	if len(requests) == 0 {
+		return "(nothing pending)"
+	}
+	var bodies []string
+	for _, request := range requests {
+		bodies = append(bodies, request.Body)
+	}
+	return strings.Join(bodies, "\n")
 }
 
 // idlerCheckReports checks what the check said about one role.
