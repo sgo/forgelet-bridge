@@ -152,3 +152,10 @@ Feature: Doorbell
     When the doorbell runs for the forge root forge-a
     Then the doorbell says the chat request "is the build green?" is still unanswered
     And the doorbell did not ring the chat request "is the build green?" again
+
+  # Doorbell 11: a request that has been answered is left alone
+  Scenario: Doorbell 11: a request that has been answered is left alone
+    Given the forge root forge-a gives the role coder a live session
+    And the dashboard answered the chat request "is the build green?"
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says nothing is pending
