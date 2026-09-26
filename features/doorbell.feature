@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=2630e8bd7b6345d396b2c5a80e95f2a54480781c24e71c0b852f28edb9be8cd2
+# mutation-stamp: sha256=6d9c51d16f5c5d911da44bad6864adafa9861800d41f1c1493d7e8141cc574ba
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-26T11:47:39.872251Z","feature_name":"Doorbell","feature_path":"features/doorbell.feature","background_hash":"70a6e3b997c3489e0e5ec864702cf74065b35a6c7129add56196fe28fa475b95","implementation_hash":"sha256:247c05d7507080ede31977b0e993c9d386b49ac843bf25bbb8d36dfe9cb685d9","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-26T16:48:14.449195Z","feature_name":"Doorbell","feature_path":"features/doorbell.feature","background_hash":"70a6e3b997c3489e0e5ec864702cf74065b35a6c7129add56196fe28fa475b95","implementation_hash":"sha256:247c05d7507080ede31977b0e993c9d386b49ac843bf25bbb8d36dfe9cb685d9","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Doorbell
