@@ -14,6 +14,18 @@ import (
 // the dashboard wrote down but never delivered.
 const doorbellCommand = "doorbell.sh"
 
+// The words the ring carries for the two notifications the bridge writes, as the
+// feature says them: the clause that names whose the decision is, and the
+// refusal that leaves it with the operator. Together they are the sentence the
+// steps read back out of the ring, so each word lives here once and the feature's
+// next wording moves in one place.
+const (
+	gateClause    = "the gate is the operator's"
+	gateRefusal   = "Do not approve unless the operator says to"
+	answerClause  = "the answer is the operator's to give"
+	answerRefusal = "Do not answer the clarification request unless the operator says to"
+)
+
 // theDoorbellRuns runs this repository's doorbell for one forge root, the way
 // the forge's own copy would be run, and keeps what it said.
 func theDoorbellRuns(_ context.Context, world any, captures []string) error {
@@ -222,18 +234,14 @@ func theMasterPaneHoldsTheRequestTheDoorbellTyped(_ context.Context, world any, 
 // them. The words ride with the ring rather than waiting in a prompt that may
 // never be read.
 func theRingSaysTheGateIsTheOperators(_ context.Context, world any, _ []string) error {
-	return theRingSays(world.(*World),
-		"the gate is the operator's",
-		"Do not approve unless the operator says to")
+	return theRingSays(world.(*World), gateClause, gateRefusal)
 }
 
 // theRingSaysTheAnswerIsTheOperatorsToGive checks the other half: a
 // clarification is the operator's answer to give, and the session may not answer
 // the clarification request for them.
 func theRingSaysTheAnswerIsTheOperatorsToGive(_ context.Context, world any, _ []string) error {
-	return theRingSays(world.(*World),
-		"the answer is the operator's to give",
-		"Do not answer the clarification request unless the operator says to")
+	return theRingSays(world.(*World), answerClause, answerRefusal)
 }
 
 // theRingCarriesNeitherClause checks a request that is neither an approval nor a
@@ -244,12 +252,7 @@ func theRingCarriesNeitherClause(_ context.Context, world any, _ []string) error
 	if err != nil {
 		return err
 	}
-	for _, clause := range []string{
-		"the gate is the operator's",
-		"Do not approve unless the operator says to",
-		"the answer is the operator's to give",
-		"Do not answer the clarification request unless the operator says to",
-	} {
+	for _, clause := range []string{gateClause, gateRefusal, answerClause, answerRefusal} {
 		if strings.Contains(text, clause) {
 			return fmt.Errorf("the ring carries %q, and this request holds no such gate:\n%s", clause, text)
 		}
