@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=cae36ef2836d735b3e19e5205683d115b72f628d4c07d8d5919e9c3762c5ed5a
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-25T20:44:53.925696Z","feature_name":"Forge Schedule","feature_path":"features/forge-schedule.feature","background_hash":"f573ec4511b3c8963c49e47b4e5827332d9fcaf8fc94692a6ea2e72da2b26e47","implementation_hash":"sha256:946376a88f4a966ecbe8d5f4457b4f451e21f9abfa171f39e811c3eca35fbaff","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-26T11:47:40.940560Z","feature_name":"Forge Schedule","feature_path":"features/forge-schedule.feature","background_hash":"f573ec4511b3c8963c49e47b4e5827332d9fcaf8fc94692a6ea2e72da2b26e47","implementation_hash":"sha256:946376a88f4a966ecbe8d5f4457b4f451e21f9abfa171f39e811c3eca35fbaff","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Forge Schedule

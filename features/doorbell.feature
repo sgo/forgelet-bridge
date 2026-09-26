@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=f746620062443a8d318fe9bb21c9d21e64419bd941ff9990f81747df741b9299
+# mutation-stamp: sha256=2630e8bd7b6345d396b2c5a80e95f2a54480781c24e71c0b852f28edb9be8cd2
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-25T20:44:52.861046Z","feature_name":"Doorbell","feature_path":"features/doorbell.feature","background_hash":"70a6e3b997c3489e0e5ec864702cf74065b35a6c7129add56196fe28fa475b95","implementation_hash":"sha256:247c05d7507080ede31977b0e993c9d386b49ac843bf25bbb8d36dfe9cb685d9","scenarios":[]}
+# {"version":1,"tested_at":"2026-09-26T11:47:39.872251Z","feature_name":"Doorbell","feature_path":"features/doorbell.feature","background_hash":"70a6e3b997c3489e0e5ec864702cf74065b35a6c7129add56196fe28fa475b95","implementation_hash":"sha256:247c05d7507080ede31977b0e993c9d386b49ac843bf25bbb8d36dfe9cb685d9","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Doorbell
@@ -159,3 +159,12 @@ Feature: Doorbell
     And the dashboard answered the chat request "is the build green?"
     When the doorbell runs for the forge root forge-a
     Then the doorbell says nothing is pending
+
+  # Doorbell 12: a request the dashboard delivered and nobody answered is rung once the gap has passed
+  Scenario: Doorbell 12: a request the dashboard delivered and nobody answered is rung once the gap has passed
+    Given the forge root forge-a gives the role coder a live session
+    And the dashboard typed the chat request "is the build green?" into the master role's pane
+    And the chat request "is the build green?" has waited unanswered past the doorbell's gap
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "is the build green?" was never answered and rung into the master role's pane
+    And the master role's pane holds the chat request "is the build green?" the doorbell typed

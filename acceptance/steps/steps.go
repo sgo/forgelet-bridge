@@ -115,6 +115,7 @@ func register(registry *runtime.Registry) error {
 		{`^the chat request "(.+)" has been rung its fill and is still unanswered$`, theRequestWasRungItsFill},
 		{`^the dashboard answered the chat request "(.+)"$`, theDashboardAnsweredTheRequest},
 		{`^the doorbell says the chat request "(.+)" was never answered and was rung again$`, doorbellRungTheUnansweredRequest},
+		{`^the doorbell says the chat request "(.+)" was never answered and rung into the master role's pane$`, doorbellRangTheUnansweredRequest},
 		{`^the doorbell says the chat request "(.+)" is still unanswered$`, doorbellReportsItIsStillUnanswered},
 		{`^the ring says it is the doorbell's second ring of the chat request "(.+)"$`, theRingSaysWhichRingItIs},
 		{`^the doorbell did not ring the chat request "(.+)" again$`, theDoorbellDidNotRingItAgain},

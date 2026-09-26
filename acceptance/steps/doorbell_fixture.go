@@ -195,17 +195,16 @@ func (w *World) writeLedgerOfRings(body string, times int) error {
 
 // theRequestWaitedPastTheGap moves the request's own record back: the dashboard
 // wrote down when it created it, and a request that has waited unanswered past
-// the doorbell's gap is one whose delivery is a day old.
+// the doorbell's gap is one whose delivery is a day old. It leaves the doorbell's
+// own ledger alone, so a scenario can say what the pass already knows about the
+// request rather than the shape saying it for them.
 func theRequestWaitedPastTheGap(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	root, request, err := w.requestByBody(captures[1])
 	if err != nil {
 		return err
 	}
-	if err := ageRequest(root, request.ID, longAgo()); err != nil {
-		return err
-	}
-	return w.writeLedgerOfRings(captures[1], 1)
+	return ageRequest(root, request.ID, longAgo())
 }
 
 // ageRequest moves the moment a request's own record says it was created, which

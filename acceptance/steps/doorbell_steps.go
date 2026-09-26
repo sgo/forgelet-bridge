@@ -107,6 +107,14 @@ func doorbellRungTheUnansweredRequest(_ context.Context, world any, captures []s
 	return doorbellSaid(world.(*World), captures[1], "was never answered and was rung again")
 }
 
+// doorbellRangTheUnansweredRequest checks the pass rang a request the dashboard
+// had already delivered and nobody had answered, which is a request the doorbell
+// itself had never rung: the operator's own message, held as pending past the
+// gap, is not delivered and done just because the pane can show it.
+func doorbellRangTheUnansweredRequest(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was never answered and rung into")
+}
+
 // doorbellReportsItIsStillUnanswered checks a request that has been rung its
 // fill is reported rather than rung forever.
 func doorbellReportsItIsStillUnanswered(_ context.Context, world any, captures []string) error {

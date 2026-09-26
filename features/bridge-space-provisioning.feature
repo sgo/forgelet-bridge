@@ -1,6 +1,6 @@
 # mutation-stamp: sha256=130709e82aced7ee39f0d12a99e78cc766e44e5407c4ab9a6f44d02552a45950
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-25T20:44:51.798204Z","feature_name":"Bridge Space Provisioning","feature_path":"features/bridge-space-provisioning.feature","background_hash":"82f3ad327b9bd9635067c590d7165b7ec8b83bc9f03e45725cadfe3eb8a6ea02","implementation_hash":"sha256:bae091ed9ea79d24c9bb62f8ecc275da52fb460f4b60b9655945b1f6de29b6de","scenarios":[{"index":2,"name":"Bridge Space Provisioning 3: gives each configured forge root its own forge space","scenario_hash":"6da79c82650313c481ca3babba60a7dd4c73bc2de49f59d6a286976f13c61627","mutation_count":4,"result":{"Total":4,"Killed":4,"Survived":0,"Errors":0},"tested_at":"2026-09-21T21:43:38.062882Z"}]}
+# {"version":1,"tested_at":"2026-09-26T11:47:38.877012Z","feature_name":"Bridge Space Provisioning","feature_path":"features/bridge-space-provisioning.feature","background_hash":"82f3ad327b9bd9635067c590d7165b7ec8b83bc9f03e45725cadfe3eb8a6ea02","implementation_hash":"sha256:bae091ed9ea79d24c9bb62f8ecc275da52fb460f4b60b9655945b1f6de29b6de","scenarios":[{"index":2,"name":"Bridge Space Provisioning 3: gives each configured forge root its own forge space","scenario_hash":"6da79c82650313c481ca3babba60a7dd4c73bc2de49f59d6a286976f13c61627","mutation_count":4,"result":{"Total":4,"Killed":4,"Survived":0,"Errors":0},"tested_at":"2026-09-21T21:43:38.062882Z"}]}
 # acceptance-mutation-manifest-end
 
 Feature: Bridge Space Provisioning
