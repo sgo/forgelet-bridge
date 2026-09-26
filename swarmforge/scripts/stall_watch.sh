@@ -60,6 +60,10 @@ plist_body() {
     args="$args    <string>$watcher</string>
 "
   done
+  # No StandardOutPath and no StandardErrorPath: the pass keeps its own log now,
+  # a day to a file, because a path launchd opens every minute is one unbounded
+  # file however old its contents are. What goes wrong before the pass can write
+  # its log is the machine's own log, not a forge file nobody bounds.
   cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -76,8 +80,6 @@ $args  </array>
   <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
   <key>StartInterval</key><integer>$INTERVAL</integer>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>$root/.swarmforge/stall-watch.log</string>
-  <key>StandardErrorPath</key><string>$root/.swarmforge/stall-watch.log</string>
 </dict>
 </plist>
 PLIST

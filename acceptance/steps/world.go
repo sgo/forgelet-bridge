@@ -57,9 +57,21 @@ type World struct {
 	// last counted them, which is what a restart must not add to.
 	activityCount int
 	// scheduleRoots and scheduleOutput are the forge roots the forge schedule
-	// was last run for, and what it said.
+	// was last run for, and what it said; scheduleRuns is what every pass said,
+	// oldest first, which is how a scenario asks what a cadence did once.
 	scheduleRoots  []string
 	scheduleOutput string
+	scheduleRuns   []string
+	// staleScratch and freshScratch are the scratch the schedule's sweep has to
+	// tell apart by age, scheduleLogs are the days of its own log it left behind,
+	// prunerPath is the layer's pruner the forge carries or lacks, and targetDirs
+	// and binaries are the project's own build output the pass must never reach.
+	staleScratch string
+	freshScratch string
+	scheduleLogs map[string]string
+	prunerPath   string
+	targetDirs   []string
+	binaries     []string
 	// keepScenarios and keepMutants are how many runs of each kind the fixture
 	// keeps; scenarioRuns and mutantRuns are the ones it made, oldest first,
 	// and runsOutput is what a clean up said.
