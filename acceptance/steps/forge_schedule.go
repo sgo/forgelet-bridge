@@ -171,27 +171,26 @@ func theScheduleSaysTheProjectsWereNotPruned(_ context.Context, world any, captu
 // keeps is still there, in its tree and in a worktree: however old it is, it is
 // the project's own, and the pass does not reach it.
 func theProjectStillHoldsItsTargetDirs(_ context.Context, world any, _ []string) error {
-	w := world.(*World)
-	if len(w.targetDirs) == 0 {
-		return fmt.Errorf("the scenario left no target directories to check")
-	}
-	for _, dir := range w.targetDirs {
-		if err := directorySurvived(dir, "a project's own target directory"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return everyPathSurvived(world.(*World).targetDirs, directorySurvived,
+		"a project's own target directory", "target directories to check")
 }
 
 // theProjectStillHoldsItsAcceptanceBinaries checks the binaries the acceptance
 // suite runs from are still there: the pruner walks the runs beside them.
 func theProjectStillHoldsItsAcceptanceBinaries(_ context.Context, world any, _ []string) error {
-	w := world.(*World)
-	if len(w.binaries) == 0 {
-		return fmt.Errorf("the scenario left no binaries to check")
+	return everyPathSurvived(world.(*World).binaries, fileSurvived,
+		"a binary the acceptance suite runs from", "binaries to check")
+}
+
+// everyPathSurvived checks every path a scenario left is still there, each read
+// the way that path is owed, and names the scenario's own gap when it left
+// nothing to check.
+func everyPathSurvived(paths []string, survived func(path, what string) error, what, nothing string) error {
+	if len(paths) == 0 {
+		return fmt.Errorf("the scenario left no %s", nothing)
 	}
-	for _, path := range w.binaries {
-		if err := fileSurvived(path, "a binary the acceptance suite runs from"); err != nil {
+	for _, path := range paths {
+		if err := survived(path, what); err != nil {
 			return err
 		}
 	}
