@@ -271,6 +271,7 @@
    "done_with_current_task.sh" "done_with_current_task.bb"
    "ready_for_next_batch.sh" "ready_for_next_batch.bb"
    "done_with_current_batch.sh" "done_with_current_batch.bb"
+   "run_hook.sh" "run_hook.bb"
    "handoffd.bb" "stop_handoff_daemon.bb" "stop_handoff_daemon.sh"
    "swarm-cleanup.sh" "swarm-window-watchdog.sh" "swarm_window_watchdog.bb"
    "swarm-terminal-adapter.sh" "swarmforge.sh" "swarmforge.bb"
@@ -434,6 +435,7 @@
          "- Operator follow-ups arrive as `[id] text` in this pane. Answer with `pack_dashboard_request.sh answer <id> ./tmp/answer.txt`.\n"
          "- Ask the operator with `pack_dashboard_request.sh clarify ./tmp/question.txt`. Do not ask in the pane.\n"
          "- Do not ask for approval in the pane. Queue `git_handoff`; the operator uses Attention.\n"
+         "- When a card's work merges into the master worktree and the board already marks the card done, the tooling runs `swarmforge/hooks/card-complete.sh` if the project provides one, and prints what it did. A `HOOK_FAILED` line means the project's finishing step failed: report it to the operator rather than quietly continuing.\n"
          (when last-role?
            (str "- You are the last role in this pack. After this pack step, queue a git_handoff. The helper marks the card Done. Do not list every other role on to: to finish the card.\n"))
          (when (= role "specifier")
@@ -515,6 +517,11 @@
                           (fs/path role-worktree "swarmforge" "scripts"))
         prompt-file (fs/path (:prompts-dir ctx) (str role ".md"))
         tool-bin (fs/path (:working-dir ctx) ".swarmforge" "bin")
+        ;; A forge's own helpers, wherever they are the forge's: a directory the
+        ;; composition never writes, sitting beside the shared scripts rather than
+        ;; inside them, because that directory is replaced on every update. An
+        ;; absent directory on PATH costs nothing.
+        local-scripts (fs/path role-worktree "swarmforge" "local-scripts")
         prompt (str "\"$(cat " (sq (str prompt-file)) ")\"")
         ;; A lieutenant's first message names its rules instead of carrying
         ;; them: the instruction file holds the whole role prompt, which is more
@@ -525,7 +532,8 @@
         initial-prompt (if (= role "lieutenant") lieutenant-prompt prompt)
         initial-prompt? (gets-initial-prompt? role agent)
         base (str "export SWARMFORGE_ROLE=" (sq role)
-                  " && export PATH=" (sq (str tool-bin)) ":" (sq (str role-script-dir)) ":$PATH"
+                  " && export PATH=" (sq (str local-scripts)) ":" (sq (str tool-bin)) ":"
+                  (sq (str role-script-dir)) ":$PATH"
                   " && cd " (sq (str role-worktree))
                   " && ")]
     (write-agent-instruction-file! ctx role prompt-file (last-pack-role? ctx role))
@@ -752,12 +760,50 @@
 (defn pack-web-pid-file [ctx]
   (fs/path (:state-dir ctx) "pack_web.pid"))
 
+(defn previous-dashboard-port [ctx]
+  (let [file (dashboard-url-file ctx)]
+    (when (fs/regular-file? file)
+      (second (re-matches #".*:(\d+)\s*$" (str/trim (slurp (str file))))))))
+
+(defn process-alive? [pid]
+  (zero? (:exit (process/sh {:continue true} "kill" "-0" pid))))
+
+(defn wait-for-exit [pid timeout-ms]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop []
+      (cond
+        (not (process-alive? pid)) true
+        (> (System/currentTimeMillis) deadline) false
+        :else (do (Thread/sleep 100) (recur))))))
+
+(defn port-available? [port]
+  (try
+    (let [socket (java.net.ServerSocket.)]
+      (try
+        ;; Bind exactly where the dashboard binds, without address reuse. A
+        ;; wildcard bind with SO_REUSEADDR succeeds on macOS even while the
+        ;; dashboard is listening on 127.0.0.1, which would pick a port that is
+        ;; already taken.
+        (.setReuseAddress socket false)
+        (.bind socket (java.net.InetSocketAddress. "127.0.0.1" (Integer/parseInt (str port))))
+        true
+        (finally (.close socket))))
+    (catch Exception _ false)))
+
+(defn test-dashboard-address! [root port]
+  (let [ctx {:state-dir (fs/path root ".swarmforge")}]
+    (println (str "previous=" (or (previous-dashboard-port ctx) "none")
+                  " available=" (port-available? port)))))
+
 (defn stop-existing-pack-web! [ctx]
   (let [file (pack-web-pid-file ctx)
         pid (when (fs/regular-file? file)
               (not-empty (str/trim (slurp (str file)))))]
     (when pid
-      (process/sh {:continue true} "kill" "-TERM" pid))
+      (process/sh {:continue true} "kill" "-TERM" pid)
+      ;; The dashboard reuses its last port when that port is free, so the old
+      ;; server has to be gone before the new one tries to bind it.
+      (wait-for-exit pid 5000))
     (fs/delete-if-exists file)
     (fs/delete-if-exists (dashboard-url-file ctx))))
 
@@ -769,17 +815,24 @@
     (process/sh {:continue true} "open" url)))
 
 (defn start-pack-web! [ctx]
-  (stop-existing-pack-web! ctx)
-  (let [script (str (fs/path (:script-dir ctx) "pack_web.sh"))
-        log (fs/path (:state-dir ctx) "dashboard.log")]
-    (process/process [script "--serve" (str (:working-dir ctx))]
-                     {:out (str log) :err :out})
+  ;; The dashboard's address is the operator's bookmark, so it keeps the port it
+  ;; served on last time whenever that port is free. A fresh port on every start
+  ;; is a bookmark that dies on every restart. If the port is taken, by another
+  ;; forge or another program, the dashboard falls back to a random one.
+  (let [previous (previous-dashboard-port ctx)]
+    (stop-existing-pack-web! ctx)
+    (let [script (str (fs/path (:script-dir ctx) "pack_web.sh"))
+          log (fs/path (:state-dir ctx) "dashboard.log")
+          port (when (and previous (port-available? previous)) previous)]
+      (process/process (cond-> [script "--serve" (str (:working-dir ctx))]
+                         port (conj port))
+                       {:out (str log) :err :out})
     (when-not (wait-for-file (dashboard-url-file ctx) 5000)
       (fail! (str red "Error:" reset " Dashboard did not start.")))
     (let [url (str/trim (slurp (str (dashboard-url-file ctx))))]
       (println (str green "Dashboard: " url reset))
       (maybe-open-browser! url)
-      url)))
+      url))))
 
 (defn context [working-dir]
   (let [working-dir (fs/absolutize (fs/path working-dir))
@@ -1010,6 +1063,8 @@
         (start-handoff-daemon! ctx)
         (launch-roles! ctx)
         (announce-ready! ctx)
+        ;; A project opened from the dashboard is a project whose surfaces open,
+        ;; the same way starting the forge opens the host's.
         (open-terminal-surfaces! ctx)))))
 
 (defn test-terminal-bridge! [root backend]
@@ -1085,6 +1140,7 @@
     "--test-ensure-codex-trust" (test-ensure-codex-trust! (second args))
     "--test-reset-pack-web-state" (test-reset-pack-web-state! (second args))
     "--test-tmux-base-indexes" (test-tmux-base-indexes! (second args))
+    "--test-dashboard-address" (test-dashboard-address! (second args) (nth args 2))
     "--test-create-role-session" (test-create-role-session! (second args) (nth args 2))
     "--start-project" (run-project! (second args))
     "--stop-project" (run-stop-project! (second args))

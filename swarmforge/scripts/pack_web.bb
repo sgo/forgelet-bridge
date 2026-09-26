@@ -726,16 +726,36 @@
 ;; phone. The reminder rides with the request itself, so a brand-new session, a
 ;; stale copy of the role's prompt, and a pane that has been up for days all see
 ;; it at the moment they answer.
-(defn answer-reminder [id]
+;; An approval notification the operator forwards arrives looking like any other
+;; chat request, but it carries a gate, and the gate is the operator's: the
+;; lieutenant reads the pending handoff and says what it thinks. The bridge
+;; writes the notification's first line, so the shape is knowable rather than
+;; guessed at.
+(defn approval-request? [text]
+  (boolean (re-find #"(?m)^Approval for .+ in .+" (or text ""))))
+
+(defn clarification-request? [text]
+  (boolean (re-find #"(?m)^Clarification for .+ from .+" (or text ""))))
+
+(defn answer-reminder [id text]
   (str "Answer with: pack_dashboard_request.sh answer " id " ./tmp/answer.txt"
-       " (a reply only in this pane reaches nobody)."))
+       " (a reply only in this pane reaches nobody)."
+       (when (approval-request? text)
+         (str " This one is an approval gate, and the gate is the operator's: read the"
+              " pending handoff, then reply with your assessment and a recommendation."
+              " Do not approve unless the operator says to."))
+       (when (clarification-request? text)
+         (str " This one is a clarification an agent is blocked on, and the answer is"
+              " the operator's to give: read the question, ground it in the project's"
+              " state, then reply with what you would answer and why. Do not answer it"
+              " unless the operator says to."))))
 
 (defn chat-wake [id text]
   (str (if (str/includes? (or text "") "\n")
          (str "[" id "]\n" text)
          (str "[" id "] " text))
        "\n"
-       (answer-reminder id)))
+       (answer-reminder id text)))
 
 (defn clar-wake [id role question answer]
   (str "[" id "]\n"
