@@ -287,3 +287,102 @@ func (w *World) ringInTheMasterPane() (string, error) {
 	}
 	return paneText(socket, pane)
 }
+
+// The two marks the fixture's terminal draws: a turn it has taken, and the
+// composer holding the text it has not.
+const (
+	turnMark     = "> "
+	composerMark = "› "
+)
+
+// theMasterPaneHoldsTheRequestAsOneSubmittedTurn checks the pane took the ring
+// as one turn: the request's own words are drawn under one turn's mark, rather
+// than submitted piecemeal on the body's own newlines.
+func theMasterPaneHoldsTheRequestAsOneSubmittedTurn(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	body := captures[1]
+	_, request, err := w.requestByBody(body)
+	if err != nil {
+		return err
+	}
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	turns := submittedTurns(text)
+	// The request's own words under one turn's mark is one turn. A pane that
+	// submitted the ring on the body's own newlines draws it as several, and
+	// none of them holds the whole request.
+	wants := []string{"[" + request.ID + "]", body}
+	var holding []string
+	for _, turn := range turns {
+		whole := true
+		for _, want := range wants {
+			whole = whole && strings.Contains(squashed(turn), squashed(want))
+		}
+		if whole {
+			holding = append(holding, turn)
+		}
+	}
+	if len(holding) != 1 {
+		return fmt.Errorf("the pane holds the request %q in %d turns, and the ring the doorbell typed is one:\n%s",
+			body, len(holding), text)
+	}
+	return nil
+}
+
+// theMasterPaneHoldsNothingInTheComposer checks the ring left no text behind:
+// the pane took the turn, and the composer it was typed into is empty.
+func theMasterPaneHoldsNothingInTheComposer(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	text, err := w.ringInTheMasterPane()
+	if err != nil {
+		return err
+	}
+	if held := composerOf(text); held != "" {
+		return fmt.Errorf("the pane's composer still holds %q, so the ring is not a turn it took:\n%s", held, text)
+	}
+	return nil
+}
+
+// doorbellRangAndTheRingDidNotLand checks the doorbell said the ring it typed
+// did not land: the pane is still holding it, so no session has seen it and the
+// request is owed rather than delivered.
+func doorbellRangAndTheRingDidNotLand(_ context.Context, world any, captures []string) error {
+	return doorbellSaid(world.(*World), captures[1], "was rung and the ring did not land")
+}
+
+// submittedTurns is the pane's own turns, in the order the terminal drew them:
+// each one starts at the mark a turn is drawn with, and the lines under it - the
+// body's own, and anything the pane wrapped around - belong to that turn.
+func submittedTurns(text string) []string {
+	var turns []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, composerMark) {
+			break
+		}
+		if strings.HasPrefix(line, turnMark) {
+			turns = append(turns, strings.TrimPrefix(line, turnMark))
+			continue
+		}
+		if len(turns) > 0 {
+			turns[len(turns)-1] += "\n" + line
+		}
+	}
+	return turns
+}
+
+// composerOf is what the pane's terminal is still holding: what it draws from
+// its own composer mark to the end of the screen, with the mark and the pane's
+// own padding taken off.
+func composerOf(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if !strings.HasPrefix(lines[index], composerMark) {
+			continue
+		}
+		held := strings.Join(lines[index:], "\n")
+		return strings.TrimSpace(strings.TrimPrefix(held, composerMark))
+	}
+	return ""
+}

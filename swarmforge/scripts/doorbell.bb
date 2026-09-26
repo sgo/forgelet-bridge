@@ -38,6 +38,10 @@
        "\n"
        "  doorbell.sh print-ring <body>\n"
        "\n"
+       "The ring goes in as one paste and then one Enter, and the pane is asked what\n"
+       "it took: an empty composer is a ring that landed, and a ring the pane is\n"
+       "still holding is reported as not landed rather than counted as delivered.\n"
+       "\n"
        "It rings a request it has already rung only once the gap has passed, and\n"
        "only up to its fill: what it has seen, what it has rung, and when, live in\n"
        "<forge-root>/.swarmforge/doorbell.edn.\n"
@@ -253,6 +257,37 @@
     (str " This is the doorbell's " (ordinal ring) " ring of this request:"
          " the earlier one reached this pane and nothing acted on it.")))
 
+;; What a pane has not submitted: the composer, the line its own cursor sits on.
+;; A terminal draws the input it is holding where its cursor is, so the words at
+;; the end of that line are the end of what it has not taken yet - and a pane
+;; whose composer still holds the doorbell's own ring is a pane no session has
+;; read, whatever the rest of its screen shows.
+(def composer-window 16)
+
+(defn squashed [text]
+  (str/replace (or text "") #"\s+" ""))
+
+(defn pane-cursor [socket pane]
+  (some-> (tmux socket "display-message" "-p" "-t" pane "#{cursor_y}") str/trim parse-long))
+
+(defn pane-composer [socket pane]
+  (let [row (pane-cursor socket pane)
+        lines (str/split-lines (or (pane-screen socket pane) ""))]
+    (when (and row (<= 0 row) (< row (count lines)))
+      (nth lines row))))
+
+;; A composer is drawn with the pane's own mark beside the words, and a pane
+;; wraps a long text where its width falls, so the end of what it holds is read
+;; as the end of the typed words: a window of them wide enough to be the words
+;; rather than the mark, and present whatever the pane wrapped around.
+(defn composer-holds? [composer text]
+  (let [line (squashed composer)
+        text (squashed text)
+        end (if (>= (count line) composer-window)
+              (subs line (- (count line) composer-window))
+              line)]
+    (boolean (and (seq line) (seq text) (str/includes? text end)))))
+
 (defn wake-text
   ([id body] (wake-text id body 1))
   ([id body ring]
@@ -263,10 +298,42 @@
         (answer-reminder id body)
         (ring-note ring))))
 
+;; Everything a pane could be holding for one request: what the dashboard types,
+;; and every ring the doorbell has typed for it. A copy of any of them sitting in
+;; the composer is input the pane has not taken, so it proves nothing arrived.
+(defn typed-into-the-pane [id body rings]
+  (into [(str "[" id "] " body)]
+        (map #(wake-text id body %) (range 1 (inc rings)))))
+
+;; The ring goes in as one paste and then one Enter. A request runs to lines -
+;; the body's own, the answering command, the gate it holds - and a terminal that
+;; is still taking that text swallows the Enter that follows it, which leaves the
+;; whole ring in the composer with nothing having read it. One paste is what
+;; keeps a body's own newlines from submitting the ring piecemeal, and one Enter
+;; is what the pane takes as the one turn.
+(def ring-buffer "swarmforge-doorbell")
+
 (defn ring! [socket pane id body ring]
-  (tmux socket "send-keys" "-t" pane "-l" (wake-text id body ring))
-  (tmux socket "send-keys" "-t" pane "C-m")
-  (tmux socket "send-keys" "-t" pane "C-j"))
+  (let [text (wake-text id body ring)]
+    (tmux socket "set-buffer" "-b" ring-buffer text)
+    (tmux socket "paste-buffer" "-d" "-p" "-b" ring-buffer "-t" pane)
+    (tmux socket "send-keys" "-t" pane "C-m")
+    text))
+
+;; How long a pane is given to draw what it took before the doorbell judges it:
+;; the paste and the Enter arrive a moment before the pane has drawn the turn.
+(def ring-settle-ms 150)
+
+;; Whether the ring landed: the composer it went into was read, and it is empty
+;; again. A composer still holding the ring's own words is the Enter the pane
+;; lost, and one that cannot be read at all is not proof that the pane took the
+;; ring - either way the pass reports it rather than writing the request down as
+;; delivered, because counting a ring no session has read is the failure this
+;; tool exists to prevent.
+(defn ring-landed? [socket pane text]
+  (Thread/sleep ring-settle-ms)
+  (let [composer (pane-composer socket pane)]
+    (and (some? composer) (not (composer-holds? composer text)))))
 
 ;; The ring one request would be typed with, for a reader with no pane to ring:
 ;; the installer's self-check asks for this rather than standing up a session,
@@ -290,6 +357,7 @@
         socket (tmux-socket root)
         screen (when (and socket pane) (pane-screen socket pane))
         scrollback (when (and socket pane) (pane-scrollback socket pane))
+        composer (when (and socket pane) (pane-composer socket pane))
         kept (atom (ledger root))
         requests (pending-requests root)]
     (println (str "doorbell: read the pane " (or pane "-") " of the role " (or role "-")
@@ -298,14 +366,30 @@
       (println "nothing pending: no chat request is waiting to be delivered")
       (doseq [{:keys [id body created-at]} requests]
         (let [quoted (str "\"" body "\"")
-              proved (delivered-evidence id screen scrollback @kept)
               rung (get (:rings @kept) id)
               rings (or (:count rung) 0)
+              ;; What the pane could still be holding of this request: the
+              ;; dashboard's own typing, and every ring the doorbell has typed.
+              ;; A copy in the composer is input the pane has not taken, so it is
+              ;; not evidence that anything was delivered - and a request the
+              ;; pane is still holding a ring of was not rung at all.
+              still-held (some #(when (composer-holds? composer %) %)
+                               (typed-into-the-pane id body rings))
+              proved (when-not still-held (delivered-evidence id screen scrollback @kept))
               ;; A request is due again once the gap has passed since it was last
               ;; heard of: the doorbell's own last ring, or the moment the
               ;; dashboard wrote it down.
               due (past-gap? (or (:at rung) created-at))]
           (cond
+            ;; The pane is still holding a ring the doorbell typed: no session
+            ;; has taken it, so the request is owed and the pass says so rather
+            ;; than ringing the same text into the same composer again.
+            (and (pos? rings) still-held)
+            (do (swap! kept update :owed conj id)
+                (swap! kept update :rung disj id)
+                (println (str "the chat request " quoted " is still owed: the ring the doorbell"
+                              " typed is still in the pane's composer, and no session has taken it")))
+
             ;; The dashboard still holds it, so nobody answered it, and the
             ;; pane's words are not an answer.
             (and proved (>= rings fill))
@@ -333,17 +417,26 @@
                               (or role "-") " was busy")))
 
             :else
-            (do (ring! socket pane id body (inc rings))
+            (let [text (ring! socket pane id body (inc rings))
+                  landed (ring-landed? socket pane text)]
                 (swap! kept update :rings assoc id {:count (inc rings) :at (str (now))})
-                (swap! kept update :rung conj id)
-                (swap! kept update :owed (fnil disj #{}) id)
-                (println (cond
-                           (pos? rings)
-                           (str "the chat request " quoted " was never answered and was rung again")
-                           proved
-                           (str "the chat request " quoted " was never answered and rung into " pane)
-                           :else
-                           (str "the chat request " quoted " was never delivered and rung into " pane))))))))
+                (if landed
+                  (do (swap! kept update :rung conj id)
+                      (swap! kept update :owed (fnil disj #{}) id)
+                      (println (cond
+                                 (pos? rings)
+                                 (str "the chat request " quoted " was never answered and was rung again")
+                                 proved
+                                 (str "the chat request " quoted " was never answered and rung into " pane)
+                                 :else
+                                 (str "the chat request " quoted " was never delivered and rung into " pane))))
+                  ;; The Enter was lost and the ring is still in the composer:
+                  ;; the request is owed, not delivered, and the next reader is
+                  ;; told so rather than left to read the pane.
+                  (do (swap! kept update :owed conj id)
+                      (swap! kept update :rung disj id)
+                      (println (str "the chat request " quoted " was rung and the ring did not land:"
+                                    " the pane is still holding it, so no session has seen it")))))))))
     (save-ledger! root @kept)
     (System/exit 0)))
 
