@@ -122,7 +122,7 @@ func register(registry *runtime.Registry) error {
 		{`^the doorbell says nothing is pending$`, doorbellSaysNothingIsPending},
 		{`^the master role's pane holds the chat request "(.+)" the doorbell typed$`, theMasterPaneHoldsTheRequestTheDoorbellTyped},
 		{`^the ring says the gate is the operator's, and not to approve unless the operator says to$`, theRingSaysTheGateIsTheOperators},
-		{`^the ring says the answer is the operator's to give, and not to answer unless the operator says to$`, theRingSaysTheAnswerIsTheOperatorsToGive},
+		{`^the ring says the answer is the operator's to give, and not to answer the clarification request unless the operator says to$`, theRingSaysTheAnswerIsTheOperatorsToGive},
 		{`^the ring carries neither clause$`, theRingCarriesNeitherClause},
 		{`^the adapter for the forge root (\S+) installs the kit$`, adapterInstallsKit},
 		{`^the adapter for the forge root (\S+) runs the kit install again$`, adapterRunsTheKitInstallAgain},

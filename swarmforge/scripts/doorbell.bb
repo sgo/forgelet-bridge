@@ -236,8 +236,8 @@
        (when (clarification-request? text)
          (str " This one is a clarification an agent is blocked on, and the answer is"
               " the operator's to give: read the question, ground it in the project's"
-              " state, then reply with what you would answer and why. Do not answer it"
-              " unless the operator says to."))))
+              " state, then reply with what you would answer and why. Do not answer"
+              " the clarification request unless the operator says to."))))
 
 (defn ordinal [n]
   (case (int n)

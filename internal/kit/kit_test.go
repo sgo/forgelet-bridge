@@ -300,8 +300,7 @@ func TestDoorbellSelfCheckSaysWhichRequestsItRang(t *testing.T) {
 	writeScript(t, filepath.Join(scripts, "doorbell.sh"),
 		"#!/bin/sh\n"+
 			"case \"$1\" in\n"+
-			"  print-ring) echo \"the gate is the operator's: Do not approve unless the operator says to."+
-			" the answer is the operator's to give: Do not answer it unless the operator says to.\";;\n"+
+			"  print-ring) echo \""+gateClauseWords+" "+answerClauseWords+"\";;\n"+
 			"esac\n"+
 			"echo 'doorbell: read the pane fixture-master of the role master for "+root+"'\n"+
 			"echo 'the chat request \"is the build green?\" was never delivered and rung into fixture-master'\n")

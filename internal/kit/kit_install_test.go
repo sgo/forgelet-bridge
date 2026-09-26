@@ -80,7 +80,7 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 // does not say.
 const (
 	gateClauseWords   = "the gate is the operator's: Do not approve unless the operator says to."
-	answerClauseWords = "the answer is the operator's to give: Do not answer it unless the operator says to."
+	answerClauseWords = "the answer is the operator's to give: Do not answer the clarification request unless the operator says to."
 )
 
 // readsThePane is the line the doorbell's own pass opens with on a forge a
@@ -427,7 +427,7 @@ func TestDoorbellSelfCheckProvesTheClausesItsRingCarries(t *testing.T) {
 		"it rang an approval and found the gate clause",
 		"Do not approve unless the operator says to",
 		"it rang a clarification and found the answer clause",
-		"Do not answer it unless the operator says to",
+		"Do not answer the clarification request unless the operator says to",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the self-check does not carry %q:\n%s", want, line)
