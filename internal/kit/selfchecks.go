@@ -34,7 +34,7 @@ const (
 	gateClause             = "the gate is the operator's"
 	gateRefusal            = "Do not approve unless the operator says to"
 	answerClause           = "the answer is the operator's to give"
-	answerRefusal          = "Do not answer it unless the operator says to"
+	answerRefusal          = "Do not answer the clarification request unless the operator says to"
 )
 
 // gateSelfCheck asks the gate about a proposal the forge does not hold. A gate

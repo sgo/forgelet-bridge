@@ -292,7 +292,7 @@ func doorbellSelfCheckFoundTheGateClause(_ context.Context, world any, _ []strin
 func doorbellSelfCheckFoundTheAnswerClause(_ context.Context, world any, _ []string) error {
 	return doorbellSelfCheckSays(world.(*World),
 		"it rang a clarification and found the answer clause",
-		"Do not answer it unless the operator says to")
+		"Do not answer the clarification request unless the operator says to")
 }
 
 // doorbellSelfCheckCouldNotFindTheClause checks the other verdict: a ring that

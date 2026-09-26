@@ -229,11 +229,11 @@ func theRingSaysTheGateIsTheOperators(_ context.Context, world any, _ []string) 
 
 // theRingSaysTheAnswerIsTheOperatorsToGive checks the other half: a
 // clarification is the operator's answer to give, and the session may not answer
-// for them.
+// the clarification request for them.
 func theRingSaysTheAnswerIsTheOperatorsToGive(_ context.Context, world any, _ []string) error {
 	return theRingSays(world.(*World),
 		"the answer is the operator's to give",
-		"Do not answer it unless the operator says to")
+		"Do not answer the clarification request unless the operator says to")
 }
 
 // theRingCarriesNeitherClause checks a request that is neither an approval nor a
@@ -248,7 +248,7 @@ func theRingCarriesNeitherClause(_ context.Context, world any, _ []string) error
 		"the gate is the operator's",
 		"Do not approve unless the operator says to",
 		"the answer is the operator's to give",
-		"Do not answer it unless the operator says to",
+		"Do not answer the clarification request unless the operator says to",
 	} {
 		if strings.Contains(text, clause) {
 			return fmt.Errorf("the ring carries %q, and this request holds no such gate:\n%s", clause, text)

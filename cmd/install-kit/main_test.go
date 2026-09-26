@@ -53,7 +53,7 @@ func fixtureKit(t *testing.T, forgeRoot string) string {
 		"#!/bin/sh\n"+
 			"case \"$1\" in\n"+
 			"  print-ring) echo \"the gate is the operator's: Do not approve unless the operator says to."+
-			" the answer is the operator's to give: Do not answer it unless the operator says to.\";;\n"+
+			" the answer is the operator's to give: Do not answer the clarification request unless the operator says to.\";;\n"+
 			"esac\n"+
 			"echo 'doorbell: read the pane fixture-master of the role master'\n")
 	write(t, filepath.Join(dir, "doorbell.bb"), "# the doorbell\n")
