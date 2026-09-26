@@ -324,13 +324,16 @@
 ;; the paste and the Enter arrive a moment before the pane has drawn the turn.
 (def ring-settle-ms 150)
 
-;; Whether the ring landed: the composer it went into is empty again. A composer
-;; still holding the ring's own words is the Enter the pane lost, and the pass
-;; reports that rather than writing the request down as delivered - counting a
-;; ring no session has read is the failure this tool exists to prevent.
+;; Whether the ring landed: the composer it went into was read, and it is empty
+;; again. A composer still holding the ring's own words is the Enter the pane
+;; lost, and one that cannot be read at all is not proof that the pane took the
+;; ring - either way the pass reports it rather than writing the request down as
+;; delivered, because counting a ring no session has read is the failure this
+;; tool exists to prevent.
 (defn ring-landed? [socket pane text]
   (Thread/sleep ring-settle-ms)
-  (not (composer-holds? (pane-composer socket pane) text)))
+  (let [composer (pane-composer socket pane)]
+    (and (some? composer) (not (composer-holds? composer text)))))
 
 ;; The ring one request would be typed with, for a reader with no pane to ring:
 ;; the installer's self-check asks for this rather than standing up a session,
