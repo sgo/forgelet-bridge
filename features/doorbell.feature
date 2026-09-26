@@ -124,7 +124,7 @@ Feature: Doorbell
     And the forge's dashboard already holds the chat request the bridge wrote for the clarification of the project forgelet-bridge from the role coder
     When the doorbell runs for the forge root forge-a
     Then the master role's pane holds the chat request "Clarification for forgelet-bridge from coder" the doorbell typed
-    And the ring says the answer is the operator's to give, and not to answer unless the operator says to
+    And the ring says the answer is the operator's to give, and not to answer the clarification request unless the operator says to
 
   # Doorbell 8: a request that carries no gate says nothing of the kind
   Scenario: Doorbell 8: a request that carries no gate says nothing of the kind
