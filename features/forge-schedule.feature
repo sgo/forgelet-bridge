@@ -77,12 +77,12 @@ Feature: Forge Schedule
     And the doorbell says the chat request "is the build green?" was never delivered and rung
     And the schedule leaves evidence that it ran
 
-  # Forge Schedule 4: the pass sweeps the forge's own scratch by age, and says what it removed
-  Scenario: Forge Schedule 4: the pass sweeps the forge's own scratch by age, and says what it removed
-    Given the forge root forge-a's tmp holds a scratch directory nobody has touched for weeks
-    And the forge root forge-a's tmp holds a scratch directory from a run just now
+  # Forge Schedule 4: the pass sweeps the forge's own scratch by age rather than by name
+  Scenario: Forge Schedule 4: the pass sweeps the forge's own scratch by age rather than by name
+    Given the forge root forge-a's tmp holds a scratch directory untouched for weeks, under a name that says nothing about it
+    And the forge root forge-a's tmp holds a scratch directory from a run just now, under the name a compose gives its scratch
     When the forge schedule runs for the forge roots forge-a, forge-b
-    Then the schedule says it removed the scratch directory nobody has touched for weeks
+    Then the schedule says it removed the scratch directory untouched for weeks
     And the forge root forge-a's tmp still holds the scratch directory from a run just now
 
   # Forge Schedule 5: the pass keeps a week of its own logs and drops the older ones
