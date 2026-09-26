@@ -190,6 +190,26 @@ func TestThePassKeepsAWeekOfItsOwnLog(t *testing.T) {
 	}
 }
 
+// TestThePassLeavesAScratchARunIsStillFilling pins the other side of the age
+// rule: what a failed run left is swept because nobody is looking at it, so a
+// scratch somebody wrote in a moment ago is left alone however old the directory
+// itself is.
+func TestThePassLeavesAScratchARunIsStillFilling(t *testing.T) {
+	f := newFixture(t)
+	path := f.scratch("a-scratch-a-run-is-still-filling", time.Now().UTC().Add(-weeks))
+	inner := filepath.Join(path, "inner", "work.txt")
+	now := time.Now().UTC()
+	if err := os.Chtimes(inner, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	f.run()
+
+	if f.gone(path) {
+		t.Errorf("the pass removed a scratch a run wrote in a moment ago: %s", path)
+	}
+}
+
 // TestThePassPrunesTheProjectsOnceADay pins the cadence the projects take: the
 // walk over every worktree is not a thing to do every minute, so a pass that has
 // already pruned today leaves it to the next day - and a forge whose layer ships

@@ -53,19 +53,24 @@ say() {
   return 0
 }
 
-# newest_mtime is how long ago anything inside a tree was touched: a scratch
+# newest_mtime is the last time anything in a tree was touched: a scratch
 # directory someone is still writing in is not one nobody has looked at.
 newest_mtime() {
   find "$1" -exec stat -f %m {} + 2>/dev/null | sort -rn | head -1
 }
 
 # trim_scratch sweeps the forge's own tmp: whatever nobody has touched for longer
-# than the bound goes, whatever its name, and the pass says what it removed.
+# than the bound goes, whatever its name, and the pass says what it removed. A
+# tree the pass just watched somebody write in is left without walking it, which
+# is what keeps a minute's pass off a scratch directory of any size.
 trim_scratch() {
-  local root="$1" entry newest cutoff days
+  local root="$1" entry own newest cutoff days
   [[ -d "$root/tmp" ]] || return 0
   cutoff=$(( $(date +%s) - KEEP_DAYS * 86400 ))
   for entry in "$root"/tmp/*(N); do
+    own="$(stat -f %m "$entry" 2>/dev/null)"
+    [[ -n "$own" ]] || continue
+    (( own < cutoff )) || continue
     newest="$(newest_mtime "$entry")"
     [[ -n "$newest" ]] || continue
     if (( newest < cutoff )); then
