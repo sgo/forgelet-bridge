@@ -28,6 +28,18 @@ Feature: Role Health
   # anywhere exists to hand it over, so it is a note that went missing, with its
   # own verdict and its own alarm — not the same name as an agent that genuinely
   # stopped mid-task.
+  #
+  # A request has two ways to reach a session, and a stall alert had one. Every
+  # request the operator's phone sends is created by the dashboard, and the
+  # dashboard wakes the master pane as it creates it, so the request waits to be
+  # picked up and is already in the pane. The check built the request file itself
+  # and dropped it into the same pending directory, so its alarm rested on a
+  # single ring into a single pane, and one missed ring left the operator's phone
+  # showing a stall no session had ever seen. A stall alert is raised the way
+  # every other request is now - the dashboard takes it and wakes the pane as it
+  # writes the request - and the direct write stays as the fallback for a forge
+  # whose dashboard is not running, so an alarm is never lost for want of one
+  # path.
 
   Background:
     Given the fixture forge root forge-a holds the project forgelet-bridge
@@ -111,3 +123,21 @@ Feature: Role Health
     When the idler check runs for the project forgelet-bridge of the forge root forge-a
     Then the idler check reports the role coder as waiting on the operator
     And the idler check passes
+
+  # Role Health 10: a stall alert is raised the way every other request is, and the dashboard wakes the pane
+  Scenario: Role Health 10: a stall alert is raised the way every other request is, and the dashboard wakes the pane
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    And the fixture forge root forge-a has its dashboard running
+    When the idler check raises the alerts for the project forgelet-bridge of the forge root forge-a
+    Then the forge holds the alert the idler raised about the role coder being idle holding the card refund-card
+    And the forge's dashboard typed the idler's alert into the master role's pane
+
+  # Role Health 11: a forge with no dashboard still raises the alert
+  Scenario: Role Health 11: a forge with no dashboard still raises the alert
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    When the idler check raises the alerts for the project forgelet-bridge of the forge root forge-a
+    Then the forge holds the alert the idler raised about the role coder being idle holding the card refund-card

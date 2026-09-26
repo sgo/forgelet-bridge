@@ -11,8 +11,8 @@ Feature: Doorbell
   # stderr says so. The bridge counts the work done, and nothing else looks at a
   # request that was never delivered, so the operator's message is lost in
   # silence. The doorbell is the repair, and it is visible rather than hoped for:
-  # a pending request with no evidence it was ever delivered is rung again, once,
-  # and the pass writes down what it saw and did.
+  # a pending request with no evidence it was ever delivered is rung again, and
+  # the pass writes down what it saw and did.
   #
   # Delivery evidence is the pane's own text — the dashboard types the request's
   # id in as [<id>] — and captures are bounded, so a ledger of what has already
@@ -39,6 +39,19 @@ Feature: Doorbell
   # rung because the role was busy — and a later pass, once the role is free,
   # rings what the earlier one had to leave.
   #
+  # Delivered is not answered. The pane's text proves that words arrived, not
+  # that a session read them, and the ledger's memory is forever, so a request
+  # nobody answered stopped being rung at all: the operator's phone showed a
+  # question the lieutenant had never seen. A request the dashboard still holds
+  # as pending is unanswered by definition, and the pass holds both facts - the
+  # pending request and what it knows about its delivery - so it compares them
+  # and rings it again. Ringing again takes a gap and a fill rather than a bare
+  # loop: a request is not due until the gap has passed, so a session that is
+  # away is not battered, and once it has been rung its fill a still-unanswered
+  # request is reported as exactly that rather than rung forever. Each ring says
+  # which ring it is, so a pane that has seen the same alert three times knows it
+  # is not new.
+  #
   # The ring also carries the answering command's neighbour: the two
   # notifications the bridge writes carry a gate. An approval the operator
   # forwarded is the operator's decision, not the lieutenant's to take, and a
@@ -64,8 +77,8 @@ Feature: Doorbell
     Then the doorbell says the chat request "is the build green?" was already delivered from the screen and left alone
     And the doorbell's ledger says the chat request "is the build green?" was rung
 
-  # Doorbell 2: a request that was delivered is left alone
-  Scenario: Doorbell 2: a request that was delivered is left alone
+  # Doorbell 2: a request delivered a moment ago is left alone until the gap has passed
+  Scenario: Doorbell 2: a request delivered a moment ago is left alone until the gap has passed
     Given the forge root forge-a gives the role coder a live session
     And the dashboard typed the chat request "is the build green?" into the master role's pane
     When the doorbell runs for the forge root forge-a
@@ -119,3 +132,23 @@ Feature: Doorbell
     When the doorbell runs for the forge root forge-a
     Then the master role's pane holds the chat request "is the build green?" the doorbell typed
     And the ring carries neither clause
+
+  # Doorbell 9: a request nobody answered is rung again, and the ring says which ring it is
+  Scenario: Doorbell 9: a request nobody answered is rung again, and the ring says which ring it is
+    Given the forge root forge-a gives the role coder a live session
+    And the dashboard typed the chat request "is the build green?" into the master role's pane
+    And the doorbell has already rung the chat request "is the build green?" once, and nobody answered it
+    And the chat request "is the build green?" has waited unanswered past the doorbell's gap
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "is the build green?" was never answered and was rung again
+    And the ring says it is the doorbell's second ring of the chat request "is the build green?"
+    And the doorbell's ledger says the chat request "is the build green?" was rung
+
+  # Doorbell 10: a request that has been rung its fill is reported as still unanswered
+  Scenario: Doorbell 10: a request that has been rung its fill is reported as still unanswered
+    Given the forge root forge-a gives the role coder a live session
+    And the dashboard typed the chat request "is the build green?" into the master role's pane
+    And the chat request "is the build green?" has been rung its fill and is still unanswered
+    When the doorbell runs for the forge root forge-a
+    Then the doorbell says the chat request "is the build green?" is still unanswered
+    And the doorbell did not ring the chat request "is the build green?" again
