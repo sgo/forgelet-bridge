@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 )
 
 // forgeRootOf is the fixture forge root one forge name stands for.
@@ -125,13 +127,22 @@ func (w *World) serveRoleSessions(projectDir, liveRole string) error {
 // dashboard, or the doorbell, typed.
 const paneCommand = "cat"
 
+// composerPaneCommand is the fixture's terminal: a pane with a composer, which
+// is what the pane a person types into is. It holds the text it has not
+// submitted, takes one as a turn when the Enter lands, and can be told to lose
+// the Enter the way a terminal still taking a long paste does.
+var composerPaneCommand = "'" + filepath.Join(fixtures.ProjectRoot(), "acceptance", "fixtures", "composer.bb") + "'"
+
 // busyPaneCommand is what a role mid-turn looks like to the check that judges
 // it: codex says so in its own pane line, whatever the terminal draws.
 const busyPaneCommand = `zsh -c 'echo "esc to interrupt"; exec cat'`
 
 // serveSessions starts one tmux session per role of a project, with the role
 // the scenario names running the command it was given and the others running a
-// quiet pane.
+// quiet pane. The pane the forge root's own roles file marks as the master is
+// the one a person types into - the dashboard writes the operator's messages
+// there, and the doorbell rings it - so a quiet session there is a terminal with
+// a composer rather than a pane that only echoes what it is given.
 func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 	panes, err := rolePanes(projectDir)
 	if err != nil {
@@ -145,6 +156,7 @@ func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 	if err != nil {
 		return err
 	}
+	master := forgeMasterPane(filepath.Dir(filepath.Dir(projectDir)))
 	for _, pane := range panes {
 		command := paneCommand
 		if pane == livePane {
@@ -154,11 +166,33 @@ func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 			// is replaced, so a role that was mid-turn can be free.
 			_, _ = tmux(socket, "kill-session", "-t", pane)
 		}
+		if pane == master && command == paneCommand {
+			command = composerPaneCommand
+		}
 		if err := startPane(socket, pane, command); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// forgeMasterPane is the pane the forge root's own roles file marks as the
+// master - the first row whose own row says it is, which is the reading the
+// doorbell makes - or nothing when it marks none. It is the one reading of that
+// row: the steps that type into the pane and the fixture that serves it take
+// their answer from here rather than walking the roles file a second time.
+func forgeMasterPane(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, ".swarmforge", "roles.tsv"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		columns := strings.Split(line, "\t")
+		if len(columns) >= 4 && columns[1] == "master" {
+			return columns[3]
+		}
+	}
+	return ""
 }
 
 // projectsOf lists the projects one fixture forge root serves.
