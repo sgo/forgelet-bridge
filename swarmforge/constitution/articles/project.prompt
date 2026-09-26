@@ -2,7 +2,7 @@
 
 ## Project Shape
 - This project is configured for SwarmForge with four Codex-backed agents: specifier, coder, refactorer, and architect.
-- Project language: Go.
+- Project language: Babashka.
 
 ## Local Configuration
 - Preserve project-local SwarmForge configuration under `swarmforge/`.

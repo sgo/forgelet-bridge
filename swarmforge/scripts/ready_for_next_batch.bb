@@ -117,14 +117,30 @@
       (println line)))
   (System/exit status))
 
+;; The finishing step a project owns. The tooling runs it at the one moment a
+;; card's work has landed on master; what it does - validate, deploy, push - is
+;; the project's business, and its output belongs in this pane.
+(defn run-completion-hook! [file]
+  (let [result (sh/sh (str (fs/path script-dir "run_hook.sh")) "card-complete"
+                      "--task" (header-value file "task" "")
+                      "--commit" (header-value file "commit" "")
+                      "--from" (header-value file "from" "")
+                      "--role" (or (ready-for-next-guard/current-role) ""))]
+    (print (:out result))
+    (print (:err result))
+    (flush)))
+
 (defn merge-git-handoff! [file]
   (when (= "git_handoff" (header-field file "type"))
     (let [from (header-field file "from")
           commit (header-field file "commit")]
       (when (and from commit)
-        (let [result (sh/sh (str (fs/path script-dir "merge_and_process.sh")) from commit)]
+        (let [fresh? (not (zero? (:exit (sh/sh "git" "merge-base" "--is-ancestor" commit "HEAD"))))
+              result (sh/sh (str (fs/path script-dir "merge_and_process.sh")) from commit)]
           (when-not (zero? (:exit result))
-            (fail! 1 (str/trim (str (:err result) "\n" (:out result))))))))))
+            (fail! 1 (str/trim (str (:err result) "\n" (:out result)))))
+          (when fresh?
+            (run-completion-hook! file)))))))
 
 (defn merge-batch! [batch-dir]
   (doseq [file (handoff-files batch-dir)]

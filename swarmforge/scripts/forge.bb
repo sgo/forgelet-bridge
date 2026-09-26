@@ -161,9 +161,9 @@
       (spit (str file) (str line "\n") :append true))))
 
 ;; A pack may carry a `gitignore` file: the lines its language needs ignored
-;; before the first build, so build output never becomes the first commit.
-;; They are merged into the project's .gitignore rather than copied over it -
-;; a line the project added later stays, and no line arrives twice.
+;; before the first build, so build output never becomes the first commit. They
+;; are merged into the project's .gitignore rather than copied over it - a line
+;; the project added later stays, and no line arrives twice.
 (defn copy-pack-ignores! [pack-root dest]
   (let [src (fs/path pack-root "gitignore")]
     (when (fs/regular-file? src)
@@ -177,11 +177,23 @@
             (when-not (str/blank? line)
               (ensure-line-in-file! file line))))))))
 
+;; What a project is written in: the pack's default, written once into the
+;; project's own `swarmforge/language.conf` and never written again. The file is
+;; the project's - a project re-languaged by hand keeps its answer through every
+;; refresh and update, and the pack's line is the template it started from.
+(defn seed-pack-language! [pack-root dest]
+  (let [src (fs/path pack-root "language.conf")
+        file (fs/path dest "swarmforge" "language.conf")]
+    (when (and (fs/regular-file? src) (not (fs/exists? file)))
+      (fs/create-dirs (fs/parent file))
+      (fs/copy src file))))
+
 (defn overlay-pack! [forge dest pack keep-conf?]
   (copy-shared-scripts! forge dest)
   (copy-shared-articles! forge dest)
   (copy-pack-local! (pack-dir forge pack) dest keep-conf?)
-  (copy-pack-ignores! (pack-dir forge pack) dest))
+  (copy-pack-ignores! (pack-dir forge pack) dest)
+  (seed-pack-language! (pack-dir forge pack) dest))
 
 (defn git-identity
   "The identity git would use for a commit here, or nil when the machine has
@@ -206,7 +218,9 @@
     ;; repository are the operator's work, not the scaffolding tool's, and a
     ;; repository-local identity would silently claim every later commit too.
     ;; Only when the machine has no identity at all do we lend one, and then
-    ;; for this single commit rather than for the repository.
+    ;; for this single commit rather than for the repository. Upstream writes
+    ;; SwarmForge/swarmforge@local into every scaffold it makes; this layer does
+    ;; not, which is why the change lives here rather than in a pull request.
     (let [commit (if (git-identity)
                    (sh {:continue true} "git" "-C" (str dir)
                        "commit" "-q" "-m" "Initial swarmforge project")

@@ -35,10 +35,13 @@
    "crap4java" {:source "github.com/unclebob/crap4java" :bb-task "crap4java"}
    "dry4java" {:source "github.com/unclebob/dry4java" :bb-task "dry4java"}
    "mutate4java" {:source "github.com/unclebob/mutate4java" :bb-task "mutate4java"}
-   ;; forgelet: the Kotlin recipe below is ours. Upstream's registry names Go, Clojure and Java tools
-   ;; only, and a Kotlin project needs slopguard built from source; if this file is ever refreshed from
-   ;; upstream, re-apply this entry and the two functions that serve it. The commit is pinned because
-   ;; slopguard has no release tags yet, and it is one line to change at a tag.
+   ;; forgelet: the Kotlin recipe is ours. The registry says how each language's tools are
+   ;; installed, and upstream's names Go, Clojure and Java; a Kotlin project needs
+   ;; slopguard built from source, and the commit is pinned because it has no release tags
+   ;; yet - one line to change at a tag. The Go entries above went upstream as the bug
+   ;; they were: a Go tool cannot be installed as a Babashka task. After a refresh from
+   ;; upstream, compare this registry against the languages our projects are written in
+   ;; rather than assuming the merge kept them.
    "slopguard" {:source "github.com/JeevanThandi/slopguard-kotlin"
                 :gradle-install "app:installDist"
                 :commit "40204ef8f382ed02ca5b143a55dfab1671840383"}})
