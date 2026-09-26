@@ -271,16 +271,7 @@ func theDashboardAnsweredTheRequest(_ context.Context, world any, captures []str
 // master row of the forge root, where the dashboard types the operator's own
 // messages.
 func (w *World) masterPane(root string) (pane, socket string, err error) {
-	data, err := os.ReadFile(filepath.Join(root, ".swarmforge", "roles.tsv"))
-	if err != nil {
-		return "", "", err
-	}
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
-		columns := strings.Split(line, "\t")
-		if len(columns) >= 4 && columns[1] == "master" {
-			pane = columns[3]
-		}
-	}
+	pane = forgeMasterPane(root)
 	if pane == "" {
 		return "", "", fmt.Errorf("the forge root %s records no master role", root)
 	}

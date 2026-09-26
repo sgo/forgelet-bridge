@@ -68,6 +68,7 @@ func newFixture(t *testing.T) *fixture {
 	request := "id: " + fixtureID + "\nstatus: pending\ncreated_at: 2026-09-26T12:00:00Z\n\n" + fixtureBody + "\n"
 	f.write(filepath.Join(f.root, ".swarmforge", "dashboard", "requests", "pending", fixtureID+".request"), request)
 	f.write(filepath.Join(f.state, "loses-enter"), "no")
+	f.write(filepath.Join(f.state, "loses-cursor"), "no")
 	f.write(filepath.Join(f.state, "turns"), "")
 	f.write(filepath.Join(f.state, "calls"), "")
 	f.write(filepath.Join(f.state, "composer"), "")
@@ -89,11 +90,14 @@ func (f *fixture) write(path, body string) {
 	}
 }
 
-// losesTheEnter is the pane a terminal too busy to take the Enter leaves: the
-// ring goes in and stays in the composer.
-func (f *fixture) losesTheEnter() {
+// loses is one answer this fixture's pane does not give, named the way the stub
+// tmux's own state file names it: the Enter a ring sends - which a terminal too
+// busy taking the paste leaves in the composer - or where its cursor sits, which
+// a session that has gone, or a tmux too old to say, cannot answer at all. A
+// pane that does not answer has not said yes.
+func (f *fixture) loses(answer string) {
 	f.t.Helper()
-	f.write(filepath.Join(f.state, "loses-enter"), "yes")
+	f.write(filepath.Join(f.state, "loses-"+answer), "yes")
 }
 
 // run runs the doorbell the kit ships against the fixture forge.
@@ -136,7 +140,7 @@ func (f *fixture) ledger() string {
 // a second Enter would hide.
 func TestTheRingGoesInAsOnePasteAndOneEnter(t *testing.T) {
 	f := newFixture(t)
-	f.losesTheEnter()
+	f.loses("enter")
 
 	f.run()
 
@@ -166,7 +170,7 @@ func TestTheRingGoesInAsOnePasteAndOneEnter(t *testing.T) {
 // not write the request down as delivered or rung.
 func TestARingThePaneStillHoldsIsNotADelivery(t *testing.T) {
 	f := newFixture(t)
-	f.losesTheEnter()
+	f.loses("enter")
 
 	out := f.run()
 
@@ -204,13 +208,37 @@ func TestARingThatLandedIsWrittenDownAsRung(t *testing.T) {
 	}
 }
 
+// TestAPaneThatCannotSayWhereItsCursorIsIsNotALanding is the other silence a
+// ring can meet: a pane whose composer cannot be read at all - the session has
+// gone, or its tmux is too old to say where the cursor sits - has not proved
+// that it took the ring, so the request stays owed rather than being written
+// down as a delivery. Taking no answer for a yes is the same false delivery the
+// composer check exists to stop.
+func TestAPaneThatCannotSayWhereItsCursorIsIsNotALanding(t *testing.T) {
+	f := newFixture(t)
+	f.loses("cursor")
+
+	out := f.run()
+
+	if !strings.Contains(out, `the chat request "`+fixtureBody+`" was rung and the ring did not land`) {
+		t.Errorf("the doorbell does not say the ring did not land:\n%s", out)
+	}
+	ledger := f.ledger()
+	if !strings.Contains(ledger, `:owed ["`+fixtureID+`"]`) {
+		t.Errorf("the ledger does not leave the request owed:\n%s", ledger)
+	}
+	if strings.Contains(ledger, `:rung ["`+fixtureID+`"]`) || strings.Contains(ledger, `:delivered ["`+fixtureID+`"]`) {
+		t.Errorf("the ledger writes a ring a pane never proved it took down as delivered or rung:\n%s", ledger)
+	}
+}
+
 // TestAPassOverARingStillInTheComposerRingsNothingMore pins the reading the next
 // pass has of a ring the pane never took: the composer still holds the doorbell's
 // own words, so its copy of the request proves nothing - the request stays owed,
 // and ringing it again would only pile the same text into the same composer.
 func TestAPassOverARingStillInTheComposerRingsNothingMore(t *testing.T) {
 	f := newFixture(t)
-	f.losesTheEnter()
+	f.loses("enter")
 	f.run()
 	afterFirst := strings.Count(f.calls(), "paste-buffer")
 
@@ -243,7 +271,9 @@ render() {
 }
 
 case "$cmd" in
-  display-message) cat "$state/cursor" ;;
+  display-message)
+    if [ "$(cat "$state/loses-cursor")" = "yes" ]; then exit 1; fi
+    cat "$state/cursor" ;;
   capture-pane) cat "$state/screen" ;;
   set-buffer)
     printf '%s\n' "$cmd $*" >> "$state/calls"

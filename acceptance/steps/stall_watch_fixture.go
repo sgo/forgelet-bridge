@@ -177,7 +177,10 @@ func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 }
 
 // forgeMasterPane is the pane the forge root's own roles file marks as the
-// master - the column the doorbell reads it by - or nothing when it marks none.
+// master - the first row whose own row says it is, which is the reading the
+// doorbell makes - or nothing when it marks none. It is the one reading of that
+// row: the steps that type into the pane and the fixture that serves it take
+// their answer from here rather than walking the roles file a second time.
 func forgeMasterPane(root string) string {
 	data, err := os.ReadFile(filepath.Join(root, ".swarmforge", "roles.tsv"))
 	if err != nil {
