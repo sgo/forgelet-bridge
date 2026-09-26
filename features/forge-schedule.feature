@@ -20,6 +20,28 @@ Feature: Forge Schedule
   # root it could not serve rather than skipping it in silence; and it runs the
   # doorbell's pass as the pass it is, so a role that is busy is left alone and
   # the pass says so.
+  #
+  # The cadence is also the only thing that runs whether or not a session is up,
+  # so it is what cleans up after the forge. A compose or an update exercise that
+  # fails leaves its scratch in the forge's tmp on purpose, "so a person can look
+  # at it", and nobody ever comes back for it; the pass sweeps the forge's own tmp
+  # by age - untouched since, not a name pattern, because the honest question
+  # about a failed run's scratch is whether anyone is still looking at it - and
+  # says what it removed, so the removal is visible rather than silent.
+  #
+  # The schedule's own log is the one thing age cannot judge: it is written every
+  # minute, so its mtime is always now. It is kept by file instead, a day to a
+  # file, with the pass dropping its own older than a week.
+  #
+  # The projects take the second half, through the layer's own pruner, whose rule
+  # is already decided - the newest twenty scenario runs and the newest mutant run
+  # per directory, "so a failure can still be looked at" - so the pass brings a
+  # cadence and a home rather than a policy: once a day, gated on the date,
+  # because a walk over every worktree is not a thing to do every minute. The
+  # pruner is the layer's script and the pass is the kit's, so the pass calls it
+  # only when it is there and names a forge it could not prune when it is not. It
+  # stays out of a project's own build output: never a Maven target/ directory,
+  # and never the binaries the acceptance suite runs from.
 
   Background:
     Given the fixture forge roots forge-a and forge-b have their dashboards running
@@ -54,3 +76,45 @@ Feature: Forge Schedule
     Then the schedule names the forge root it could not serve
     And the doorbell says the chat request "is the build green?" was never delivered and rung
     And the schedule leaves evidence that it ran
+
+  # Forge Schedule 4: the pass sweeps the forge's own scratch by age rather than by name
+  Scenario: Forge Schedule 4: the pass sweeps the forge's own scratch by age rather than by name
+    Given the forge root forge-a's tmp holds a scratch directory untouched for weeks, under a name that says nothing about it
+    And the forge root forge-a's tmp holds a scratch directory from a run just now, under the name a compose gives its scratch
+    When the forge schedule runs for the forge roots forge-a, forge-b
+    Then the schedule says it removed the scratch directory untouched for weeks
+    And the forge root forge-a's tmp still holds the scratch directory from a run just now
+
+  # Forge Schedule 5: the pass keeps a week of its own logs and drops the older ones
+  Scenario: Forge Schedule 5: the pass keeps a week of its own logs and drops the older ones
+    Given the forge root forge-a holds the schedule's own log for today
+    And the forge root forge-a holds the schedule's own log for yesterday
+    And the forge root forge-a holds the schedule's own log for a day three weeks ago
+    When the forge schedule runs for the forge roots forge-a, forge-b
+    Then the schedule says it dropped the schedule's own log for a day three weeks ago
+    And the forge root forge-a still holds the schedule's own log for today
+    And the forge root forge-a still holds the schedule's own log for yesterday
+
+  # Forge Schedule 6: the projects are pruned once a day, not once a pass
+  Scenario: Forge Schedule 6: the projects are pruned once a day, not once a pass
+    Given the forge root forge-a carries the layer's pruner
+    When the forge schedule runs for the forge roots forge-a, forge-b
+    Then the layer's pruner ran for the forge root forge-a
+    When the forge schedule runs for the forge roots forge-a, forge-b again
+    Then the layer's pruner ran once for the forge root forge-a
+
+  # Forge Schedule 7: a forge with no layer pruner is named, and the pass still runs
+  Scenario: Forge Schedule 7: a forge with no layer pruner is named, and the pass still runs
+    Given the forge root forge-a carries no pruner
+    When the forge schedule runs for the forge roots forge-a, forge-b
+    Then the schedule says the projects of the forge root forge-a were not pruned because the pruner is not there
+    And the schedule leaves evidence that it ran
+
+  # Forge Schedule 8: the pass leaves a project's own build output alone
+  Scenario: Forge Schedule 8: the pass leaves a project's own build output alone
+    Given the forge root forge-a carries the layer's pruner
+    And the project forgelet-bridge of the forge root forge-a holds target directories from a build long past, in its tree and in a worktree
+    And the project forgelet-bridge of the forge root forge-a holds the binaries the acceptance suite runs from
+    When the forge schedule runs for the forge roots forge-a, forge-b
+    Then the project forgelet-bridge of the forge root forge-a still holds its target directories, in its tree and in a worktree
+    And the project forgelet-bridge of the forge root forge-a still holds the binaries the acceptance suite runs from
