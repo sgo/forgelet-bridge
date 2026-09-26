@@ -172,6 +172,44 @@ func (w *World) serveSessions(projectDir, liveRole, liveCommand string) error {
 		if err := startPane(socket, pane, command); err != nil {
 			return err
 		}
+		// A scenario's next step types into this pane, and a terminal that is
+		// still starting has not asked for bracketed paste or put its line
+		// discipline into raw mode yet: what is typed at it in that moment lands
+		// in the shell around it, and a paste submits itself on the body's own
+		// newlines instead of arriving as the one block a ring is. The composer's
+		// mark is what the terminal's own first drawing opens with, so the
+		// drawing being there is the terminal being ready for what follows.
+		if strings.HasPrefix(command, composerPaneCommand) {
+			if err := waitForTheTerminal(socket, pane); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// waitForTheTerminal waits for the fixture's terminal to have drawn itself in a
+// pane. Starting the pane and typing into it are two moments, and the terminal
+// is only ready at the second one: a step that types into it before that reads a
+// pane that never took the words, which is a flake rather than a reading. The
+// mark is read without the blank it is drawn with, because a pane trims the
+// blank off a line whose mark is the whole of it.
+func waitForTheTerminal(socket, pane string) error {
+	ctx, cancel := stepContext()
+	defer cancel()
+	showed := ""
+	err := waitFor(ctx, fmt.Sprintf("the terminal in the pane %s never drew its composer", pane), func() (bool, error) {
+		text, err := paneText(socket, pane)
+		if err != nil {
+			return false, err
+		}
+		showed = text
+		return strings.Contains(text, strings.TrimRight(composerMark, " ")), nil
+	})
+	if err != nil {
+		// The pane is gone with the fixture, so what it said at the end is the
+		// only reading a later reader can have of it.
+		return fmt.Errorf("%w; the pane showed:\n%s", err, showed)
 	}
 	return nil
 }
