@@ -56,6 +56,87 @@ func randWords(rnd *rand.Rand) []string {
 	return words
 }
 
+// TestPropertyTheComposerIsNotATurn is the reading the ring's landing turns on:
+// a pane's screen is the turns it has taken and, under them, the words its
+// composer is still holding - and only the turns above the composer's mark are
+// turns. Text the pane has not submitted is not a session's reading of anything,
+// whatever it holds, which is the false delivery the doorbell's composer check
+// exists to stop. The screen here is drawn the way the fixture's terminal draws
+// it, and the scenarios are what keep the two drawings the same.
+func TestPropertyTheComposerIsNotATurn(t *testing.T) {
+	property := func(turns []string, held string) bool {
+		screen := drawnPane(turns, held)
+		read := submittedTurns(screen)
+		if len(read) != len(turns) {
+			return false
+		}
+		for index, turn := range turns {
+			if read[index] != turn {
+				return false
+			}
+		}
+		return composerOf(screen) == strings.TrimSpace(held)
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randTurns(rnd))
+			values[1] = reflect.ValueOf(randHeld(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// drawnPane is the screen the fixture's terminal draws: every turn it has taken
+// under the mark a turn is drawn with, then the composer's own mark and the
+// words it is still holding.
+func drawnPane(turns []string, held string) string {
+	var screen strings.Builder
+	for _, turn := range turns {
+		screen.WriteString(turnMark + turn + "\n")
+	}
+	screen.WriteString(composerMark + held)
+	return screen.String()
+}
+
+// randTurns is a few turns a pane could have taken, each of them a line or
+// three: a turn runs to lines when the words a session sent did.
+func randTurns(rnd *rand.Rand) []string {
+	turns := make([]string, rnd.Intn(4))
+	for index := range turns {
+		lines := make([]string, 1+rnd.Intn(3))
+		for at := range lines {
+			lines[at] = randLine(rnd)
+		}
+		turns[index] = strings.Join(lines, "\n")
+	}
+	return turns
+}
+
+// randHeld is what a composer could still be holding: the text of one request
+// or several lines of it, which is the whole of what has not been submitted.
+func randHeld(rnd *rand.Rand) string {
+	lines := make([]string, 1+rnd.Intn(3))
+	for at := range lines {
+		lines[at] = randLine(rnd)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// randLine is one line of a pane's own drawing, with the words a person or an
+// agent leaves in it and never a mark: a line that begins with one is the
+// fixture's drawing rather than anything a session read, and a screen whose
+// words wear the fixture's own marks is a different question than this one.
+func randLine(rnd *rand.Rand) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789.-, "
+	line := make([]byte, rnd.Intn(16))
+	for at := range line {
+		line[at] = alphabet[rnd.Intn(len(alphabet))]
+	}
+	return strings.TrimSpace(string(line))
+}
+
 // TestPropertyTheFinishingStepNeverRewritesWhatOriginAlreadyHad is the promise
 // the step makes about a shared remote, however far the remote has moved on: a
 // push that cannot land leaves every commit origin held exactly where it was,
