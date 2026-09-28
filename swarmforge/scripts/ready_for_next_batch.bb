@@ -117,9 +117,10 @@
       (println line)))
   (System/exit status))
 
-;; The finishing step a project owns. The tooling runs it at the one moment a
-;; card's work has landed on master; what it does - validate, deploy, push - is
-;; the project's business, and its output belongs in this pane.
+;; The finishing step a project owns. The tooling decides when the event is true
+;; and the project decides what it means, through its own
+;; swarmforge/hooks/card-complete.sh; the output belongs in this pane, where the
+;; role that just took the batch can read it.
 (defn run-completion-hook! [file]
   (let [result (sh/sh (str (fs/path script-dir "run_hook.sh")) "card-complete"
                       "--task" (header-value file "task" "")
@@ -139,6 +140,9 @@
               result (sh/sh (str (fs/path script-dir "merge_and_process.sh")) from commit)]
           (when-not (zero? (:exit result))
             (fail! 1 (str/trim (str (:err result) "\n" (:out result)))))
+          ;; The hook fires when this merge is what brought the card's work in, so
+          ;; reading a batch that is already in process does not run a project's
+          ;; finishing step again.
           (when fresh?
             (run-completion-hook! file)))))))
 
