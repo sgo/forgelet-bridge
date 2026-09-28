@@ -3,3 +3,4 @@
 build/
 tmp/
 target/
+.DS_Store
