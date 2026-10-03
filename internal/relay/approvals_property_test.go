@@ -90,6 +90,55 @@ func TestPropertyPlanApprovalsReportsAResolutionOnce(t *testing.T) {
 	}
 }
 
+// TestPropertyPlanApprovalsReportsTheEndingItWasTold is the decision the desk's
+// record feeds: an approval's ending is the bridge's own resolution when it
+// made one, the desk's when the desk made it, and the desk case only when
+// neither wrote one down - and the room answers that ending with its own mark,
+// or with the desktop reply when the word is not one it marks.
+func TestPropertyPlanApprovalsReportsTheEndingItWasTold(t *testing.T) {
+	words := []string{"", ResolutionApproved, ResolutionSentBack, ResolutionDesktop, "mystery"}
+	property := func(own, desk string) bool {
+		state := State{Approvals: map[string]ApprovalState{
+			approvalKey: {MessageID: approvalMessageID, Resolution: own},
+		}}
+		records := map[string]string{}
+		if desk != "" {
+			records[approvalKey] = desk
+		}
+
+		actions := PlanApprovalsWithDesk(operator, state, nil, records, nil, nil)
+		if len(actions) != 1 {
+			return false
+		}
+		action := actions[0]
+
+		ending := own
+		if ending == "" {
+			ending = desk
+		}
+		if ending == "" {
+			ending = ResolutionDesktop
+		}
+		switch ending {
+		case ResolutionApproved:
+			return action.Kind == ReactApproval && action.Reaction == CarriedOutReaction
+		case ResolutionSentBack:
+			return action.Kind == ReactApproval && action.Reaction == SentBackReaction
+		default:
+			return action.Kind == ReplyApproval && action.Text == "Resolved on the desktop"
+		}
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(words[rnd.Intn(len(words))])
+			values[1] = reflect.ValueOf(words[rnd.Intn(len(words))])
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestPropertyPlanApprovalsNeedsTheOperatorsOwnTap is the allowlist rule: no
 // reaction from anyone else, and no other reaction key, ever decides an
 // approval.

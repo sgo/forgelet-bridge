@@ -109,21 +109,32 @@ type ApprovalAction struct {
 	Reaction   string
 }
 
-// PlanApprovals works out what the approvals room needs: a message for every
-// approval the forge is waiting for, the operator's decision carried back to
-// the forge, and the outcome carried to the operator once an approval is
-// resolved - marked on the approval's own message when it was approved, and
-// replied to in its thread when the resolution carries words. Only the
-// operator's own approval reaction, or a reply of theirs in the approval's
-// thread, decides anything.
+// PlanApprovals works out what the approvals room needs from the room's own
+// events alone: see PlanApprovalsWithDesk for the approvals a desk resolved.
 func PlanApprovals(operator string, st State, pending []Approval, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
+	return PlanApprovalsWithDesk(operator, st, pending, nil, reactions, replies)
+}
+
+// PlanApprovalsWithDesk is PlanApprovals with what the desk wrote down about
+// the approvals it resolved away from the room, keyed by approval: the ending
+// the room reports for an approval the bridge did not carry out itself.
+//
+// It works out what the approvals room needs: a message for every approval the
+// forge is waiting for, the operator's decision carried back to the forge, and
+// the outcome carried to the operator once an approval is resolved - marked on
+// the approval's own message when it was approved or sent back, and replied to
+// in its thread when the resolution carries words. An approval's outcome is the
+// bridge's own when it made it, the desk's record when the desk made it, and
+// nothing when neither wrote one down. Only the operator's own approval
+// reaction, or a reply of theirs in the approval's thread, decides anything.
+func PlanApprovalsWithDesk(operator string, st State, pending []Approval, desk map[string]string, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
 	byMessage, byKey := approvalsByMessage(st, pending)
 
 	actions := approvedByReaction(operator, st, byMessage, reactions)
 	actions = append(actions, textGestures(operator, st, pending, byMessage, replies)...)
 	actions = append(actions, unansweredReactions(operator, reactions)...)
 	actions = append(actions, unpostedApprovals(st, pending)...)
-	return append(actions, resolutionsToReport(st, byKey)...)
+	return append(actions, resolutionsToReport(st, byKey, desk)...)
 }
 
 // approvalsByMessage indexes the approvals two ways: by the message the room
@@ -278,26 +289,33 @@ func unpostedApprovals(st State, pending []Approval) []ApprovalAction {
 }
 
 // resolutionsToReport plans the reports for the approvals that are no longer
-// pending - resolved on the desktop, or by the decision just carried back -
-// and have not been reported yet: an approval is marked on its own message,
-// and a send-back or a desktop resolution keeps its threaded reply.
-func resolutionsToReport(st State, byKey map[string]Approval) []ApprovalAction {
+// pending - resolved by the decision just carried back, or away from the room -
+// and have not been reported yet: an approval or a send-back is marked on the
+// approval's own message, and a resolution with nothing but the desk's word for
+// it, or nothing at all, keeps its threaded reply.
+func resolutionsToReport(st State, byKey map[string]Approval, desk map[string]string) []ApprovalAction {
 	var actions []ApprovalAction
 	for key, state := range st.Approvals {
 		if !unreportedResolution(state, key, byKey) {
 			continue
 		}
-		actions = append(actions, resolutionReport(key, state))
+		actions = append(actions, resolutionReport(key, state, desk[key]))
 	}
 	return actions
 }
 
 // resolutionReport is how one resolution reaches the operator: an approval and
 // a send-back are marked with the bridge's reaction on the approval's own
-// message, and a desktop resolution is replied to in the thread, because it
-// carries words the room never heard.
-func resolutionReport(key string, state ApprovalState) ApprovalAction {
+// message, and a resolution the desk wrote nothing down for is replied to in
+// the thread, because "resolved on the desktop" is all the room can say.
+//
+// The ending is the bridge's own resolution when it made it, and the desk's
+// record when the desk made it; the bridge's own word is the one that counts.
+func resolutionReport(key string, state ApprovalState, deskResolution string) ApprovalAction {
 	resolution := state.Resolution
+	if resolution == "" {
+		resolution = deskResolution
+	}
 	if resolution == "" {
 		resolution = ResolutionDesktop
 	}
@@ -363,5 +381,5 @@ func undecided(st State, key string) bool {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-10-03T13:09:42+02:00","module_hash":"8db14d171abae3f4faaada3534726729289b8ea71d8929c482aa89e6a1fe99ec","functions":[{"id":"func/ApprovalState.Room","name":"ApprovalState.Room","line":34,"end_line":34,"hash":"78a56a4cd17adf780b13f46acd4bd490ab233cfa0411043f39688e34a039aa50"},{"id":"func/Approves","name":"Approves","line":79,"end_line":79,"hash":"e9a9c788d3529be59309cc6af6bd3b3f8f19d4fa9790fdfc3bc6e597ef64808b"},{"id":"func/PlanApprovals","name":"PlanApprovals","line":119,"end_line":127,"hash":"2d321fa81b8636c660d0615ad8b52171356554b734627180db2cae6c2480b6ee"},{"id":"func/approvalsByMessage","name":"approvalsByMessage","line":132,"end_line":142,"hash":"9c9ccaf39cd05bfdc12bf7d5fafc53e12e872bcbfa9c5bc3ed9ac27f130c4f4c"},{"id":"func/approvedByReaction","name":"approvedByReaction","line":145,"end_line":163,"hash":"b8cb6ef510812b4474786f8b100bc1203aa11871f8f080afcce50cf4f196590d"},{"id":"func/textGestures","name":"textGestures","line":171,"end_line":193,"hash":"4b41513290296b531194d46e75eefef35451706c413a6d2db058048154a1dcd3"},{"id":"func/repliedApproval","name":"repliedApproval","line":198,"end_line":204,"hash":"83c75ab8060928303178a10d9e7cab3d8d4c430dde8424f5271482835f0ac631"},{"id":"func/decisionFor","name":"decisionFor","line":209,"end_line":218,"hash":"d46710175488fee0b70d93ac9583982c6608a5ad479af476c441272e7ba5257e"},{"id":"func/unansweredReactions","name":"unansweredReactions","line":223,"end_line":231,"hash":"24342a0a528b9e7488c3675a19abdf72e7bedcc68b515d86de74dff803330b3c"},{"id":"func/affirmative","name":"affirmative","line":237,"end_line":251,"hash":"09747205691ab6a2d88969c216d979cf77bc1626a2af768c42ab8a93361e22be"},{"id":"func/approvalForText","name":"approvalForText","line":255,"end_line":266,"hash":"4ec4faadd738cba840808b156a1e9c8abb9a94ad5f0ebe9da68542e9f02ce2ca"},{"id":"func/unpostedApprovals","name":"unpostedApprovals","line":270,"end_line":278,"hash":"98ab83a435b4107b8e8437a5cd53e76ed1d11e36779b39bf9eb6505d9a4acd8f"},{"id":"func/resolutionsToReport","name":"resolutionsToReport","line":284,"end_line":293,"hash":"650b69e6106df1b87494f05454e428579f1354c64629ade6b464f22418977d88"},{"id":"func/resolutionReport","name":"resolutionReport","line":299,"end_line":320,"hash":"5770bc05743307c657d4904edcf5bfb20ab694c52322e2cd80405af5489e026c"},{"id":"func/resolutionMark","name":"resolutionMark","line":326,"end_line":335,"hash":"74583fffdb2d28a67096e278c4d86d1e75c0f8c9e0cace181d5ce51052a9ce38"},{"id":"func/unreportedResolution","name":"unreportedResolution","line":340,"end_line":346,"hash":"aedd2ffedfeca6212408439db795c4145a35afb3bf887d288bddd6998f4846ee"},{"id":"func/ApprovalsReply","name":"ApprovalsReply","line":349,"end_line":358,"hash":"b8a277047b4dd09a8e936509d5d2d5a22fe49d0ce688f000755bf029b619a6f5"},{"id":"func/undecided","name":"undecided","line":360,"end_line":363,"hash":"111471b0a984e4e15086380f5923369b9b7103ddc8290f1a7327544dcfd76fd0"}]}
+// {"version":1,"tested_at":"2026-10-03T13:55:00+02:00","module_hash":"4f244746c4cdec67223f11b25498f7845bf014a7b2dd54648d703dcc8a96a0eb","functions":[{"id":"func/ApprovalState.Room","name":"ApprovalState.Room","line":34,"end_line":34,"hash":"78a56a4cd17adf780b13f46acd4bd490ab233cfa0411043f39688e34a039aa50"},{"id":"func/Approves","name":"Approves","line":79,"end_line":79,"hash":"e9a9c788d3529be59309cc6af6bd3b3f8f19d4fa9790fdfc3bc6e597ef64808b"},{"id":"func/PlanApprovals","name":"PlanApprovals","line":114,"end_line":116,"hash":"9b10b4f7fd7920f4db55d169e3053707ef4d14f61cb837b4c86f814a6600759f"},{"id":"func/PlanApprovalsWithDesk","name":"PlanApprovalsWithDesk","line":130,"end_line":138,"hash":"2a4989991330379319b678c2f8f886c9e930ac9a4c5f913cf5f39bc5efd9e222"},{"id":"func/approvalsByMessage","name":"approvalsByMessage","line":143,"end_line":153,"hash":"9c9ccaf39cd05bfdc12bf7d5fafc53e12e872bcbfa9c5bc3ed9ac27f130c4f4c"},{"id":"func/approvedByReaction","name":"approvedByReaction","line":156,"end_line":174,"hash":"b8cb6ef510812b4474786f8b100bc1203aa11871f8f080afcce50cf4f196590d"},{"id":"func/textGestures","name":"textGestures","line":182,"end_line":204,"hash":"4b41513290296b531194d46e75eefef35451706c413a6d2db058048154a1dcd3"},{"id":"func/repliedApproval","name":"repliedApproval","line":209,"end_line":215,"hash":"83c75ab8060928303178a10d9e7cab3d8d4c430dde8424f5271482835f0ac631"},{"id":"func/decisionFor","name":"decisionFor","line":220,"end_line":229,"hash":"d46710175488fee0b70d93ac9583982c6608a5ad479af476c441272e7ba5257e"},{"id":"func/unansweredReactions","name":"unansweredReactions","line":234,"end_line":242,"hash":"24342a0a528b9e7488c3675a19abdf72e7bedcc68b515d86de74dff803330b3c"},{"id":"func/affirmative","name":"affirmative","line":248,"end_line":262,"hash":"09747205691ab6a2d88969c216d979cf77bc1626a2af768c42ab8a93361e22be"},{"id":"func/approvalForText","name":"approvalForText","line":266,"end_line":277,"hash":"4ec4faadd738cba840808b156a1e9c8abb9a94ad5f0ebe9da68542e9f02ce2ca"},{"id":"func/unpostedApprovals","name":"unpostedApprovals","line":281,"end_line":289,"hash":"98ab83a435b4107b8e8437a5cd53e76ed1d11e36779b39bf9eb6505d9a4acd8f"},{"id":"func/resolutionsToReport","name":"resolutionsToReport","line":296,"end_line":305,"hash":"bb81910305926815dc55c1baeb3650e8f8a8bcfa9653523c4352e276fc824956"},{"id":"func/resolutionReport","name":"resolutionReport","line":314,"end_line":338,"hash":"2bfeac6637897fcae596df539e264f6e1e39ea7c1adbd7b99bd6844a8fd1a56c"},{"id":"func/resolutionMark","name":"resolutionMark","line":344,"end_line":353,"hash":"74583fffdb2d28a67096e278c4d86d1e75c0f8c9e0cace181d5ce51052a9ce38"},{"id":"func/unreportedResolution","name":"unreportedResolution","line":358,"end_line":364,"hash":"aedd2ffedfeca6212408439db795c4145a35afb3bf887d288bddd6998f4846ee"},{"id":"func/ApprovalsReply","name":"ApprovalsReply","line":367,"end_line":376,"hash":"b8a277047b4dd09a8e936509d5d2d5a22fe49d0ce688f000755bf029b619a6f5"},{"id":"func/undecided","name":"undecided","line":378,"end_line":381,"hash":"111471b0a984e4e15086380f5923369b9b7103ddc8290f1a7327544dcfd76fd0"}]}
 // mutate4go-manifest-end
