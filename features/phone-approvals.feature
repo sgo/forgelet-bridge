@@ -17,6 +17,13 @@ Feature: Phone Approvals
   # A reply the phone makes by quoting the approval message counts as a reply
   # too: it sends the work back unless its own words approve, and the quote the
   # phone writes into the body is not read as the operator's words.
+  # The room answers the outcome of an approval on the approval's own message
+  # rather than under it. An approval is reported by reacting ➡ on the message
+  # the operator marked, so the operator's check mark and the bridge's arrow sit
+  # on one line and the thread stays quiet; a send-back keeps its threaded
+  # reply, because it carries the operator's words, and words need a message. A
+  # resolution the bridge has already reported is not reported again, whichever
+  # way it was reported.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -42,7 +49,8 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator taps ✅ on the approval message for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
-    And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
 
   # Phone Approvals 3: the operator sends the approval back by replying in its thread
   Scenario: Phone Approvals 3: the operator sends the approval back by replying in its thread
@@ -51,6 +59,7 @@ Feature: Phone Approvals
     When the operator replies "the timesheet total is still wrong" in the approval message's thread for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "the timesheet total is still wrong"
     And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries no reaction from the bridge
 
   # Phone Approvals 4: a reply that only approves approves, and carries no feedback
   Scenario Outline: Phone Approvals 4: a reply that only approves approves, and carries no feedback
@@ -58,7 +67,8 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator replies "<answer>" in the approval message's thread for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
-    And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
 
     Examples:
       | answer          |
@@ -72,7 +82,8 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator sends the message "<answer>" into the approvals room
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
-    And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
 
     Examples:
       | answer          |
@@ -115,6 +126,7 @@ Feature: Phone Approvals
     When the operator taps ✅ on the approval message for the card phone-approvals
     Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
     And the approval message's thread holds exactly one reply
+    And the approval message for the card phone-approvals carries no reaction from the bridge
 
   # Phone Approvals 10: the operator sends the approval back by quoting it in a reply
   Scenario: Phone Approvals 10: the operator sends the approval back by quoting it in a reply
@@ -123,6 +135,7 @@ Feature: Phone Approvals
     When the operator swipes a reply "refund figures do not add up" to the approval message for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "refund figures do not add up"
     And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries no reaction from the bridge
 
   # Phone Approvals 11: a reply that quotes the approval is decided by its own words
   Scenario: Phone Approvals 11: a reply that quotes the approval is decided by its own words
@@ -130,4 +143,5 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator swipes a reply "approve" to the approval message for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
-    And the operator decrypts the approval reply "Approved" to the approval message for the card phone-approvals
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
