@@ -163,6 +163,62 @@ func clarificationThreadOneReply(_ context.Context, world any, _ []string) error
 	return nil
 }
 
+// clarificationCarriesBridgeMark waits for the bridge's own reaction on the
+// clarification's message: the mark that says the forge confirmed what was
+// asked and answered here.
+func clarificationCarriesBridgeMark(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, messageID, _, err := w.clarificationMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	return roomCarriesBridgeMark(ctx, w, roomID, messageID, captures[2], "the clarification for "+captures[1])
+}
+
+// clarificationCarriesNoBridgeReaction checks the bridge left the
+// clarification's own message unmarked: a desktop answer keeps its threaded
+// reply instead.
+func clarificationCarriesNoBridgeReaction(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, messageID, _, err := w.clarificationMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	return roomCarriesNoBridgeReaction(ctx, w, roomID, messageID, "the clarification")
+}
+
+// clarificationThreadHoldsNoBridgeReply checks the clarification's thread
+// stays quiet when the bridge marks the message instead of answering under it.
+func clarificationThreadHoldsNoBridgeReply(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+
+	roomID, err := w.clarificationsRoom(ctx)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	messageID, err := oneClarificationMessage(ctx, operator, roomID)
+	if err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 0 {
+		return fmt.Errorf("the clarification's thread holds %d replies from the bridge, want none", found)
+	}
+	return nil
+}
+
 // oneClarificationMessage waits for any clarification message the operator has
 // seen.
 func oneClarificationMessage(ctx context.Context, operator *fixtures.User, roomID string) (string, error) {

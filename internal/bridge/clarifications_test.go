@@ -104,7 +104,7 @@ func TestTickCarriesTheOperatorsReplyBackAsTheAnswer(t *testing.T) {
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("second Tick: %v", err)
 	}
-	// The forge has the answer now, so the next tick reports it in the thread.
+	// The forge has the answer now, so the next tick marks the message.
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("third Tick: %v", err)
 	}
@@ -113,8 +113,41 @@ func TestTickCarriesTheOperatorsReplyBackAsTheAnswer(t *testing.T) {
 	if len(answers) != 1 || answers[0].text != "yes" || answers[0].id != "clar-1" {
 		t.Fatalf("answers = %+v, want the operator's reply carried back", answers)
 	}
-	if reply := lastMessageIn(rooms, "!clarifications-forge-a"); reply == nil || reply.body != "Answered" {
-		t.Errorf("sent = %+v, want the answer reported in the thread", rooms.sentMessages())
+	messageID := built.State().Relay.Clarifications["forgelet-bridge/clar-1"].MessageID
+	marks := rooms.sentReactions()
+	if len(marks) != 1 || marks[0].roomID != "!clarifications-forge-a" || marks[0].target != messageID || marks[0].key != relay.CarriedOutReaction {
+		t.Fatalf("reactions = %+v, want the bridge's mark on the clarification's own message", marks)
+	}
+	for _, sent := range rooms.sentMessages() {
+		if sent.anchor == messageID {
+			t.Errorf("sent = %+v, want no reply under the message when the answer is marked", rooms.sentMessages())
+		}
+	}
+}
+
+func TestTickMarksAnAnswerTheOperatorGaveOnlyOnce(t *testing.T) {
+	store := &fakeClarifications{pending: []relay.Clarification{
+		clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?"),
+	}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithClarifications(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ClarificationStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	rooms.push(relay.RoomEvent{EventID: "$reply", RoomID: "!clarifications-forge-a", Sender: operator, Body: "yes", ThreadRoot: "$event-" + clarificationMessage(clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?"))})
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("third Tick: %v", err)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("fourth Tick: %v", err)
+	}
+
+	if marks := rooms.sentReactions(); len(marks) != 1 {
+		t.Errorf("reactions = %+v, want the clarification marked exactly once", marks)
 	}
 }
 
@@ -173,6 +206,9 @@ func TestTickReportsAClarificationAnsweredOnTheDesktop(t *testing.T) {
 
 	if reply := lastMessageIn(rooms, "!clarifications-forge-a"); reply == nil || reply.body != "Resolved on the desktop" {
 		t.Errorf("sent = %+v, want the desktop's answer reported", rooms.sentMessages())
+	}
+	if marks := rooms.sentReactions(); len(marks) != 0 {
+		t.Errorf("reactions = %+v, want the desktop's answer to take no reaction", marks)
 	}
 	reloaded, err := state.Load(built.statePath)
 	if err != nil {

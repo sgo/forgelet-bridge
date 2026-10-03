@@ -22,6 +22,9 @@ type ClarificationState struct {
 	Answer string `json:"answer,omitempty"`
 	// ReplyID is the thread reply that reported the answer.
 	ReplyID string `json:"reply_id,omitempty"`
+	// ReactionID is the bridge's own reaction on the clarification's message,
+	// when the answer was reported that way rather than in the thread.
+	ReactionID string `json:"reaction_id,omitempty"`
 }
 
 // Room is the room this clarification's message is in.
@@ -39,6 +42,10 @@ const (
 	// ReplyClarification reports in the clarification's thread how it was
 	// answered.
 	ReplyClarification ClarificationKind = "reply_clarification"
+	// ReactClarification marks the clarification's own message with the
+	// bridge's reaction, so an answer the operator gave here carries no thread
+	// reply.
+	ReactClarification ClarificationKind = "react_clarification"
 )
 
 // ClarificationAction is one piece of clarifications work for the bridge to
@@ -50,12 +57,15 @@ type ClarificationAction struct {
 	Answer        string
 	MessageID     string
 	Text          string
+	Reaction      string
 }
 
 // PlanClarifications works out what the clarifications room needs: a message
 // for every clarification the forge is waiting for, the operator's answer
-// carried back to the forge, and a reply in the thread once a clarification is
-// answered however it was answered.
+// carried back to the forge, and the answer carried to the operator once a
+// clarification is answered - marked on the clarification's own message when
+// the operator answered here, and replied to in its thread when the answer came
+// from the desktop.
 //
 // A clarification's answer is free text, so a reply is what the room takes
 // rather than a gesture: any reply of the operator's in the clarification's
@@ -124,30 +134,47 @@ func unpostedClarifications(st State, pending []Clarification) []ClarificationAc
 	return actions
 }
 
-// answersToReport plans the replies for the clarifications that are no longer
+// answersToReport plans the reports for the clarifications that are no longer
 // waiting - answered on the desktop, or by the answer just carried back - and
-// have not been reported in their thread yet.
+// have not been reported yet: an answer the operator gave here is marked on the
+// clarification's own message, and a desktop answer keeps its threaded reply.
 func answersToReport(st State, byKey map[string]Clarification) []ClarificationAction {
 	var actions []ClarificationAction
 	for key, state := range st.Clarifications {
 		if !unreportedAnswer(state, key, byKey) {
 			continue
 		}
-		actions = append(actions, ClarificationAction{
-			Kind:      ReplyClarification,
-			Key:       key,
-			MessageID: state.MessageID,
-			Text:      ClarificationsReply(state.Answer),
-		})
+		actions = append(actions, answerReport(key, state))
 	}
 	return actions
 }
 
+// answerReport is how one answer reaches the operator: an answer the operator
+// gave here is marked with the bridge's reaction on the clarification's own
+// message, and a desktop answer is replied to in the thread, because it is a
+// word the room never heard.
+func answerReport(key string, state ClarificationState) ClarificationAction {
+	if state.Answer != "" {
+		return ClarificationAction{
+			Kind:      ReactClarification,
+			Key:       key,
+			MessageID: state.MessageID,
+			Reaction:  CarriedOutReaction,
+		}
+	}
+	return ClarificationAction{
+		Kind:      ReplyClarification,
+		Key:       key,
+		MessageID: state.MessageID,
+		Text:      ClarificationsReply(state.Answer),
+	}
+}
+
 // unreportedAnswer reports whether a clarification the room has seen still
-// needs its answer reported in its thread: it is no longer one the forge waits
-// for, and the thread has not been told yet.
+// needs its answer reported: it is no longer one the forge waits for, and the
+// room has not been told yet, by a thread reply or a reaction.
 func unreportedAnswer(state ClarificationState, key string, byKey map[string]Clarification) bool {
-	if state.MessageID == "" || state.ReplyID != "" {
+	if state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
 		return false
 	}
 	_, stillWaiting := byKey[key]
@@ -164,5 +191,5 @@ func ClarificationsReply(answer string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T14:24:39+02:00","module_hash":"e40b703750e3ba89f99f14443b64989bdd032b99a8c1f5be2227a4151e693777","functions":[{"id":"func/ClarificationState.Room","name":"ClarificationState.Room","line":28,"end_line":28,"hash":"062d0bbb5a7d64a29a3d799f8951afa787ae4f656a21a6e31efd8f0fca4418b5"},{"id":"func/PlanClarifications","name":"PlanClarifications","line":63,"end_line":69,"hash":"154d3af9ddd0c4ca0281557f6b424d2d197132ecaa382d4cc6dd0f6c49cd1b70"},{"id":"func/clarificationsByMessage","name":"clarificationsByMessage","line":74,"end_line":84,"hash":"d5213dfbc6a5b7116b37e8bc457adf1984d939499cc62e7809925348eb0f1ccf"},{"id":"func/answeredByReply","name":"answeredByReply","line":88,"end_line":106,"hash":"ee874cc21fed201a675406db9e838b382e37f8b159713860c9eb87c5a55f5d96"},{"id":"func/awaitingAnswer","name":"awaitingAnswer","line":110,"end_line":113,"hash":"1ed2b04a8b4a62c056ae097d002b06fdf5523817f351f92e76bf30f41065e6d8"},{"id":"func/unpostedClarifications","name":"unpostedClarifications","line":117,"end_line":125,"hash":"fb2a04eaf2c8d3f99cb578c85ec482b605a51f25f8256ef7277b069915e87023"},{"id":"func/answersToReport","name":"answersToReport","line":130,"end_line":144,"hash":"9cd7ad804ac7aabf019121e465df2bb1c597b2b9e14c9054bb0e22d28b934e71"},{"id":"func/unreportedAnswer","name":"unreportedAnswer","line":149,"end_line":155,"hash":"adb8c8996ae5d866b8226f43d49fd1a81eba8391f3754c7eeb5aa752bc2acf02"},{"id":"func/ClarificationsReply","name":"ClarificationsReply","line":159,"end_line":164,"hash":"9ca510908a1c96a3b2a557bd24940ae3d02fa25a18182dd0dbe83a8cf73949d2"}]}
+// {"version":1,"tested_at":"2026-10-03T12:52:28+02:00","module_hash":"66601e382406fac5fbfa08ddfde2c4feba1c0a39281604f5fcf61c31ce5ba0dc","functions":[{"id":"func/ClarificationState.Room","name":"ClarificationState.Room","line":31,"end_line":31,"hash":"062d0bbb5a7d64a29a3d799f8951afa787ae4f656a21a6e31efd8f0fca4418b5"},{"id":"func/PlanClarifications","name":"PlanClarifications","line":73,"end_line":79,"hash":"154d3af9ddd0c4ca0281557f6b424d2d197132ecaa382d4cc6dd0f6c49cd1b70"},{"id":"func/clarificationsByMessage","name":"clarificationsByMessage","line":84,"end_line":94,"hash":"d5213dfbc6a5b7116b37e8bc457adf1984d939499cc62e7809925348eb0f1ccf"},{"id":"func/answeredByReply","name":"answeredByReply","line":98,"end_line":116,"hash":"ee874cc21fed201a675406db9e838b382e37f8b159713860c9eb87c5a55f5d96"},{"id":"func/awaitingAnswer","name":"awaitingAnswer","line":120,"end_line":123,"hash":"1ed2b04a8b4a62c056ae097d002b06fdf5523817f351f92e76bf30f41065e6d8"},{"id":"func/unpostedClarifications","name":"unpostedClarifications","line":127,"end_line":135,"hash":"fb2a04eaf2c8d3f99cb578c85ec482b605a51f25f8256ef7277b069915e87023"},{"id":"func/answersToReport","name":"answersToReport","line":141,"end_line":150,"hash":"770b8b859c7f72e0cf36ed3c160f8d70db99f70222948a33c16ee42cda8e8549"},{"id":"func/answerReport","name":"answerReport","line":156,"end_line":171,"hash":"1b0484c123d4a99d8f18304ac017f0d5c4e334e464ebea45c55dc2ebaa810228"},{"id":"func/unreportedAnswer","name":"unreportedAnswer","line":176,"end_line":182,"hash":"6341e3b4c9efaa68d9c1d9a8016582d26ce84d5a8eeebab404bfa7661da5e32d"},{"id":"func/ClarificationsReply","name":"ClarificationsReply","line":186,"end_line":191,"hash":"9ca510908a1c96a3b2a557bd24940ae3d02fa25a18182dd0dbe83a8cf73949d2"}]}
 // mutate4go-manifest-end
