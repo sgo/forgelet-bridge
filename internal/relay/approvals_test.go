@@ -288,7 +288,7 @@ func TestApprovalForTextFindsNothingWhenTheTextNamesNoApproval(t *testing.T) {
 	}
 }
 
-func TestPlanApprovalsReportsTheOperatorsOwnResolution(t *testing.T) {
+func TestPlanApprovalsMarksTheOperatorsApprovalOnItsOwnMessage(t *testing.T) {
 	state := posted()
 	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
 		MessageID:  "$approval-message",
@@ -298,14 +298,48 @@ func TestPlanApprovalsReportsTheOperatorsOwnResolution(t *testing.T) {
 	actions := PlanApprovals(operator, state, nil, nil, nil)
 
 	want := []ApprovalAction{{
-		Kind:       ReplyApproval,
+		Kind:       ReactApproval,
 		Key:        "forgelet-bridge/approval-1",
 		MessageID:  "$approval-message",
 		Resolution: ResolutionApproved,
-		Text:       "Approved",
+		Reaction:   CarriedOutReaction,
 	}}
 	if !reflect.DeepEqual(actions, want) {
 		t.Errorf("actions = %+v, want %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsKeepsTheSendBackInTheThread(t *testing.T) {
+	state := posted()
+	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
+		MessageID:  "$approval-message",
+		Resolution: ResolutionSentBack,
+	}
+
+	actions := PlanApprovals(operator, state, nil, nil, nil)
+
+	want := []ApprovalAction{{
+		Kind:       ReplyApproval,
+		Key:        "forgelet-bridge/approval-1",
+		MessageID:  "$approval-message",
+		Resolution: ResolutionSentBack,
+		Text:       "Sent back with feedback",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsMarksAnApprovalOnlyOnce(t *testing.T) {
+	state := posted()
+	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
+		MessageID:  "$approval-message",
+		Resolution: ResolutionApproved,
+		ReactionID: "$reaction",
+	}
+
+	if actions := PlanApprovals(operator, state, nil, nil, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want no second mark", actions)
 	}
 }
 

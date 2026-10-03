@@ -25,6 +25,9 @@ type ApprovalState struct {
 	Resolution string `json:"resolution,omitempty"`
 	// ReplyID is the thread reply that reported the resolution.
 	ReplyID string `json:"reply_id,omitempty"`
+	// ReactionID is the bridge's own reaction on the approval's message, when
+	// the resolution was reported that way rather than in the thread.
+	ReactionID string `json:"reaction_id,omitempty"`
 }
 
 // Room is the room this approval's message is in.
@@ -48,6 +51,11 @@ type Reaction struct {
 
 // ApproveReaction is the reaction the operator approves with.
 const ApproveReaction = "✅"
+
+// CarriedOutReaction is the reaction the bridge marks an approval with once
+// the forge confirmed it: it sits on the approval's own message, beside the
+// operator's check mark, so the thread stays quiet.
+const CarriedOutReaction = "➡"
 
 // approveReactions are the check marks that mean approval. Reaction pickers
 // disagree about the variation selector, and ✔️ and ☑️ are what a thumb reaches
@@ -75,6 +83,9 @@ const (
 	ResolveApproval ApprovalKind = "resolve_approval"
 	// ReplyApproval reports in the approval's thread how it was resolved.
 	ReplyApproval ApprovalKind = "reply_approval"
+	// ReactApproval marks the approval's own message with the bridge's
+	// reaction, so an approved approval carries no thread reply.
+	ReactApproval ApprovalKind = "react_approval"
 	// AnswerGestures tells the operator which gestures the room takes, when a
 	// message can be read as none of them.
 	AnswerGestures ApprovalKind = "answer_gestures"
@@ -89,6 +100,7 @@ type ApprovalAction struct {
 	Feedback   string
 	MessageID  string
 	Text       string
+	Reaction   string
 }
 
 // PlanApprovals works out what the approvals room needs: a message for every
@@ -257,35 +269,52 @@ func unpostedApprovals(st State, pending []Approval) []ApprovalAction {
 	return actions
 }
 
-// resolutionsToReport plans the replies for the approvals that are no longer
+// resolutionsToReport plans the reports for the approvals that are no longer
 // pending - resolved on the desktop, or by the decision just carried back -
-// and have not been reported in their thread yet.
+// and have not been reported yet: an approval is marked on its own message,
+// and a send-back or a desktop resolution keeps its threaded reply.
 func resolutionsToReport(st State, byKey map[string]Approval) []ApprovalAction {
 	var actions []ApprovalAction
 	for key, state := range st.Approvals {
 		if !unreportedResolution(state, key, byKey) {
 			continue
 		}
-		resolution := state.Resolution
-		if resolution == "" {
-			resolution = ResolutionDesktop
-		}
-		actions = append(actions, ApprovalAction{
-			Kind:       ReplyApproval,
-			Key:        key,
-			MessageID:  state.MessageID,
-			Resolution: resolution,
-			Text:       ApprovalsReply(resolution),
-		})
+		actions = append(actions, resolutionReport(key, state))
 	}
 	return actions
 }
 
+// resolutionReport is how one resolution reaches the operator: an approval is
+// marked with the bridge's reaction on its own message, and a send-back or a
+// desktop resolution is replied to in the thread, because it carries words.
+func resolutionReport(key string, state ApprovalState) ApprovalAction {
+	resolution := state.Resolution
+	if resolution == "" {
+		resolution = ResolutionDesktop
+	}
+	if resolution == ResolutionApproved {
+		return ApprovalAction{
+			Kind:       ReactApproval,
+			Key:        key,
+			MessageID:  state.MessageID,
+			Resolution: resolution,
+			Reaction:   CarriedOutReaction,
+		}
+	}
+	return ApprovalAction{
+		Kind:       ReplyApproval,
+		Key:        key,
+		MessageID:  state.MessageID,
+		Resolution: resolution,
+		Text:       ApprovalsReply(resolution),
+	}
+}
+
 // unreportedResolution reports whether an approval the room has seen still
-// needs its resolution reported in its thread: it is no longer one the forge
-// waits for, and the thread has not been told yet.
+// needs its resolution reported: it is no longer one the forge waits for, and
+// the room has not been told yet, by a thread reply or a reaction.
 func unreportedResolution(state ApprovalState, key string, byKey map[string]Approval) bool {
-	if state.MessageID == "" || state.ReplyID != "" {
+	if state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
 		return false
 	}
 	_, stillPending := byKey[key]

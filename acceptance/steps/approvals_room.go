@@ -154,6 +154,96 @@ func approvalThreadOneReply(_ context.Context, world any, _ []string) error {
 	return nil
 }
 
+// approvalCarriesBridgeMark waits for the bridge's own reaction on the
+// approval's message: the mark that says the forge confirmed it, sitting on
+// the line the operator marked rather than under it.
+func approvalCarriesBridgeMark(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	card, mark := captures[1], captures[2]
+
+	roomID, messageID, _, err := w.approvalMessage(ctx, card)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	return waitFor(ctx, fmt.Sprintf("the bridge never marked the approval for %s with %s", card, mark), func() (bool, error) {
+		for _, reaction := range operator.Reactions(roomID, messageID) {
+			if reaction.Sender == w.bridgeUserID && reaction.Key == mark {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+// approvalCarriesNoBridgeReaction checks the bridge left the approval's own
+// message unmarked: a send-back carries its threaded reply instead.
+func approvalCarriesNoBridgeReaction(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+
+	roomID, messageID, _, err := w.approvalMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if marks := bridgeReactions(operator, roomID, messageID, w.bridgeUserID); len(marks) != 0 {
+		return fmt.Errorf("the approval carries the bridge's reactions %v, want none", marks)
+	}
+	return nil
+}
+
+// approvalThreadHoldsNoBridgeReply checks the approval's thread stays quiet
+// when the bridge marks the message instead of answering in the thread.
+func approvalThreadHoldsNoBridgeReply(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+
+	roomID, err := w.approvalsRoom(ctx)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	messageID, err := w.oneApprovalMessage(ctx, operator, roomID)
+	if err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 0 {
+		return fmt.Errorf("the approval's thread holds %d replies from the bridge, want none", found)
+	}
+	return nil
+}
+
+// bridgeReactions are the reaction keys the bridge put on a message.
+func bridgeReactions(operator *fixtures.User, roomID, messageID, sender string) []string {
+	var keys []string
+	for _, reaction := range operator.Reactions(roomID, messageID) {
+		if reaction.Sender == sender {
+			keys = append(keys, reaction.Key)
+		}
+	}
+	return keys
+}
+
 // oneApprovalMessage waits for any approval message the operator has seen.
 func (w *World) oneApprovalMessage(ctx context.Context, operator *fixtures.User, roomID string) (string, error) {
 	var messageID string

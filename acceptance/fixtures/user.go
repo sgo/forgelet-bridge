@@ -43,6 +43,16 @@ type DeviceKey struct {
 	Curve25519 string
 }
 
+// Reaction is one reaction a fixture client has seen, with the message it
+// annotates.
+type Reaction struct {
+	RoomID        string
+	EventID       string
+	Sender        string
+	TargetEventID string
+	Key           string
+}
+
 // User is a Matrix user the tests drive: the operator standing in for the
 // phone, or a stranger who must never reach a forge.
 type User struct {
@@ -58,6 +68,7 @@ type User struct {
 
 	mu          sync.Mutex
 	messages    []Message
+	reactions   []Reaction
 	joined      []string
 	invites     []string
 	everInvited map[string]bool
@@ -97,6 +108,7 @@ func NewUser(ctx context.Context, hs *Synapse, localpart string, dir string) (*U
 		return nil, fmt.Errorf("unexpected syncer %T", cli.Syncer)
 	}
 	syncer.OnEventType(event.EventMessage, user.captureMessage)
+	syncer.OnEventType(event.EventReaction, user.captureReaction)
 	syncer.OnEventType(event.StateMember, user.captureMembership)
 
 	helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey(userID), filepath.Join(dir, "crypto.db"))
@@ -289,6 +301,20 @@ func (u *User) Messages(roomID string) []Message {
 	return seen
 }
 
+// Reactions returns the reactions this client has seen on a message, oldest
+// first.
+func (u *User) Reactions(roomID, targetEventID string) []Reaction {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	var seen []Reaction
+	for _, reaction := range u.reactions {
+		if reaction.RoomID == roomID && reaction.TargetEventID == targetEventID {
+			seen = append(seen, reaction)
+		}
+	}
+	return seen
+}
+
 // Invites returns the rooms this user has been invited to and not yet joined.
 func (u *User) Invites() []string {
 	u.mu.Lock()
@@ -475,6 +501,28 @@ func (u *User) captureMembership(_ context.Context, evt *event.Event) {
 			u.joined = append(u.joined, evt.RoomID.String())
 		}
 	}
+}
+
+func (u *User) captureReaction(_ context.Context, evt *event.Event) {
+	content := evt.Content.AsReaction()
+	if content == nil || content.RelatesTo.EventID == "" {
+		return
+	}
+	reaction := Reaction{
+		RoomID:        evt.RoomID.String(),
+		EventID:       evt.ID.String(),
+		Sender:        evt.Sender.String(),
+		TargetEventID: content.RelatesTo.EventID.String(),
+		Key:           content.RelatesTo.Key,
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	for _, seen := range u.reactions {
+		if seen.EventID == reaction.EventID {
+			return
+		}
+	}
+	u.reactions = append(u.reactions, reaction)
 }
 
 // Rooms lists the rooms this user has: joined rooms first, then open invites.

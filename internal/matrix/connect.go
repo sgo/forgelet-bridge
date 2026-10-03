@@ -157,6 +157,24 @@ func (c *Client) SendNotice(ctx context.Context, roomID, body string) (string, e
 	return c.sendMessage(ctx, roomID, &event.MessageEventContent{MsgType: event.MsgNotice, Body: body})
 }
 
+// SendReaction marks an existing message with a reaction, the way the
+// operator's own check mark does. The reaction carries no words, so it goes
+// into the room the same way a phone sends it.
+func (c *Client) SendReaction(ctx context.Context, roomID, targetEventID, key string) (string, error) {
+	content := &event.ReactionEventContent{
+		RelatesTo: event.RelatesTo{
+			Type:    event.RelAnnotation,
+			EventID: id.EventID(targetEventID),
+			Key:     key,
+		},
+	}
+	resp, err := c.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventReaction, content)
+	if err != nil {
+		return "", fmt.Errorf("send reaction: %w", err)
+	}
+	return resp.EventID.String(), nil
+}
+
 // sendMessage puts one already-shaped message into a room, encrypted.
 func (c *Client) sendMessage(ctx context.Context, roomID string, content *event.MessageEventContent) (string, error) {
 	encrypted, err := c.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)

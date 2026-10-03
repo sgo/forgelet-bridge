@@ -74,6 +74,8 @@ func (b *Bridge) carryOutApproval(ctx context.Context, store ApprovalStore, room
 		return b.resolveApproval(ctx, store, action)
 	case relay.ReplyApproval:
 		return b.reportResolution(ctx, room, action)
+	case relay.ReactApproval:
+		return b.reactApproval(ctx, room, action)
 	case relay.AnswerGestures:
 		return b.answerGestures(ctx, room)
 	}
@@ -89,6 +91,22 @@ func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.Appro
 	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
 		state.RoomID = room.ApprovalsRoomID
 		state.MessageID = eventID
+		return state
+	})
+	return nil
+}
+
+// reactApproval marks the approval's own message with the bridge's reaction,
+// so the operator's check mark and the bridge's arrow sit on one line and the
+// approval's thread stays quiet.
+func (b *Bridge) reactApproval(ctx context.Context, room Room, action relay.ApprovalAction) error {
+	eventID, err := b.rooms.SendReaction(ctx, room.ApprovalsRoomID, action.MessageID, action.Reaction)
+	if err != nil {
+		return fmt.Errorf("mark approval %s: %w", action.Key, err)
+	}
+	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.Resolution = action.Resolution
+		state.ReactionID = eventID
 		return state
 	})
 	return nil

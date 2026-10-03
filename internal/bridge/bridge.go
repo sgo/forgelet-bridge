@@ -64,6 +64,9 @@ type Rooms interface {
 	// about a forge is true on every start, not only when the rooms are new.
 	RefreshForge(ctx context.Context, room Room, forgeName, operator string) error
 	SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error)
+	// SendReaction marks an existing message with a reaction, the way the
+	// operator's own check mark does.
+	SendReaction(ctx context.Context, roomID, targetEventID, key string) (string, error)
 	// SendNotice posts a message clients do not notify on: something worth
 	// seeing in the room and not worth waking anyone for.
 	SendNotice(ctx context.Context, roomID, body string) (string, error)

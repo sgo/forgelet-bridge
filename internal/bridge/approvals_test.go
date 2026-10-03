@@ -146,7 +146,7 @@ func TestTickApprovesWhenTheOperatorReacts(t *testing.T) {
 	}
 }
 
-func TestTickReportsAnApprovalItResolved(t *testing.T) {
+func TestTickMarksAnApprovalItResolvedOnTheMessage(t *testing.T) {
 	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
 	rooms := &fakeRooms{}
 	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
@@ -161,16 +161,76 @@ func TestTickReportsAnApprovalItResolved(t *testing.T) {
 	}
 
 	rooms.sent = nil
+	rooms.marks = nil
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("third Tick: %v", err)
+	}
+
+	marks := rooms.sentReactions()
+	if len(marks) != 1 || marks[0].roomID != "!approvals-forge-a" || marks[0].target != messageID || marks[0].key != relay.CarriedOutReaction {
+		t.Fatalf("reactions = %+v, want the bridge's mark on the approval's own message", marks)
+	}
+	if sent := rooms.sentMessages(); len(sent) != 0 {
+		t.Errorf("sent = %+v, want no message when the approval is marked", sent)
+	}
+	if state := built.State().Relay.Approvals["forgelet-bridge/approval-1"]; state.ReactionID == "" {
+		t.Error("the bridge did not remember the reaction")
+	}
+}
+
+func TestTickKeepsTheSendBacksReplyAndLeavesTheMessageUnmarked(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	messageID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].MessageID
+	rooms.push(relay.RoomEvent{
+		RoomID:     "!approvals-forge-a",
+		EventID:    "$reply",
+		Sender:     operator,
+		Body:       "the timesheet total is still wrong",
+		ThreadRoot: messageID,
+	})
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	rooms.sent = nil
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("third Tick: %v", err)
 	}
 
 	sent := rooms.sentMessages()
-	if len(sent) != 1 || sent[0].body != "Approved" || sent[0].anchor != messageID {
-		t.Fatalf("sent = %+v, want the resolution in the approval's thread", sent)
+	if len(sent) != 1 || sent[0].body != "Sent back with feedback" || sent[0].anchor != messageID {
+		t.Fatalf("sent = %+v, want the send-back carried by its threaded reply", sent)
 	}
-	if state := built.State().Relay.Approvals["forgelet-bridge/approval-1"]; state.ReplyID == "" {
-		t.Error("the bridge did not remember the reply")
+	if marks := rooms.sentReactions(); len(marks) != 0 {
+		t.Errorf("reactions = %+v, want the sent-back approval left unmarked", marks)
+	}
+}
+
+func TestTickMarksAnApprovalOnlyOnce(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	messageID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].MessageID
+	rooms.pushReaction(relay.Reaction{RoomID: "!approvals-forge-a", Sender: operator, Key: relay.ApproveReaction, TargetEventID: messageID})
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("third Tick: %v", err)
+	}
+
+	if marks := rooms.sentReactions(); len(marks) != 1 {
+		t.Errorf("reactions = %+v, want the approval marked exactly once", marks)
 	}
 }
 

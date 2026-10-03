@@ -265,6 +265,9 @@ func register(registry *runtime.Registry) error {
 		{`^the operator decrypts the approval reply "(.+)" to the approval message for the card (\S+)$`, approvalReplyDecrypted},
 		{`^the operator decrypts the approval reply "(.+)" to the approval message for the card (\S+) in the forge (\S+)$`, operatorDecryptsForgeApprovalReply},
 		{`^the approval message's thread holds exactly one reply$`, approvalThreadOneReply},
+		{`^the approval message's thread holds no reply from the bridge$`, approvalThreadHoldsNoBridgeReply},
+		{`^the approval message for the card (\S+) carries the bridge's (\S+) reaction$`, approvalCarriesBridgeMark},
+		{`^the approval message for the card (\S+) carries no reaction from the bridge$`, approvalCarriesNoBridgeReaction},
 		{`^the approval message for the card (\S+) tells the operator a reply sends it back$`, approvalSaysWhatAReplyMeans},
 
 		{`^the forge's dashboard already holds the pending clarification from the role (\S+) in the project (\S+) asking "(.+)"$`, pendingClarification},
