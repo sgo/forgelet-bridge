@@ -168,17 +168,38 @@ func approvalCarriesBridgeMark(_ context.Context, world any, captures []string) 
 	if err != nil {
 		return err
 	}
+	return waitForBridgeMark(ctx, w, roomID, messageID, mark, "the approval for "+card)
+}
+
+// forgeApprovalCarriesBridgeMark is the same for an approval in one named
+// forge, which is how a many-forge scenario tells the two apart.
+func forgeApprovalCarriesBridgeMark(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	card, forgeName, mark := captures[1], captures[2], captures[3]
+
+	roomID, messageID, _, err := w.forgeApprovalMessage(ctx, forgeName, card)
+	if err != nil {
+		return err
+	}
+	return waitForBridgeMark(ctx, w, roomID, messageID, mark, fmt.Sprintf("the approval for %s in %s", card, forgeName))
+}
+
+// waitForBridgeMark waits until the operator sees the bridge's own reaction
+// with the given key on a message.
+func waitForBridgeMark(ctx context.Context, w *World, roomID, messageID, mark, subject string) error {
 	operator, err := w.operator(ctx)
 	if err != nil {
 		return err
 	}
-	return waitFor(ctx, fmt.Sprintf("the bridge never marked the approval for %s with %s", card, mark), func() (bool, error) {
+	return waitFor(ctx, fmt.Sprintf("the bridge never marked %s with %s", subject, mark), func() (bool, error) {
 		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
 	})
 }
 
 // approvalCarriesNoBridgeReaction checks the bridge left the approval's own
-// message unmarked: a send-back carries its threaded reply instead.
+// message unmarked: a desktop resolution carries its threaded reply instead.
 func approvalCarriesNoBridgeReaction(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()

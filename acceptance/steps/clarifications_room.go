@@ -3,7 +3,6 @@ package steps
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -177,13 +176,7 @@ func clarificationCarriesBridgeMark(_ context.Context, world any, captures []str
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	return waitFor(ctx, fmt.Sprintf("the bridge never marked the clarification for %s with %s", project, mark), func() (bool, error) {
-		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
-	})
+	return waitForBridgeMark(ctx, w, roomID, messageID, mark, "the clarification for "+project)
 }
 
 // clarificationCarriesNoBridgeReaction checks the bridge left the
