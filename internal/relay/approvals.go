@@ -57,6 +57,11 @@ const ApproveReaction = "✅"
 // operator's check mark, so the thread stays quiet.
 const CarriedOutReaction = "➡"
 
+// SentBackReaction is the reaction the bridge marks a send-back with, so the
+// work going back is answered on the approval's own message the way an
+// approval is.
+const SentBackReaction = "⬅"
+
 // approveReactions are the check marks that mean approval. Reaction pickers
 // disagree about the variation selector, and ✔️ and ☑️ are what a thumb reaches
 // when it means ✅; the sender check below is what keeps approval narrow, not
@@ -84,7 +89,8 @@ const (
 	// ReplyApproval reports in the approval's thread how it was resolved.
 	ReplyApproval ApprovalKind = "reply_approval"
 	// ReactApproval marks the approval's own message with the bridge's
-	// reaction, so an approved approval carries no thread reply.
+	// reaction - the carried-out mark for an approval, the send-back's for a
+	// send-back - so an outcome carried by a mark leaves no thread reply.
 	ReactApproval ApprovalKind = "react_approval"
 	// AnswerGestures tells the operator which gestures the room takes, when a
 	// message can be read as none of them.
@@ -286,21 +292,22 @@ func resolutionsToReport(st State, byKey map[string]Approval) []ApprovalAction {
 	return actions
 }
 
-// resolutionReport is how one resolution reaches the operator: an approval is
-// marked with the bridge's reaction on its own message, and a send-back or a
-// desktop resolution is replied to in the thread, because it carries words.
+// resolutionReport is how one resolution reaches the operator: an approval and
+// a send-back are marked with the bridge's reaction on the approval's own
+// message, and a desktop resolution is replied to in the thread, because it
+// carries words the room never heard.
 func resolutionReport(key string, state ApprovalState) ApprovalAction {
 	resolution := state.Resolution
 	if resolution == "" {
 		resolution = ResolutionDesktop
 	}
-	if resolution == ResolutionApproved {
+	if mark, marked := resolutionMark(resolution); marked {
 		return ApprovalAction{
 			Kind:       ReactApproval,
 			Key:        key,
 			MessageID:  state.MessageID,
 			Resolution: resolution,
-			Reaction:   CarriedOutReaction,
+			Reaction:   mark,
 		}
 	}
 	return ApprovalAction{
@@ -309,6 +316,21 @@ func resolutionReport(key string, state ApprovalState) ApprovalAction {
 		MessageID:  state.MessageID,
 		Resolution: resolution,
 		Text:       ApprovalsReply(resolution),
+	}
+}
+
+// resolutionMark is the mark the bridge answers a resolution with when the
+// room learns it by reaction: the carried-out mark for an approval, and the
+// send-back's mark for a send-back. A desktop resolution has none, and keeps
+// its threaded reply.
+func resolutionMark(resolution string) (string, bool) {
+	switch resolution {
+	case ResolutionApproved:
+		return CarriedOutReaction, true
+	case ResolutionSentBack:
+		return SentBackReaction, true
+	default:
+		return "", false
 	}
 }
 

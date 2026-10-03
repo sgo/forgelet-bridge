@@ -137,10 +137,10 @@ func TestAnswerGesturesSaysNothingWhenTheRoomTakesIt(t *testing.T) {
 	}
 }
 
-// TestTickReportsTheReplyWhenTheOperatorSendsAnApprovalBack checks the whole
+// TestTickMarksTheSendBackWhenTheOperatorSendsAnApprovalBack checks the whole
 // send-back: the forge records the feedback and the room is told, so the
 // operator's phone shows what happened.
-func TestTickReportsTheReplyWhenTheOperatorSendsAnApprovalBack(t *testing.T) {
+func TestTickMarksTheSendBackWhenTheOperatorSendsAnApprovalBack(t *testing.T) {
 	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
 	rooms := &fakeRooms{}
 	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
@@ -161,13 +161,13 @@ func TestTickReportsTheReplyWhenTheOperatorSendsAnApprovalBack(t *testing.T) {
 		t.Fatalf("second Tick: %v", err)
 	}
 	// The room hears how the approval was resolved on the tick after the forge
-	// has been told, so the reply is the third tick's work.
+	// has been told, so the mark is the third tick's work.
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("third Tick: %v", err)
 	}
 
-	sent := rooms.sentMessages()
-	if len(sent) != 2 || sent[1].body != "Sent back with feedback" {
-		t.Errorf("sent = %+v, want the approval message and the room's reply", sent)
+	marks := rooms.sentReactions()
+	if len(marks) != 1 || marks[0].target != messageID || marks[0].key != relay.SentBackReaction {
+		t.Errorf("reactions = %+v, want the send-back's left arrow on the approval's message", marks)
 	}
 }

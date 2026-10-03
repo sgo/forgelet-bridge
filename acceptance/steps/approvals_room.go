@@ -168,8 +168,22 @@ func approvalCarriesBridgeMark(_ context.Context, world any, captures []string) 
 	return roomCarriesBridgeMark(ctx, w, roomID, messageID, captures[2], "the approval for "+captures[1])
 }
 
+// forgeApprovalCarriesBridgeMark is the same for an approval in one named
+// forge, which is how a many-forge scenario tells the two apart.
+func forgeApprovalCarriesBridgeMark(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	card, forgeName, mark := captures[1], captures[2], captures[3]
+	roomID, messageID, _, err := w.forgeApprovalMessage(ctx, forgeName, card)
+	if err != nil {
+		return err
+	}
+	return roomCarriesBridgeMark(ctx, w, roomID, messageID, mark, fmt.Sprintf("the approval for %s in %s", card, forgeName))
+}
+
 // approvalCarriesNoBridgeReaction checks the bridge left the approval's own
-// message unmarked: a send-back carries its threaded reply instead.
+// message unmarked: a desktop resolution carries its threaded reply instead.
 func approvalCarriesNoBridgeReaction(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
