@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -172,12 +173,7 @@ func approvalCarriesBridgeMark(_ context.Context, world any, captures []string) 
 		return err
 	}
 	return waitFor(ctx, fmt.Sprintf("the bridge never marked the approval for %s with %s", card, mark), func() (bool, error) {
-		for _, reaction := range operator.Reactions(roomID, messageID) {
-			if reaction.Sender == w.bridgeUserID && reaction.Key == mark {
-				return true, nil
-			}
-		}
-		return false, nil
+		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
 	})
 }
 

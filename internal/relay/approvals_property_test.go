@@ -49,6 +49,47 @@ func TestPropertyPlanApprovalsActsOnce(t *testing.T) {
 	}
 }
 
+// TestPropertyPlanApprovalsReportsAResolutionOnce is the promise that keeps the
+// thread quiet: however an approval is resolved, the bridge reports it once -
+// by marking the approval's own message or by replying in its thread - and no
+// replay of the same events reports it again, whichever way it was reported.
+func TestPropertyPlanApprovalsReportsAResolutionOnce(t *testing.T) {
+	property := func(st State, pending []Approval, reactions []Reaction, replies []RoomEvent) bool {
+		st = cloneState(st)
+		pending = append([]Approval(nil), pending...)
+
+		// Tick the room a few times, as the bridge does, so a resolution is
+		// carried back and then reported.
+		reports := map[string]int{}
+		for tick := 0; tick < 6; tick++ {
+			actions := PlanApprovals(operator, st, pending, reactions, replies)
+			for _, action := range actions {
+				if isResolutionReport(action.Kind) {
+					reports[action.Key]++
+				}
+			}
+			pending = carryOutApprovals(&st, pending, actions)
+		}
+		for _, count := range reports {
+			if count > 1 {
+				return false
+			}
+		}
+		return true
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomState(rnd))
+			values[1] = reflect.ValueOf(randomApprovals(rnd))
+			values[2] = reflect.ValueOf(randomReactions(rnd))
+			values[3] = reflect.ValueOf(randomApprovalReplies(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestPropertyPlanApprovalsNeedsTheOperatorsOwnTap is the allowlist rule: no
 // reaction from anyone else, and no other reaction key, ever decides an
 // approval.
@@ -135,9 +176,20 @@ func carryOutApprovals(st *State, pending []Approval, actions []ApprovalAction) 
 			state.Resolution = action.Resolution
 			state.ReplyID = "$reply-" + action.Key
 			st.Approvals[action.Key] = state
+		case ReactApproval:
+			state := st.Approvals[action.Key]
+			state.Resolution = action.Resolution
+			state.ReactionID = "$reaction-" + action.Key
+			st.Approvals[action.Key] = state
 		}
 	}
 	return pending
+}
+
+// isResolutionReport reports whether an action tells the operator how an
+// approval was resolved, whichever way the bridge reports it.
+func isResolutionReport(kind ApprovalKind) bool {
+	return kind == ReplyApproval || kind == ReactApproval
 }
 
 // removeApproval drops an approval the forge no longer waits for.
