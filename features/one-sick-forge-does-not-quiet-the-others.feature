@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=a7c7ad50a4a1a56f054bd27e2ef251a9739d8624190f792d3e47034ecbe53cc9
+# mutation-stamp: sha256=1c18f6a2a21f587cb460aa07daabcc91823cc8f1665f11cc1e9489fbafa72f98
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-26T11:47:43.369933Z","feature_name":"One Sick Forge Does Not Quiet The Others","feature_path":"features/one-sick-forge-does-not-quiet-the-others.feature","background_hash":"bfc93b9b67ef0944524d94c42a73e03a03105f8978aff8d8cfa8cccc8a904406","implementation_hash":"sha256:5fbfe3752d8cd685b05822b66a2f96cac5f6334398106a08e66dcaca0d713b3c","scenarios":[]}
+# {"version":1,"tested_at":"2026-10-03T11:25:52.347776Z","feature_name":"One Sick Forge Does Not Quiet The Others","feature_path":"features/one-sick-forge-does-not-quiet-the-others.feature","background_hash":"bfc93b9b67ef0944524d94c42a73e03a03105f8978aff8d8cfa8cccc8a904406","implementation_hash":"sha256:4121149b9367da8ef8be5dbb69f265964232012a8aa5727407c0856fbf00f44b","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: One Sick Forge Does Not Quiet The Others
