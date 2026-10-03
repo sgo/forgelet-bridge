@@ -80,7 +80,7 @@ func TestPlanClarificationsIgnoresAPlainMessageInTheRoom(t *testing.T) {
 	}
 }
 
-func TestPlanClarificationsReportsAnAnswerTheOperatorGaveOnThePhone(t *testing.T) {
+func TestPlanClarificationsMarksAnAnswerTheOperatorGaveOnThePhone(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{
 		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes"},
 	}}
@@ -88,10 +88,20 @@ func TestPlanClarificationsReportsAnAnswerTheOperatorGaveOnThePhone(t *testing.T
 	actions := PlanClarifications(operator, state, nil, nil)
 
 	want := []ClarificationAction{{
-		Kind: ReplyClarification, Key: "forgelet-bridge/clar-1", MessageID: "$message", Text: "Answered",
+		Kind: ReactClarification, Key: "forgelet-bridge/clar-1", MessageID: "$message", Reaction: CarriedOutReaction,
 	}}
 	if !reflect.DeepEqual(actions, want) {
-		t.Errorf("actions = %+v, want the answer reported in the thread %+v", actions, want)
+		t.Errorf("actions = %+v, want the answer marked on the clarification's own message %+v", actions, want)
+	}
+}
+
+func TestPlanClarificationsMarksAnAnswerOnlyOnce(t *testing.T) {
+	state := State{Clarifications: map[string]ClarificationState{
+		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReactionID: "$reaction"},
+	}}
+
+	if actions := PlanClarifications(operator, state, nil, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want no second mark", actions)
 	}
 }
 

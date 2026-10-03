@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -159,6 +160,81 @@ func clarificationThreadOneReply(_ context.Context, world any, _ []string) error
 	}
 	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 1 {
 		return fmt.Errorf("the clarification's thread holds %d replies, want exactly one", found)
+	}
+	return nil
+}
+
+// clarificationCarriesBridgeMark waits for the bridge's own reaction on the
+// clarification's message: the mark that says the forge confirmed what was
+// asked and answered here.
+func clarificationCarriesBridgeMark(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	project, mark := captures[1], captures[2]
+
+	roomID, messageID, _, err := w.clarificationMessage(ctx, project)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	return waitFor(ctx, fmt.Sprintf("the bridge never marked the clarification for %s with %s", project, mark), func() (bool, error) {
+		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
+	})
+}
+
+// clarificationCarriesNoBridgeReaction checks the bridge left the
+// clarification's own message unmarked: a desktop answer keeps its threaded
+// reply instead.
+func clarificationCarriesNoBridgeReaction(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+
+	roomID, messageID, _, err := w.clarificationMessage(ctx, captures[1])
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if marks := bridgeReactions(operator, roomID, messageID, w.bridgeUserID); len(marks) != 0 {
+		return fmt.Errorf("the clarification carries the bridge's reactions %v, want none", marks)
+	}
+	return nil
+}
+
+// clarificationThreadHoldsNoBridgeReply checks the clarification's thread
+// stays quiet when the bridge marks the message instead of answering under it.
+func clarificationThreadHoldsNoBridgeReply(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+
+	roomID, err := w.clarificationsRoom(ctx)
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	messageID, err := oneClarificationMessage(ctx, operator, roomID)
+	if err != nil {
+		return err
+	}
+	if err := fixtures.Sleep(ctx, settle); err != nil {
+		return err
+	}
+	if found := threadRepliesBy(operator, roomID, messageID, w.bridgeUserID); found != 0 {
+		return fmt.Errorf("the clarification's thread holds %d replies from the bridge, want none", found)
 	}
 	return nil
 }

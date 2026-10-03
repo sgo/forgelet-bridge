@@ -68,6 +68,8 @@ func (b *Bridge) carryOutClarification(ctx context.Context, store ClarificationS
 		return b.answerClarification(ctx, store, action)
 	case relay.ReplyClarification:
 		return b.reportClarificationAnswer(ctx, room, action)
+	case relay.ReactClarification:
+		return b.reactClarification(ctx, room, action)
 	}
 	return fmt.Errorf("unknown clarification action %q", action.Kind)
 }
@@ -82,6 +84,20 @@ func (b *Bridge) postClarification(ctx context.Context, room Room, action relay.
 	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
 		state.RoomID = room.ClarificationsRoomID
 		state.MessageID = eventID
+		return state
+	})
+	return nil
+}
+
+// reactClarification marks the clarification's own message with the bridge's
+// reaction, so an answer the operator gave here leaves the thread quiet.
+func (b *Bridge) reactClarification(ctx context.Context, room Room, action relay.ClarificationAction) error {
+	eventID, err := b.rooms.SendReaction(ctx, room.ClarificationsRoomID, action.MessageID, action.Reaction)
+	if err != nil {
+		return fmt.Errorf("mark clarification %s: %w", action.Key, err)
+	}
+	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+		state.ReactionID = eventID
 		return state
 	})
 	return nil

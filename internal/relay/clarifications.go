@@ -22,6 +22,9 @@ type ClarificationState struct {
 	Answer string `json:"answer,omitempty"`
 	// ReplyID is the thread reply that reported the answer.
 	ReplyID string `json:"reply_id,omitempty"`
+	// ReactionID is the bridge's own reaction on the clarification's message,
+	// when the answer was reported that way rather than in the thread.
+	ReactionID string `json:"reaction_id,omitempty"`
 }
 
 // Room is the room this clarification's message is in.
@@ -39,6 +42,10 @@ const (
 	// ReplyClarification reports in the clarification's thread how it was
 	// answered.
 	ReplyClarification ClarificationKind = "reply_clarification"
+	// ReactClarification marks the clarification's own message with the
+	// bridge's reaction, so an answer the operator gave here carries no thread
+	// reply.
+	ReactClarification ClarificationKind = "react_clarification"
 )
 
 // ClarificationAction is one piece of clarifications work for the bridge to
@@ -50,12 +57,15 @@ type ClarificationAction struct {
 	Answer        string
 	MessageID     string
 	Text          string
+	Reaction      string
 }
 
 // PlanClarifications works out what the clarifications room needs: a message
 // for every clarification the forge is waiting for, the operator's answer
-// carried back to the forge, and a reply in the thread once a clarification is
-// answered however it was answered.
+// carried back to the forge, and the answer carried to the operator once a
+// clarification is answered - marked on the clarification's own message when
+// the operator answered here, and replied to in its thread when the answer came
+// from the desktop.
 //
 // A clarification's answer is free text, so a reply is what the room takes
 // rather than a gesture: any reply of the operator's in the clarification's
@@ -124,30 +134,47 @@ func unpostedClarifications(st State, pending []Clarification) []ClarificationAc
 	return actions
 }
 
-// answersToReport plans the replies for the clarifications that are no longer
+// answersToReport plans the reports for the clarifications that are no longer
 // waiting - answered on the desktop, or by the answer just carried back - and
-// have not been reported in their thread yet.
+// have not been reported yet: an answer the operator gave here is marked on the
+// clarification's own message, and a desktop answer keeps its threaded reply.
 func answersToReport(st State, byKey map[string]Clarification) []ClarificationAction {
 	var actions []ClarificationAction
 	for key, state := range st.Clarifications {
 		if !unreportedAnswer(state, key, byKey) {
 			continue
 		}
-		actions = append(actions, ClarificationAction{
-			Kind:      ReplyClarification,
-			Key:       key,
-			MessageID: state.MessageID,
-			Text:      ClarificationsReply(state.Answer),
-		})
+		actions = append(actions, answerReport(key, state))
 	}
 	return actions
 }
 
+// answerReport is how one answer reaches the operator: an answer the operator
+// gave here is marked with the bridge's reaction on the clarification's own
+// message, and a desktop answer is replied to in the thread, because it is a
+// word the room never heard.
+func answerReport(key string, state ClarificationState) ClarificationAction {
+	if state.Answer != "" {
+		return ClarificationAction{
+			Kind:      ReactClarification,
+			Key:       key,
+			MessageID: state.MessageID,
+			Reaction:  CarriedOutReaction,
+		}
+	}
+	return ClarificationAction{
+		Kind:      ReplyClarification,
+		Key:       key,
+		MessageID: state.MessageID,
+		Text:      ClarificationsReply(state.Answer),
+	}
+}
+
 // unreportedAnswer reports whether a clarification the room has seen still
-// needs its answer reported in its thread: it is no longer one the forge waits
-// for, and the thread has not been told yet.
+// needs its answer reported: it is no longer one the forge waits for, and the
+// room has not been told yet, by a thread reply or a reaction.
 func unreportedAnswer(state ClarificationState, key string, byKey map[string]Clarification) bool {
-	if state.MessageID == "" || state.ReplyID != "" {
+	if state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
 		return false
 	}
 	_, stillWaiting := byKey[key]
