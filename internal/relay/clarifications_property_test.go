@@ -56,6 +56,48 @@ func answersAlreadyAnswered(st State, actions []ClarificationAction) bool {
 	return false
 }
 
+// TestPropertyPlanClarificationsReportsAnAnswerOnce is the promise the quiet
+// room rests on: however an answer is reported - marked on the clarification's
+// own message when the operator gave it here, or replied to in the thread when
+// it came from the desk - the bridge reports it once, and no replay of the same
+// events reports it again.
+func TestPropertyPlanClarificationsReportsAnAnswerOnce(t *testing.T) {
+	property := func(st State, pending []Clarification, replies []RoomEvent) bool {
+		st = cloneStateWithClarifications(st)
+		pending = append([]Clarification(nil), pending...)
+
+		// Tick the room a few times, as the bridge does, so an answer is
+		// carried back and then reported.
+		reports := map[string]int{}
+		for tick := 0; tick < 6; tick++ {
+			actions := PlanClarifications(operator, st, pending, replies)
+			for _, action := range actions {
+				switch action.Kind {
+				case ReplyClarification, ReactClarification:
+					reports[action.Key]++
+				}
+			}
+			pending = carryOutClarifications(&st, pending, actions)
+		}
+		for _, count := range reports {
+			if count > 1 {
+				return false
+			}
+		}
+		return true
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomClarificationState(rnd))
+			values[1] = reflect.ValueOf(randomClarifications(rnd))
+			values[2] = reflect.ValueOf(randomClarificationReplies(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestPropertyPlanClarificationsNeedsTheOperatorsOwnReply is the rule the room
 // depends on: only a reply of the operator's in the clarification's thread -
 // written there, or made by quoting the clarification message - answers it. No
@@ -136,6 +178,8 @@ func carryOutClarifications(st *State, pending []Clarification, actions []Clarif
 			pending = removeClarification(pending, action.Key)
 		case ReplyClarification:
 			state.ReplyID = "$reply-" + action.Key
+		case ReactClarification:
+			state.ReactionID = "$reaction-" + action.Key
 		}
 		st.Clarifications[action.Key] = state
 	}
@@ -181,10 +225,12 @@ func randomClarificationRecord(rnd *rand.Rand) ClarificationState {
 	messageIDs := []string{clarificationMessageID, "$other-message", ""}
 	answers := []string{"", "yes", "", "the refund lane"}
 	replyIDs := []string{"", "$reported", ""}
+	reactionIDs := []string{"", "$marked", ""}
 	return ClarificationState{
-		MessageID: messageIDs[rnd.Intn(len(messageIDs))],
-		Answer:    answers[rnd.Intn(len(answers))],
-		ReplyID:   replyIDs[rnd.Intn(len(replyIDs))],
+		MessageID:  messageIDs[rnd.Intn(len(messageIDs))],
+		Answer:     answers[rnd.Intn(len(answers))],
+		ReplyID:    replyIDs[rnd.Intn(len(replyIDs))],
+		ReactionID: reactionIDs[rnd.Intn(len(reactionIDs))],
 	}
 }
 

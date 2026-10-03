@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -162,19 +161,11 @@ func approvalCarriesBridgeMark(_ context.Context, world any, captures []string) 
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-	card, mark := captures[1], captures[2]
-
-	roomID, messageID, _, err := w.approvalMessage(ctx, card)
+	roomID, messageID, _, err := w.approvalMessage(ctx, captures[1])
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	return waitFor(ctx, fmt.Sprintf("the bridge never marked the approval for %s with %s", card, mark), func() (bool, error) {
-		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
-	})
+	return roomCarriesBridgeMark(ctx, w, roomID, messageID, captures[2], "the approval for "+captures[1])
 }
 
 // approvalCarriesNoBridgeReaction checks the bridge left the approval's own
@@ -183,22 +174,11 @@ func approvalCarriesNoBridgeReaction(_ context.Context, world any, captures []st
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-
 	roomID, messageID, _, err := w.approvalMessage(ctx, captures[1])
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	if err := fixtures.Sleep(ctx, settle); err != nil {
-		return err
-	}
-	if marks := bridgeReactions(operator, roomID, messageID, w.bridgeUserID); len(marks) != 0 {
-		return fmt.Errorf("the approval carries the bridge's reactions %v, want none", marks)
-	}
-	return nil
+	return roomCarriesNoBridgeReaction(ctx, w, roomID, messageID, "the approval")
 }
 
 // approvalThreadHoldsNoBridgeReply checks the approval's thread stays quiet
@@ -227,17 +207,6 @@ func approvalThreadHoldsNoBridgeReply(_ context.Context, world any, _ []string) 
 		return fmt.Errorf("the approval's thread holds %d replies from the bridge, want none", found)
 	}
 	return nil
-}
-
-// bridgeReactions are the reaction keys the bridge put on a message.
-func bridgeReactions(operator *fixtures.User, roomID, messageID, sender string) []string {
-	var keys []string
-	for _, reaction := range operator.Reactions(roomID, messageID) {
-		if reaction.Sender == sender {
-			keys = append(keys, reaction.Key)
-		}
-	}
-	return keys
 }
 
 // oneApprovalMessage waits for any approval message the operator has seen.

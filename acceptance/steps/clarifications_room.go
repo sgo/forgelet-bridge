@@ -3,7 +3,6 @@ package steps
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
@@ -171,19 +170,11 @@ func clarificationCarriesBridgeMark(_ context.Context, world any, captures []str
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-	project, mark := captures[1], captures[2]
-
-	roomID, messageID, _, err := w.clarificationMessage(ctx, project)
+	roomID, messageID, _, err := w.clarificationMessage(ctx, captures[1])
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	return waitFor(ctx, fmt.Sprintf("the bridge never marked the clarification for %s with %s", project, mark), func() (bool, error) {
-		return slices.Contains(bridgeReactions(operator, roomID, messageID, w.bridgeUserID), mark), nil
-	})
+	return roomCarriesBridgeMark(ctx, w, roomID, messageID, captures[2], "the clarification for "+captures[1])
 }
 
 // clarificationCarriesNoBridgeReaction checks the bridge left the
@@ -193,22 +184,11 @@ func clarificationCarriesNoBridgeReaction(_ context.Context, world any, captures
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
-
 	roomID, messageID, _, err := w.clarificationMessage(ctx, captures[1])
 	if err != nil {
 		return err
 	}
-	operator, err := w.operator(ctx)
-	if err != nil {
-		return err
-	}
-	if err := fixtures.Sleep(ctx, settle); err != nil {
-		return err
-	}
-	if marks := bridgeReactions(operator, roomID, messageID, w.bridgeUserID); len(marks) != 0 {
-		return fmt.Errorf("the clarification carries the bridge's reactions %v, want none", marks)
-	}
-	return nil
+	return roomCarriesNoBridgeReaction(ctx, w, roomID, messageID, "the clarification")
 }
 
 // clarificationThreadHoldsNoBridgeReply checks the clarification's thread
