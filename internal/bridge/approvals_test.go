@@ -14,12 +14,13 @@ import (
 // fakeApprovals is a forge's approvals for the bridge tests: what the projects
 // are waiting for, and what the bridge decided.
 type fakeApprovals struct {
-	mu       sync.Mutex
-	pending  []relay.Approval
-	resolved map[string]string
-	approved []string
-	sentBack []sentBack
-	errors   map[string]error
+	mu          sync.Mutex
+	pending     []relay.Approval
+	resolved    map[string]string
+	resolvedErr error
+	approved    []string
+	sentBack    []sentBack
+	errors      map[string]error
 }
 
 type sentBack struct {
@@ -37,6 +38,9 @@ func (f *fakeApprovals) Pending(_ context.Context) ([]relay.Approval, error) {
 func (f *fakeApprovals) Resolved(_ context.Context) (map[string]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.resolvedErr != nil {
+		return nil, f.resolvedErr
+	}
 	resolved := map[string]string{}
 	for key, resolution := range f.resolved {
 		resolved[key] = resolution
@@ -391,6 +395,26 @@ func TestTickMarksAnApprovalTheDeskResolved(t *testing.T) {
 		if len(approved) != 0 || len(sentBack) != 0 {
 			t.Errorf("%s: decisions = %v / %+v, want the desk's resolution left alone", resolution, approved, sentBack)
 		}
+	}
+}
+
+func TestTickReportsAForgeWhoseDeskRecordCannotBeRead(t *testing.T) {
+	// A desk the bridge cannot read is that forge's problem, reported like any
+	// other, not a tick that takes the rest of the bridge down with it.
+	store := &fakeApprovals{
+		pending:     []relay.Approval{phoneApproval()},
+		resolvedErr: fmt.Errorf("the desk is not there"),
+	}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	status := statusOf(t, built)
+	if len(status.UnhappyForges) != 1 || status.UnhappyForges[0] != "forge-a" {
+		t.Errorf("unhappy forges = %v, want the forge whose desk record cannot be read", status.UnhappyForges)
 	}
 }
 
