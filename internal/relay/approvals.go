@@ -105,9 +105,11 @@ type ApprovalAction struct {
 
 // PlanApprovals works out what the approvals room needs: a message for every
 // approval the forge is waiting for, the operator's decision carried back to
-// the forge, and a reply in the thread once an approval is resolved however it
-// was resolved. Only the operator's own approval reaction, or a reply of theirs
-// in the approval's thread, decides anything.
+// the forge, and the outcome carried to the operator once an approval is
+// resolved - marked on the approval's own message when it was approved, and
+// replied to in its thread when the resolution carries words. Only the
+// operator's own approval reaction, or a reply of theirs in the approval's
+// thread, decides anything.
 func PlanApprovals(operator string, st State, pending []Approval, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
 	byMessage, byKey := approvalsByMessage(st, pending)
 
