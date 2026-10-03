@@ -178,7 +178,7 @@ func TestTickMarksAnApprovalItResolvedOnTheMessage(t *testing.T) {
 	}
 }
 
-func TestTickKeepsTheSendBacksReplyAndLeavesTheMessageUnmarked(t *testing.T) {
+func TestTickMarksASendBackWithTheLeftArrowOnTheMessage(t *testing.T) {
 	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
 	rooms := &fakeRooms{}
 	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
@@ -203,12 +203,20 @@ func TestTickKeepsTheSendBacksReplyAndLeavesTheMessageUnmarked(t *testing.T) {
 		t.Fatalf("third Tick: %v", err)
 	}
 
-	sent := rooms.sentMessages()
-	if len(sent) != 1 || sent[0].body != "Sent back with feedback" || sent[0].anchor != messageID {
-		t.Fatalf("sent = %+v, want the send-back carried by its threaded reply", sent)
+	marks := rooms.sentReactions()
+	if len(marks) != 1 || marks[0].roomID != "!approvals-forge-a" || marks[0].target != messageID || marks[0].key != relay.SentBackReaction {
+		t.Fatalf("reactions = %+v, want the send-back's left arrow on the approval's own message", marks)
 	}
-	if marks := rooms.sentReactions(); len(marks) != 0 {
-		t.Errorf("reactions = %+v, want the sent-back approval left unmarked", marks)
+	for _, sent := range rooms.sentMessages() {
+		if sent.anchor == messageID {
+			t.Errorf("sent = %+v, want no reply under the message when the send-back is marked", rooms.sentMessages())
+		}
+	}
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("fourth Tick: %v", err)
+	}
+	if marks := rooms.sentReactions(); len(marks) != 1 {
+		t.Errorf("reactions = %+v, want the send-back marked exactly once", marks)
 	}
 }
 

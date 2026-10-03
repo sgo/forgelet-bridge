@@ -267,6 +267,7 @@ func register(registry *runtime.Registry) error {
 		{`^the approval message's thread holds exactly one reply$`, approvalThreadOneReply},
 		{`^the approval message's thread holds no reply from the bridge$`, approvalThreadHoldsNoBridgeReply},
 		{`^the approval message for the card (\S+) carries the bridge's (\S+) reaction$`, approvalCarriesBridgeMark},
+		{`^the approval message for the card (\S+) in the forge (\S+) carries the bridge's (\S+) reaction$`, forgeApprovalCarriesBridgeMark},
 		{`^the approval message for the card (\S+) carries no reaction from the bridge$`, approvalCarriesNoBridgeReaction},
 		{`^the approval message for the card (\S+) tells the operator a reply sends it back$`, approvalSaysWhatAReplyMeans},
 
