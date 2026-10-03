@@ -19,11 +19,13 @@ Feature: Phone Approvals
   # phone writes into the body is not read as the operator's words.
   # The room answers the outcome of an approval on the approval's own message
   # rather than under it. An approval is reported by reacting ➡ on the message
-  # the operator marked, so the operator's check mark and the bridge's arrow sit
-  # on one line and the thread stays quiet; a send-back keeps its threaded
-  # reply, because it carries the operator's words, and words need a message. A
-  # resolution the bridge has already reported is not reported again, whichever
-  # way it was reported.
+  # the operator marked, and a send-back by reacting ⬅ on that same message, so
+  # the bridge's mark sits on the line the operator acted on and the thread
+  # stays quiet. The operator's own reply stays, because it is their words and
+  # it is what went to the forge. A resolution the bridge finds already made on
+  # the desk keeps its threaded "Resolved on the desktop" and takes no
+  # reaction, and a resolution the bridge has already reported is not reported
+  # again, whichever mark or message reported it.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -58,8 +60,8 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator replies "the timesheet total is still wrong" in the approval message's thread for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "the timesheet total is still wrong"
-    And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
-    And the approval message for the card phone-approvals carries no reaction from the bridge
+    And the approval message for the card phone-approvals carries the bridge's ⬅ reaction
+    And the approval message's thread holds no reply from the bridge
 
   # Phone Approvals 4: a reply that only approves approves, and carries no feedback
   Scenario Outline: Phone Approvals 4: a reply that only approves approves, and carries no feedback
@@ -134,8 +136,8 @@ Feature: Phone Approvals
     And the bridge has caught up with the forge
     When the operator swipes a reply "refund figures do not add up" to the approval message for the card phone-approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "refund figures do not add up"
-    And the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals
-    And the approval message for the card phone-approvals carries no reaction from the bridge
+    And the approval message for the card phone-approvals carries the bridge's ⬅ reaction
+    And the approval message's thread holds no reply from the bridge
 
   # Phone Approvals 11: a reply that quotes the approval is decided by its own words
   Scenario: Phone Approvals 11: a reply that quotes the approval is decided by its own words
@@ -145,3 +147,14 @@ Feature: Phone Approvals
     Then the forge's dashboard recorded the approval for the card phone-approvals as approved
     And the approval message for the card phone-approvals carries the bridge's ➡ reaction
     And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 12: an approval already resolved cannot be sent back again
+  Scenario: Phone Approvals 12: an approval already resolved cannot be sent back again
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator approves the approval for the card phone-approvals from the desktop
+    Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
+    When the operator replies "send it back" in the approval message's thread for the card phone-approvals
+    Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
+    And the approval message's thread holds exactly one reply
+    And the approval message for the card phone-approvals carries no reaction from the bridge

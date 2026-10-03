@@ -45,5 +45,5 @@ Feature: One Sick Forge Does Not Quiet The Others
     And the bridge's status names the forge forge-b as the only unhappy one
     And the operator decrypts the chat message "is the build green?" in the forge forge-a's chat room sent under the name forge-a
     When the forge forge-b repairs the approval for the card phone-approvals
-    Then the operator decrypts the approval reply "Sent back with feedback" to the approval message for the card phone-approvals in the forge forge-b
+    Then the approval message for the card phone-approvals in the forge forge-b carries the bridge's ⬅ reaction
     And the bridge's status names no unhappy forge
