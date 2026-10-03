@@ -89,6 +89,36 @@ func TestApprovalsReadsTheDashboardState(t *testing.T) {
 	}
 }
 
+func TestResolvedApprovalsReadsHowTheDeskEndedThem(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/state" {
+			t.Errorf("path = %q, want the state endpoint", request.URL.Path)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"resolved_approvals": []map[string]any{
+				{"id": "approval-1", "project": "forgelet-bridge", "resolution": "approved"},
+				{"id": "approval-2", "project": "forgelet-bridge", "resolution": "sent_back"},
+				{"id": "", "project": "forgelet-bridge", "resolution": "approved"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	resolved, err := NewForgeAPI("/forges/forge-a", server.URL).ResolvedApprovals(context.Background())
+	if err != nil {
+		t.Fatalf("ResolvedApprovals: %v", err)
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("resolved = %+v, want the two records that name an approval", resolved)
+	}
+	if got := resolved["/forges/forge-a/forgelet-bridge/approval-1"]; got != "approved" {
+		t.Errorf("approval-1 = %q, want approved", got)
+	}
+	if got := resolved["/forges/forge-a/forgelet-bridge/approval-2"]; got != "sent_back" {
+		t.Errorf("approval-2 = %q, want sent_back", got)
+	}
+}
+
 func TestApproveCallsTheDashboardEndpoint(t *testing.T) {
 	var gotPath, gotBody string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

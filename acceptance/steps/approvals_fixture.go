@@ -338,6 +338,41 @@ func desktopApproved(_ context.Context, world any, captures []string) error {
 	return dashboard.NewAPI(url).Approve(ctx, approvalProject, approvalCardID(captures[1]))
 }
 
+// desktopSentBack sends the approval back the way the desktop dashboard does:
+// the dashboard's own endpoint, so it applies everything sending back means and
+// writes down how the approval ended.
+func desktopSentBack(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, err := singleForge(w)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := stepContext()
+	defer cancel()
+	url, err := dashboard.URL(root, "")
+	if err != nil {
+		return err
+	}
+	return dashboard.NewAPI(url).SendBack(ctx, approvalProject, approvalCardID(captures[1]), captures[2])
+}
+
+// desktopResolvedNoRecord resolves the approval away from the room with nothing
+// written down about how it ended: the approval stops being pending, and no
+// resolution is recorded for it, the way an approval resolved before the desk
+// kept records, or by something that keeps none, looks.
+func desktopResolvedNoRecord(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, err := singleForge(w)
+	if err != nil {
+		return err
+	}
+	pending := filepath.Join(pathsFor(root).pending, approvalCardID(captures[1])+".handoff")
+	if err := os.Remove(pending); err != nil {
+		return fmt.Errorf("resolve the approval for %s on the desktop with no record: %w", captures[1], err)
+	}
+	return nil
+}
+
 // fixtureHead is the commit the fixture's own repository is on: the one a
 // fixture handoff can name, since a fixture's git world ends at the fixture.
 func fixtureHead(root string) string {

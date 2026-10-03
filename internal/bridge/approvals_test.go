@@ -16,6 +16,7 @@ import (
 type fakeApprovals struct {
 	mu       sync.Mutex
 	pending  []relay.Approval
+	resolved map[string]string
 	approved []string
 	sentBack []sentBack
 	errors   map[string]error
@@ -31,6 +32,22 @@ func (f *fakeApprovals) Pending(_ context.Context) ([]relay.Approval, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]relay.Approval(nil), f.pending...), nil
+}
+
+func (f *fakeApprovals) Resolved(_ context.Context) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	resolved := map[string]string{}
+	for key, resolution := range f.resolved {
+		resolved[key] = resolution
+	}
+	return resolved, nil
+}
+
+func (f *fakeApprovals) setResolved(resolved map[string]string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resolved = resolved
 }
 
 func (f *fakeApprovals) Approve(_ context.Context, project, id string) error {
@@ -333,6 +350,47 @@ func TestTickReportsAnApprovalResolvedOnTheDesktop(t *testing.T) {
 	}
 	if state := built.State().Relay.Approvals["forgelet-bridge/approval-1"]; state.Resolution != relay.ResolutionDesktop {
 		t.Errorf("resolution = %q, want desktop", state.Resolution)
+	}
+}
+
+func TestTickMarksAnApprovalTheDeskResolved(t *testing.T) {
+	cases := map[string]string{
+		relay.ResolutionApproved: relay.CarriedOutReaction,
+		relay.ResolutionSentBack: relay.SentBackReaction,
+	}
+	for resolution, mark := range cases {
+		store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+		rooms := &fakeRooms{}
+		built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+			map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+		if err := built.Tick(context.Background()); err != nil {
+			t.Fatalf("%s: first Tick: %v", resolution, err)
+		}
+		messageID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].MessageID
+		// The desk resolves it: it is no longer pending, and the desk wrote
+		// down how it ended.
+		store.setPending()
+		store.setResolved(map[string]string{"forgelet-bridge/approval-1": resolution})
+		rooms.sent = nil
+		rooms.marks = nil
+
+		if err := built.Tick(context.Background()); err != nil {
+			t.Fatalf("%s: second Tick: %v", resolution, err)
+		}
+
+		marks := rooms.sentReactions()
+		if len(marks) != 1 || marks[0].target != messageID || marks[0].key != mark {
+			t.Fatalf("%s: reactions = %+v, want the desk's ending marked on the approval's own message", resolution, marks)
+		}
+		for _, sent := range rooms.sentMessages() {
+			if sent.anchor == messageID {
+				t.Errorf("%s: sent = %+v, want no reply when the desk's ending is marked", resolution, rooms.sentMessages())
+			}
+		}
+		approved, sentBack := store.decisions()
+		if len(approved) != 0 || len(sentBack) != 0 {
+			t.Errorf("%s: decisions = %v / %+v, want the desk's resolution left alone", resolution, approved, sentBack)
+		}
 	}
 }
 

@@ -37,9 +37,13 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 	if err != nil {
 		return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
 	}
+	desk, err := store.Resolved(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read the desk's resolved approvals for %s: %w", root, err)
+	}
 
 	waiting := b.pendingApprovalsFor(root)
-	for _, action := range relay.PlanApprovals(b.cfg.Operator, b.approvalState(room), pending, reactions, replies) {
+	for _, action := range relay.PlanApprovalsWithDesk(b.cfg.Operator, b.approvalState(room), pending, desk, reactions, replies) {
 		waiting.keep(action)
 	}
 

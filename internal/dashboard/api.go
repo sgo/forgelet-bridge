@@ -80,6 +80,17 @@ func (a Approvals) Pending(ctx context.Context) ([]relay.Approval, error) {
 	return api.Approvals(ctx)
 }
 
+// Resolved reads how the dashboard resolved the approvals it made away from
+// the room, keyed by approval: the ending the room reports for an approval the
+// bridge did not carry out itself.
+func (a Approvals) Resolved(ctx context.Context) (map[string]string, error) {
+	api, err := a.client()
+	if err != nil {
+		return nil, err
+	}
+	return api.ResolvedApprovals(ctx)
+}
+
 // Approve asks the dashboard to approve an approval.
 func (a Approvals) Approve(ctx context.Context, project, id string) error {
 	api, err := a.client()
@@ -110,7 +121,8 @@ func (a Approvals) client() (*API, error) {
 
 // State is what the dashboard reports about its forge.
 type State struct {
-	Approvals []ApprovalRequest `json:"approvals"`
+	Approvals         []ApprovalRequest         `json:"approvals"`
+	ResolvedApprovals []ResolvedApprovalRequest `json:"resolved_approvals"`
 }
 
 // ApprovalRequest is one approval the dashboard is showing.
@@ -123,6 +135,15 @@ type ApprovalRequest struct {
 	From      string   `json:"from"`
 	To        string   `json:"to"`
 	Artifacts []string `json:"artifacts"`
+}
+
+// ResolvedApprovalRequest is one approval the dashboard resolved away from the
+// room, as the dashboard wrote it down: the project it belongs to, its id, and
+// how it ended, worded the way the bridge words its own resolutions.
+type ResolvedApprovalRequest struct {
+	ID         string `json:"id"`
+	Project    string `json:"project"`
+	Resolution string `json:"resolution"`
 }
 
 // Chat asks the dashboard to take a chat message the way its clients give it:
@@ -168,6 +189,25 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 // forge, so the same project and id in two forges are two items, not one.
 func forgeKey(root, project, id string) string {
 	return root + "/" + project + "/" + id
+}
+
+// ResolvedApprovals reads how the dashboard resolved the approvals it made away
+// from the room, keyed the way the bridge keys an approval, so the room can
+// report the ending the desk recorded rather than only that the approval is
+// gone.
+func (a *API) ResolvedApprovals(ctx context.Context) (map[string]string, error) {
+	var state State
+	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
+		return nil, err
+	}
+	resolved := make(map[string]string, len(state.ResolvedApprovals))
+	for _, request := range state.ResolvedApprovals {
+		if request.ID == "" || request.Resolution == "" {
+			continue
+		}
+		resolved[forgeKey(a.root, request.Project, request.ID)] = request.Resolution
+	}
+	return resolved, nil
 }
 
 // Approve approves an approval through the dashboard, so the dashboard applies

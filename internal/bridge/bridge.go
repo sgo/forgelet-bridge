@@ -29,6 +29,10 @@ type ForgeStore interface {
 // projects are waiting for.
 type ApprovalStore interface {
 	Pending(ctx context.Context) ([]relay.Approval, error)
+	// Resolved reads how the desk resolved the approvals it made away from the
+	// room, keyed by approval, so the room can report that ending rather than
+	// only that the approval is gone.
+	Resolved(ctx context.Context) (map[string]string, error)
 	Approve(ctx context.Context, project, id string) error
 	SendBack(ctx context.Context, project, id, feedback string) error
 }

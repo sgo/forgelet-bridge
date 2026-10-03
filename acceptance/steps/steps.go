@@ -262,6 +262,8 @@ func register(registry *runtime.Registry) error {
 		{`^the approval for the card (\S+) is still pending in the forge$`, approvalStillPending},
 		{`^the forge's dashboard was never asked to delete or tear down$`, forgeNeverDestroyed},
 		{`^the operator approves the approval for the card (\S+) from the desktop$`, desktopApproved},
+		{`^the operator sends the approval for the card (\S+) back from the desktop with "(.+)"$`, desktopSentBack},
+		{`^the approval for the card (\S+) is resolved on the desktop with no record$`, desktopResolvedNoRecord},
 		{`^the operator decrypts the approval reply "(.+)" to the approval message for the card (\S+)$`, approvalReplyDecrypted},
 		{`^the operator decrypts the approval reply "(.+)" to the approval message for the card (\S+) in the forge (\S+)$`, operatorDecryptsForgeApprovalReply},
 		{`^the approval message's thread holds exactly one reply$`, approvalThreadOneReply},

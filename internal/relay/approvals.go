@@ -108,21 +108,32 @@ type ApprovalAction struct {
 	Reaction   string
 }
 
-// PlanApprovals works out what the approvals room needs: a message for every
-// approval the forge is waiting for, the operator's decision carried back to
-// the forge, and the outcome carried to the operator once an approval is
-// resolved - marked on the approval's own message when it was approved, and
-// replied to in its thread when the resolution carries words. Only the
-// operator's own approval reaction, or a reply of theirs in the approval's
-// thread, decides anything.
+// PlanApprovals works out what the approvals room needs from the room's own
+// events alone: see PlanApprovalsWithDesk for the approvals a desk resolved.
 func PlanApprovals(operator string, st State, pending []Approval, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
+	return PlanApprovalsWithDesk(operator, st, pending, nil, reactions, replies)
+}
+
+// PlanApprovalsWithDesk is PlanApprovals with what the desk wrote down about
+// the approvals it resolved away from the room, keyed by approval: the ending
+// the room reports for an approval the bridge did not carry out itself.
+//
+// It works out what the approvals room needs: a message for every approval the
+// forge is waiting for, the operator's decision carried back to the forge, and
+// the outcome carried to the operator once an approval is resolved - marked on
+// the approval's own message when it was approved or sent back, and replied to
+// in its thread when the resolution carries words. An approval's outcome is the
+// bridge's own when it made it, the desk's record when the desk made it, and
+// nothing when neither wrote one down. Only the operator's own approval
+// reaction, or a reply of theirs in the approval's thread, decides anything.
+func PlanApprovalsWithDesk(operator string, st State, pending []Approval, desk map[string]string, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
 	byMessage, byKey := approvalsByMessage(st, pending)
 
 	actions := approvedByReaction(operator, st, byMessage, reactions)
 	actions = append(actions, textGestures(operator, st, pending, byMessage, replies)...)
 	actions = append(actions, unansweredReactions(operator, reactions)...)
 	actions = append(actions, unpostedApprovals(st, pending)...)
-	return append(actions, resolutionsToReport(st, byKey)...)
+	return append(actions, resolutionsToReport(st, byKey, desk)...)
 }
 
 // approvalsByMessage indexes the approvals two ways: by the message the room
@@ -277,26 +288,33 @@ func unpostedApprovals(st State, pending []Approval) []ApprovalAction {
 }
 
 // resolutionsToReport plans the reports for the approvals that are no longer
-// pending - resolved on the desktop, or by the decision just carried back -
-// and have not been reported yet: an approval is marked on its own message,
-// and a send-back or a desktop resolution keeps its threaded reply.
-func resolutionsToReport(st State, byKey map[string]Approval) []ApprovalAction {
+// pending - resolved by the decision just carried back, or away from the room -
+// and have not been reported yet: an approval or a send-back is marked on the
+// approval's own message, and a resolution with nothing but the desk's word for
+// it, or nothing at all, keeps its threaded reply.
+func resolutionsToReport(st State, byKey map[string]Approval, desk map[string]string) []ApprovalAction {
 	var actions []ApprovalAction
 	for key, state := range st.Approvals {
 		if !unreportedResolution(state, key, byKey) {
 			continue
 		}
-		actions = append(actions, resolutionReport(key, state))
+		actions = append(actions, resolutionReport(key, state, desk[key]))
 	}
 	return actions
 }
 
 // resolutionReport is how one resolution reaches the operator: an approval and
 // a send-back are marked with the bridge's reaction on the approval's own
-// message, and a desktop resolution is replied to in the thread, because it
-// carries words the room never heard.
-func resolutionReport(key string, state ApprovalState) ApprovalAction {
+// message, and a resolution the desk wrote nothing down for is replied to in
+// the thread, because "resolved on the desktop" is all the room can say.
+//
+// The ending is the bridge's own resolution when it made it, and the desk's
+// record when the desk made it; the bridge's own word is the one that counts.
+func resolutionReport(key string, state ApprovalState, deskResolution string) ApprovalAction {
 	resolution := state.Resolution
+	if resolution == "" {
+		resolution = deskResolution
+	}
 	if resolution == "" {
 		resolution = ResolutionDesktop
 	}
