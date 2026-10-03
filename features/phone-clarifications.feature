@@ -20,6 +20,16 @@ Feature: Phone Clarifications
   # is reported in the room rather than left looking open. What a reply means is
   # what the room says: in an approval's thread a reply sends the work back, in
   # a clarification's thread a reply is the answer.
+  # The room answers a clarification on the clarification's own message. An
+  # answer the operator gives here - in the thread, or made by quoting the
+  # message - is carried back to the forge, and the bridge reports it by
+  # reacting ➡ on the message that carried the question rather than by replying
+  # "Answered" under it, so the answer stays the only thing in the thread and
+  # the room stays quiet. A clarification the bridge finds already answered on
+  # the desk keeps its threaded "Resolved on the desktop" and takes no
+  # reaction, so the mark means the forge confirmed what was asked and answered
+  # here. An answer the bridge has already reported is not reported again,
+  # whichever way it was reported.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -43,7 +53,8 @@ Feature: Phone Clarifications
     When the operator replies "yes" in the clarification message's thread for the project forgelet-bridge
     Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with exactly "yes"
     And the blocked role coder is woken with the answer "yes"
-    And the operator decrypts the clarification reply "Answered" in the clarification message for the project forgelet-bridge
+    And the clarification message for the project forgelet-bridge carries the bridge's ➡ reaction
+    And the clarification message's thread holds no reply from the bridge
 
   # Phone Clarifications 3: a clarification answered on the desktop is marked resolved in the room
   Scenario: Phone Clarifications 3: a clarification answered on the desktop is marked resolved in the room
@@ -52,6 +63,7 @@ Feature: Phone Clarifications
     When the operator answers the clarification for the project forgelet-bridge from the desktop with "keep it manual"
     Then the operator decrypts the clarification reply "Resolved on the desktop" in the clarification message for the project forgelet-bridge
     And the clarification message's thread holds exactly one reply
+    And the clarification message for the project forgelet-bridge carries no reaction from the bridge
 
   # Phone Clarifications 4: each room says what a reply means
   Scenario: Phone Clarifications 4: each room says what a reply means
@@ -84,4 +96,15 @@ Feature: Phone Clarifications
     When the operator swipes a reply "yes" to the clarification message for the project forgelet-bridge
     Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with exactly "yes"
     And the blocked role coder is woken with the answer "yes"
-    And the operator decrypts the clarification reply "Answered" in the clarification message for the project forgelet-bridge
+    And the clarification message for the project forgelet-bridge carries the bridge's ➡ reaction
+    And the clarification message's thread holds no reply from the bridge
+
+  # Phone Clarifications 8: an answer already reported is not reported twice
+  Scenario: Phone Clarifications 8: an answer already reported is not reported twice
+    Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
+    And the bridge has caught up with the forge
+    When the operator answers the clarification for the project forgelet-bridge from the desktop with "yes"
+    Then the operator decrypts the clarification reply "Resolved on the desktop" in the clarification message for the project forgelet-bridge
+    When the operator replies "yes" in the clarification message's thread for the project forgelet-bridge
+    Then the clarification message's thread holds exactly one reply
+    And the clarification message for the project forgelet-bridge carries no reaction from the bridge
