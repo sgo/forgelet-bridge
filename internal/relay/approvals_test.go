@@ -356,6 +356,65 @@ func TestPlanApprovalsReportsAResolutionFromTheDesktop(t *testing.T) {
 	}
 }
 
+func TestPlanApprovalsWithDeskMarksTheDesksApproval(t *testing.T) {
+	desk := map[string]string{"forgelet-bridge/approval-1": ResolutionApproved}
+
+	actions := PlanApprovalsWithDesk(operator, posted(), nil, desk, nil, nil)
+
+	want := []ApprovalAction{{
+		Kind:       ReactApproval,
+		Key:        "forgelet-bridge/approval-1",
+		MessageID:  "$approval-message",
+		Resolution: ResolutionApproved,
+		Reaction:   CarriedOutReaction,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the desk's approval marked %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsWithDeskMarksTheDesksSendBack(t *testing.T) {
+	desk := map[string]string{"forgelet-bridge/approval-1": ResolutionSentBack}
+
+	actions := PlanApprovalsWithDesk(operator, posted(), nil, desk, nil, nil)
+
+	want := []ApprovalAction{{
+		Kind:       ReactApproval,
+		Key:        "forgelet-bridge/approval-1",
+		MessageID:  "$approval-message",
+		Resolution: ResolutionSentBack,
+		Reaction:   SentBackReaction,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the desk's send-back marked %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsWithDeskKeepsTheReplyForAnEndingItDoesNotKnow(t *testing.T) {
+	desk := map[string]string{"forgelet-bridge/approval-1": "mystery"}
+
+	actions := PlanApprovalsWithDesk(operator, posted(), nil, desk, nil, nil)
+
+	if len(actions) != 1 || actions[0].Kind != ReplyApproval || actions[0].Text != "Resolved on the desktop" {
+		t.Errorf("actions = %+v, want a word the room cannot read kept as the desktop reply", actions)
+	}
+}
+
+func TestPlanApprovalsWithDeskPrefersTheBridgesOwnResolution(t *testing.T) {
+	state := posted()
+	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
+		MessageID:  "$approval-message",
+		Resolution: ResolutionSentBack,
+	}
+	desk := map[string]string{"forgelet-bridge/approval-1": ResolutionApproved}
+
+	actions := PlanApprovalsWithDesk(operator, state, nil, desk, nil, nil)
+
+	if len(actions) != 1 || actions[0].Reaction != SentBackReaction {
+		t.Errorf("actions = %+v, want the resolution the bridge itself made", actions)
+	}
+}
+
 func TestPlanApprovalsReportsEachResolutionOnce(t *testing.T) {
 	state := posted()
 	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{

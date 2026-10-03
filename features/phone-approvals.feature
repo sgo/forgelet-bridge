@@ -22,10 +22,12 @@ Feature: Phone Approvals
   # the operator marked, and a send-back by reacting ⬅ on that same message, so
   # the bridge's mark sits on the line the operator acted on and the thread
   # stays quiet. The operator's own reply stays, because it is their words and
-  # it is what went to the forge. A resolution the bridge finds already made on
-  # the desk keeps its threaded "Resolved on the desktop" and takes no
-  # reaction, and a resolution the bridge has already reported is not reported
-  # again, whichever mark or message reported it.
+  # it is what went to the forge. A resolution made away from the room and
+  # written down on the desk is reported the same way, with the mark for that
+  # ending and no reply; one the desk wrote nothing down for keeps its threaded
+  # "Resolved on the desktop" and takes no reaction. A resolution the bridge has
+  # already reported is not reported again, whichever mark or message reported
+  # it.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -119,16 +121,16 @@ Feature: Phone Approvals
     And the forge's dashboard was never asked to delete or tear down
     And the bridge answers in the approvals room with the gestures it takes
 
-  # Phone Approvals 9: an approval resolved on the desktop cannot be approved again
-  Scenario: Phone Approvals 9: an approval resolved on the desktop cannot be approved again
+  # Phone Approvals 9: an approval approved on the desk carries its mark, and cannot be approved again
+  Scenario: Phone Approvals 9: an approval approved on the desk carries its mark, and cannot be approved again
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator approves the approval for the card phone-approvals from the desktop
-    Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
+    Then the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
     When the operator taps ✅ on the approval message for the card phone-approvals
     Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
-    And the approval message's thread holds exactly one reply
-    And the approval message for the card phone-approvals carries no reaction from the bridge
+    And the approval message's thread holds no reply from the bridge
 
   # Phone Approvals 10: the operator sends the approval back by quoting it in a reply
   Scenario: Phone Approvals 10: the operator sends the approval back by quoting it in a reply
@@ -153,8 +155,25 @@ Feature: Phone Approvals
     Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
     And the bridge has caught up with the forge
     When the operator approves the approval for the card phone-approvals from the desktop
-    Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
+    Then the approval message for the card phone-approvals carries the bridge's ➡ reaction
     When the operator replies "send it back" in the approval message's thread for the card phone-approvals
     Then the forge's dashboard recorded exactly one resolution for the card phone-approvals
+    And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 13: an approval sent back on the desk carries its mark
+  Scenario: Phone Approvals 13: an approval sent back on the desk carries its mark
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator sends the approval for the card phone-approvals back from the desktop with "the totals do not add up"
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "the totals do not add up"
+    And the approval message for the card phone-approvals carries the bridge's ⬅ reaction
+    And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 14: an approval resolved with no record speaks in the thread
+  Scenario: Phone Approvals 14: an approval resolved with no record speaks in the thread
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the approval for the card phone-approvals is resolved on the desktop with no record
+    Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
     And the approval message's thread holds exactly one reply
     And the approval message for the card phone-approvals carries no reaction from the bridge
