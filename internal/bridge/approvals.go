@@ -100,9 +100,9 @@ func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.Appro
 	return nil
 }
 
-// reactApproval marks the approval's own message with the bridge's reaction,
-// so the operator's check mark and the bridge's arrow sit on one line and the
-// approval's thread stays quiet.
+// reactApproval marks the approval's own message with the bridge's reaction -
+// the arrow that answers how the approval went - so the outcome sits on the
+// line the operator acted on and the approval's thread stays quiet.
 func (b *Bridge) reactApproval(ctx context.Context, room Room, action relay.ApprovalAction) error {
 	eventID, err := b.rooms.SendReaction(ctx, room.ApprovalsRoomID, action.MessageID, action.Reaction)
 	if err != nil {

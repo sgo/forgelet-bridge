@@ -89,7 +89,8 @@ const (
 	// ReplyApproval reports in the approval's thread how it was resolved.
 	ReplyApproval ApprovalKind = "reply_approval"
 	// ReactApproval marks the approval's own message with the bridge's
-	// reaction, so an approved approval carries no thread reply.
+	// reaction - the carried-out mark for an approval, the send-back's for a
+	// send-back - so an outcome carried by a mark leaves no thread reply.
 	ReactApproval ApprovalKind = "react_approval"
 	// AnswerGestures tells the operator which gestures the room takes, when a
 	// message can be read as none of them.

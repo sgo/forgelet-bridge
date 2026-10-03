@@ -175,7 +175,6 @@ func forgeApprovalCarriesBridgeMark(_ context.Context, world any, captures []str
 	ctx, cancel := stepContext()
 	defer cancel()
 	card, forgeName, mark := captures[1], captures[2], captures[3]
-
 	roomID, messageID, _, err := w.forgeApprovalMessage(ctx, forgeName, card)
 	if err != nil {
 		return err
