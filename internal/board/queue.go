@@ -15,25 +15,6 @@ type Queue struct {
 	Forge string
 }
 
-// Cards lists the cards every open project holds.
-func (q Queue) Cards() ([]relay.Card, error) {
-	cards, err := q.Store.Cards()
-	if err != nil {
-		return nil, err
-	}
-	relayed := make([]relay.Card, 0, len(cards))
-	for _, card := range cards {
-		relayed = append(relayed, relayCard(q.Forge, card))
-	}
-	return relayed, nil
-}
-
-// Lanes lists the lanes one project's board runs, so the board's state carries
-// the lanes beside its cards.
-func (q Queue) Lanes(project string) ([]string, error) {
-	return q.Store.LanesFor(project)
-}
-
 // Boards lists every open project's board the way the bridge's relay needs it:
 // the project, its lanes, and its cards, each card keyed across the bridge.
 func (q Queue) Boards() ([]relay.Board, error) {
@@ -71,5 +52,5 @@ func Key(forge, project, name string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-23T14:24:40+02:00","module_hash":"a003e46195211e37719349156a967417d51064baa14f8acc6fc4de94634025bd","functions":[{"id":"func/Queue.Cards","name":"Queue.Cards","line":19,"end_line":35,"hash":"085c5a72c3ee970500db9b1a4cfe774e5fa0f24b7350fb3f28886b1a9a383316"},{"id":"func/Key","name":"Key","line":39,"end_line":41,"hash":"e694bf36e44ea1acf47fa1699bd1468d307f1c17d8373e7d878f2e2c2e8b3e54"}]}
+// {"version":1,"tested_at":"2026-10-04T11:49:34+02:00","module_hash":"ea013ec382b288bc8ab8badad30200bd444c618761563e52d649c9eb7b6314a0","functions":[{"id":"func/Queue.Boards","name":"Queue.Boards","line":20,"end_line":34,"hash":"c7613aeed773dcb082f04f370d481fb594c64a1924a832824c5004d55017f360"},{"id":"func/relayCard","name":"relayCard","line":38,"end_line":46,"hash":"aa26c46fd0646298de1056003182f547ef3e2d776578b55a7af8fb0f8e54b510"},{"id":"func/Key","name":"Key","line":50,"end_line":52,"hash":"e694bf36e44ea1acf47fa1699bd1468d307f1c17d8373e7d878f2e2c2e8b3e54"}]}
 // mutate4go-manifest-end

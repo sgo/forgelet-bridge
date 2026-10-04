@@ -7,26 +7,6 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
 
-func TestQueuePresentsTheBoardInRelayForm(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
-	writeBoard(t, store, "forgelet-bridge",
-		"card-activity-feed\tspecifier\t2026-09-22T15:00:00Z\t2026-09-22T15:00:00Z\ttask-1\t0\n"+
-			"phone-approvals\tdone\t2026-09-22T15:01:00Z\t2026-09-22T15:02:00Z\ttask-2\t0\n")
-
-	cards, err := Queue{Store: store, Forge: "/forges/forge-a"}.Cards()
-	if err != nil {
-		t.Fatalf("Cards: %v", err)
-	}
-
-	want := []relay.Card{
-		{Key: Key("/forges/forge-a", "forgelet-bridge", "card-activity-feed"), Project: "forgelet-bridge", Name: "card-activity-feed", Lane: "specifier"},
-		{Key: Key("/forges/forge-a", "forgelet-bridge", "phone-approvals"), Project: "forgelet-bridge", Name: "phone-approvals", Lane: DoneLane, Done: true},
-	}
-	if !reflect.DeepEqual(cards, want) {
-		t.Errorf("cards = %+v, want %+v", cards, want)
-	}
-}
-
 func TestKeyKeepsProjectsAndForgesApart(t *testing.T) {
 	first := Key("/forges/forge-a", "forgelet-bridge", "card-activity-feed")
 	second := Key("/forges/forge-a", "saibill", "card-activity-feed")
@@ -67,18 +47,5 @@ func TestQueuePresentsEachBoardInRelayForm(t *testing.T) {
 	}
 	if !reflect.DeepEqual(board.Cards, want) {
 		t.Errorf("cards = %+v, want %+v", board.Cards, want)
-	}
-}
-
-func TestQueuePresentsAProjectsLanes(t *testing.T) {
-	store := newStore(t, "forgelet-bridge")
-	writeLanes(t, store, "forgelet-bridge", "specifier\tmaster\t/w\tw\tSpecifier\tcodex\ttask\tforward-only\ncoder\tcoder\t/w\tw\tCoder\tcodex\ttask\tforward-only\n")
-
-	lanes, err := Queue{Store: store, Forge: "/forges/forge-a"}.Lanes("forgelet-bridge")
-	if err != nil {
-		t.Fatalf("Lanes: %v", err)
-	}
-	if !reflect.DeepEqual(lanes, []string{"specifier", "coder"}) {
-		t.Errorf("lanes = %v, want the project's roles", lanes)
 	}
 }

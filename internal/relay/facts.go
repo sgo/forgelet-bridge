@@ -89,3 +89,7 @@ func stringsOrEmpty(values []string) []string {
 	}
 	return values
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-10-04T11:24:16+02:00","module_hash":"dbab4e05115d95d4dbf27a774b551652d47ac9409614af00e92e505f092d9b96","functions":[{"id":"func/BoardFact","name":"BoardFact","line":28,"end_line":44,"hash":"89e6d1cb4a6e9905ebbeb69445d57af8531681eaf862d6583888fb58a8247cff"},{"id":"func/ApprovalFact","name":"ApprovalFact","line":48,"end_line":60,"hash":"185f163dc237c2c7bf6a9e231d7c79ab179db0c11620179f741b2f3a312cbc4d"},{"id":"func/ClarificationFact","name":"ClarificationFact","line":65,"end_line":77,"hash":"cae53ffeb5fcb8b045b14725e200d24d20ab002d3418f13c9f2b791da3481cb8"},{"id":"func/stringsOrEmpty","name":"stringsOrEmpty","line":86,"end_line":91,"hash":"4ec545259295898336e2f26d886ad1212ea8ec5e674f3d86d6525bb5907ecb51"}]}
+// mutate4go-manifest-end

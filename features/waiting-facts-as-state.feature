@@ -1,3 +1,8 @@
+# mutation-stamp: sha256=b02c29cf84941cf9de665c1a5bb17bd4f74fc04f093d48d87972b60958145495
+# acceptance-mutation-manifest-begin
+# {"version":1,"tested_at":"2026-10-04T10:19:50.145596Z","feature_name":"Waiting Facts As State","feature_path":"features/waiting-facts-as-state.feature","background_hash":"9dd8795740300ccf5f5d13aff537eed27a2dc724603e7fd5d11936ccd5bf9d71","implementation_hash":"sha256:37eabb6c5f8e484a3fd13c24d07c6948e0310f881123622d025ff1d213e3f407","scenarios":[]}
+# acceptance-mutation-manifest-end
+
 Feature: Waiting Facts As State
 
   # A forge's rooms carry what moves: a card appearing, a card moving on, an

@@ -81,6 +81,7 @@ type fakeRooms struct {
 	refreshed []refresh
 	reactions []relay.Reaction
 	drainErr  error
+	stateErr  map[string]error
 }
 
 func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, error) {
@@ -133,6 +134,9 @@ func (r *fakeRooms) SendReaction(_ context.Context, roomID, targetEventID, key s
 func (r *fakeRooms) SetState(_ context.Context, roomID, eventType, stateKey string, content map[string]any) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.stateErr[roomID]; err != nil {
+		return "", err
+	}
 	r.states = append(r.states, sentState{roomID: roomID, eventType: eventType, stateKey: stateKey, content: content})
 	return "$state-" + eventType + "-" + stateKey, nil
 }
