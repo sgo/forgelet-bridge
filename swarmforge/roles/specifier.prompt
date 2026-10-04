@@ -25,6 +25,27 @@ You are the specifier.
 - Do not run Gherkin acceptance mutation.
 - Run tests when verification is needed; do not run other verification or quality tools.
 
+## Cutting a Release
+- A task that explicitly asks for a fixed release (not a normal feature) names the exact release
+  version and the exact next development version to resume at; use those numbers as given, do not
+  derive or guess either one.
+- This is a self-contained task: there is no feature to specify and nothing for the other roles to
+  do, so queue no `git_handoff` to any of them, and mark the board row done yourself when the
+  release finishes.
+- When this project is written in Java - its own `swarmforge/language.conf` says Java - cut the
+  release the way the engineering article's `## Java Releases` section says, and not any other way:
+  run `release_preflight.sh <release-version> <next-development-version>` first and stop if it
+  refuses, fixing what it names; then `mvn release:prepare` and `mvn release:perform` with the
+  numbers the task named and `-DpushChanges=false` (the article gives the command, and the
+  preflight prints it); deploy only when `swarmforge/deploy.conf` names a target, through the
+  project's own token helper; push the branch and the tag.
+- Never cut a Java release with `mvn versions:set`: it rewrites this project's own version and reads
+  nothing else, so a release can ship depending on a SNAPSHOT of a published producer without a
+  word.
+- When this project is not written in Java, this section's steps do not apply to it. Follow the
+  release section the engineering article carries for its language - and where there is none (there
+  is none for Kotlin or Go yet), stop and ask the operator rather than inventing a procedure.
+
 ## Handoff
 - When the spec is ready, commit and send a `git_handoff` to `coder`. Do not ask in the pane or in chat.
 - Use the existing board card / New Task name as `task:`. Do not invent a name.
