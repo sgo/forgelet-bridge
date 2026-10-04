@@ -56,6 +56,10 @@ type World struct {
 	// activityCount is how many card updates the activity room held when a step
 	// last counted them, which is what a restart must not add to.
 	activityCount int
+	// stateEvents are the waiting-fact state events a step has read, keyed by
+	// the room, the event type and the state key, so a restart's rewrite is
+	// told from the event the room already had.
+	stateEvents map[string]string
 	// scheduleRoots and scheduleOutput are the forge roots the forge schedule
 	// was last run for, and what it said; scheduleRuns is what every pass said,
 	// oldest first, which is how a scenario asks what a cadence did once.

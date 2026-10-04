@@ -175,6 +175,16 @@ func (c *Client) SendReaction(ctx context.Context, roomID, targetEventID, key st
 	return resp.EventID.String(), nil
 }
 
+// SetState writes a state event into a room: the waiting facts a reader sees as
+// the room's current state, one event per item, its key the item's own.
+func (c *Client) SetState(ctx context.Context, roomID, eventType, stateKey string, content map[string]any) (string, error) {
+	resp, err := c.cli.SendStateEvent(ctx, id.RoomID(roomID), event.Type{Type: eventType, Class: event.StateEventType}, stateKey, content)
+	if err != nil {
+		return "", fmt.Errorf("send room state %s: %w", eventType, err)
+	}
+	return resp.EventID.String(), nil
+}
+
 // sendMessage puts one already-shaped message into a room, encrypted.
 func (c *Client) sendMessage(ctx context.Context, roomID string, content *event.MessageEventContent) (string, error) {
 	encrypted, err := c.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)

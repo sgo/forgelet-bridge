@@ -52,6 +52,10 @@ type State struct {
 	Clarifications map[string]ClarificationState `json:"clarifications,omitempty"`
 	// Activity maps a card to the last thing the bridge said about it.
 	Activity map[string]CardState `json:"activity,omitempty"`
+	// Waiting maps a state event the bridge wrote to the facts it carried,
+	// keyed by the room, the event type and the state key, so a restart writes
+	// nothing the room already holds and an item that stops waiting is cleared.
+	Waiting map[string]string `json:"waiting,omitempty"`
 }
 
 // Kind names the work an action asks for.
@@ -108,6 +112,9 @@ func (s *State) EnsureMaps() {
 	}
 	if s.Activity == nil {
 		s.Activity = map[string]CardState{}
+	}
+	if s.Waiting == nil {
+		s.Waiting = map[string]string{}
 	}
 }
 

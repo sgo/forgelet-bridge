@@ -36,6 +36,54 @@ func writeBoard(t *testing.T, store *Store, project, body string) {
 	}
 }
 
+func writeLanes(t *testing.T, store *Store, project, body string) {
+	t.Helper()
+	path := filepath.Join(store.root, "projects", project, ".swarmforge", "roles.tsv")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBoardsReadsEachOpenProjectsLanesAndCards(t *testing.T) {
+	store := newStore(t, "forgelet-bridge", "forgelet-app")
+	writeLanes(t, store, "forgelet-bridge", "specifier\tmaster\t/w\tw\tSpecifier\tcodex\ttask\tforward-only\ncoder\tcoder\t/w\tw\tCoder\tcodex\ttask\tforward-only\n")
+	writeBoard(t, store, "forgelet-bridge", "card-activity-feed\tcoder\t2026-09-22T13:04:00Z\t2026-09-22T13:04:00Z\tid-1\t0\n")
+	writeBoard(t, store, "forgelet-app", "a-card\tmaster\t2026-09-22T13:04:00Z\t2026-09-22T13:04:00Z\tid-2\t0\n")
+
+	boards, err := store.Boards()
+	if err != nil {
+		t.Fatalf("Boards: %v", err)
+	}
+	if len(boards) != 2 {
+		t.Fatalf("boards = %+v, want every open project", boards)
+	}
+	if boards[0].Project != "forgelet-app" || boards[1].Project != "forgelet-bridge" {
+		t.Errorf("projects = %q, %q, want the open projects in order", boards[0].Project, boards[1].Project)
+	}
+	bridge := boards[1]
+	if len(bridge.Lanes) != 2 || bridge.Lanes[0] != "specifier" || bridge.Lanes[1] != "coder" {
+		t.Errorf("lanes = %v, want the project's roles", bridge.Lanes)
+	}
+	if len(bridge.Cards) != 1 || bridge.Cards[0].Name != "card-activity-feed" || bridge.Cards[0].Lane != "coder" {
+		t.Errorf("cards = %+v, want the board's cards", bridge.Cards)
+	}
+}
+
+func TestLanesForLeavesAProjectWithoutRolesLaneLess(t *testing.T) {
+	store := newStore(t, "forgelet-bridge")
+
+	lanes, err := store.LanesFor("forgelet-bridge")
+	if err != nil {
+		t.Fatalf("LanesFor: %v", err)
+	}
+	if len(lanes) != 0 {
+		t.Errorf("lanes = %v, want none for a project with no roles file", lanes)
+	}
+}
+
 func TestCardsReadsTheBoardRows(t *testing.T) {
 	store := newStore(t, "forgelet-bridge")
 	writeBoard(t, store, "forgelet-bridge",

@@ -64,11 +64,19 @@ type sentReaction struct {
 	key    string
 }
 
+type sentState struct {
+	roomID    string
+	eventType string
+	stateKey  string
+	content   map[string]any
+}
+
 type fakeRooms struct {
 	mu        sync.Mutex
 	ensured   []string
 	sent      []sentMessage
 	marks     []sentReaction
+	states    []sentState
 	events    []relay.RoomEvent
 	refreshed []refresh
 	reactions []relay.Reaction
@@ -122,6 +130,13 @@ func (r *fakeRooms) SendReaction(_ context.Context, roomID, targetEventID, key s
 	return "$reaction-" + key, nil
 }
 
+func (r *fakeRooms) SetState(_ context.Context, roomID, eventType, stateKey string, content map[string]any) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states = append(r.states, sentState{roomID: roomID, eventType: eventType, stateKey: stateKey, content: content})
+	return "$state-" + eventType + "-" + stateKey, nil
+}
+
 func (r *fakeRooms) DrainEvents(_ context.Context) ([]relay.RoomEvent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -149,6 +164,12 @@ func (r *fakeRooms) sentReactions() []sentReaction {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]sentReaction(nil), r.marks...)
+}
+
+func (r *fakeRooms) sentStates() []sentState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]sentState(nil), r.states...)
 }
 
 func (r *fakeRooms) push(event relay.RoomEvent) {

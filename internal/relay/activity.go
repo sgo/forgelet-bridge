@@ -9,6 +9,14 @@ type Card struct {
 	Done    bool
 }
 
+// Board is one project's board as the forge holds it: the lanes the project
+// runs and the cards each lane holds.
+type Board struct {
+	Project string
+	Lanes   []string
+	Cards   []Card
+}
+
 // CardState is what the bridge remembers about one card, so that the activity
 // room only hears about real changes.
 type CardState struct {

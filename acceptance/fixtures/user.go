@@ -387,6 +387,21 @@ func (u *User) JoinInvites(ctx context.Context) error {
 	return nil
 }
 
+// StateEvent returns one of a room's state events: the event's own id and the
+// JSON the room holds, which is where a reader finds the facts a face wrote.
+// The event is absent when the room carries none under that type and key.
+func (u *User) StateEvent(ctx context.Context, roomID, eventType, stateKey string) (string, map[string]any, bool, error) {
+	state, err := u.cli.State(ctx, id.RoomID(roomID))
+	if err != nil {
+		return "", nil, false, err
+	}
+	evt := state[event.Type{Type: eventType, Class: event.StateEventType}][stateKey]
+	if evt == nil {
+		return "", nil, false, nil
+	}
+	return evt.ID.String(), evt.Content.Raw, true, nil
+}
+
 // Invite asks a user into a room, the way the operator would add someone.
 func (u *User) Invite(ctx context.Context, roomID, userID string) error {
 	_, err := u.cli.InviteUser(ctx, id.RoomID(roomID), &mautrix.ReqInviteUser{UserID: id.UserID(userID)})

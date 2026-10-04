@@ -14,6 +14,8 @@ import (
 const (
 	// TasksFile is the board's card list inside a project.
 	TasksFile = ".swarmforge/board/tasks.tsv"
+	// RolesFile is the lane list inside a project: one lane per role.
+	RolesFile = ".swarmforge/roles.tsv"
 	// DoneLane is the lane a finished card sits in.
 	DoneLane = "done"
 )
@@ -82,6 +84,61 @@ func (s *Store) CardsFor(project string) ([]Card, error) {
 		cards = append(cards, Card{Project: project, Name: name, Lane: lane})
 	}
 	return cards, nil
+}
+
+// LanesFor lists the lanes one project runs: the roles its board moves cards
+// between, in the order the project names them.
+func (s *Store) LanesFor(project string) ([]string, error) {
+	path := filepath.Join(forge.ProjectDir(s.root, project), filepath.FromSlash(RolesFile))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var lanes []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if name := strings.TrimSpace(strings.Split(line, "\t")[0]); name != "" {
+			lanes = append(lanes, name)
+		}
+	}
+	return lanes, nil
+}
+
+// ProjectBoard is one project's board: the lanes it runs and the cards each
+// lane holds.
+type ProjectBoard struct {
+	Project string
+	Lanes   []string
+	Cards   []Card
+}
+
+// Boards lists the board of every open project, each with its lanes, in a
+// stable order so a tick reads the same board the same way.
+func (s *Store) Boards() ([]ProjectBoard, error) {
+	projects, err := forge.OpenProjects(s.root)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(projects)
+	boards := make([]ProjectBoard, 0, len(projects))
+	for _, project := range projects {
+		lanes, err := s.LanesFor(project)
+		if err != nil {
+			return nil, err
+		}
+		cards, err := s.CardsFor(project)
+		if err != nil {
+			return nil, err
+		}
+		sort.Slice(cards, func(i, j int) bool { return cards[i].Name < cards[j].Name })
+		boards = append(boards, ProjectBoard{Project: project, Lanes: lanes, Cards: cards})
+	}
+	return boards, nil
 }
 
 // ParseRow reads one board row: the card's name and the lane it is in. It is

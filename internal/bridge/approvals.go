@@ -59,7 +59,23 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 		waiting.done(action)
 		carriedOut++
 	}
+	written, err := b.carryOutFacts(ctx, room.ApprovalsRoomID, relay.ApprovalFactType, approvalFacts(pending))
+	if err != nil {
+		return carriedOut + written, err
+	}
+	carriedOut += written
 	return carriedOut, nil
+}
+
+// approvalFacts is the approvals the forge is still holding, each as the state
+// its room carries: an approval that stops waiting is cleared by carrying out
+// the facts without it.
+func approvalFacts(pending []relay.Approval) []relay.Fact {
+	facts := make([]relay.Fact, 0, len(pending))
+	for _, approval := range pending {
+		facts = append(facts, relay.ApprovalFact(approval))
+	}
+	return facts
 }
 
 func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {

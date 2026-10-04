@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/board"
 )
 
@@ -108,7 +109,16 @@ type cardLane struct {
 // setCardLanes writes several cards into a project's board in one write, so a
 // tick sees every one of those changes at once.
 func setCardLanes(root, project string, changes []cardLane) error {
-	path := filepath.Join(root, "projects", project, filepath.FromSlash(board.TasksFile))
+	projectRoot := filepath.Join(root, "projects", project)
+	// A project is a swarm root of its own, so its board carries the lanes its
+	// roles name rather than none. A project a scenario has already given roles
+	// keeps them: only one with none gets the lanes a fresh project has.
+	if _, err := os.Stat(filepath.Join(projectRoot, ".swarmforge", "roles.tsv")); os.IsNotExist(err) {
+		if err := fixtures.PrepareSwarmRoot(projectRoot); err != nil {
+			return err
+		}
+	}
+	path := filepath.Join(projectRoot, filepath.FromSlash(board.TasksFile))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

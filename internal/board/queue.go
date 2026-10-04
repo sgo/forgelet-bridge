@@ -34,6 +34,36 @@ func (q Queue) Cards() ([]relay.Card, error) {
 	return relayed, nil
 }
 
+// Lanes lists the lanes one project's board runs, so the board's state carries
+// the lanes beside its cards.
+func (q Queue) Lanes(project string) ([]string, error) {
+	return q.Store.LanesFor(project)
+}
+
+// Boards lists every open project's board the way the bridge's relay needs it:
+// the project, its lanes, and its cards, each card keyed across the bridge.
+func (q Queue) Boards() ([]relay.Board, error) {
+	boards, err := q.Store.Boards()
+	if err != nil {
+		return nil, err
+	}
+	relayed := make([]relay.Board, 0, len(boards))
+	for _, board := range boards {
+		cards := make([]relay.Card, 0, len(board.Cards))
+		for _, card := range board.Cards {
+			cards = append(cards, relay.Card{
+				Key:     Key(q.Forge, card.Project, card.Name),
+				Project: card.Project,
+				Name:    card.Name,
+				Lane:    card.Lane,
+				Done:    card.Done(),
+			})
+		}
+		relayed = append(relayed, relay.Board{Project: board.Project, Lanes: board.Lanes, Cards: cards})
+	}
+	return relayed, nil
+}
+
 // Key names a card across the bridge: the forge, the project and the card, so
 // neither two projects nor two forges can be confused.
 func Key(forge, project, name string) string {

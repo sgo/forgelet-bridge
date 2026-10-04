@@ -16,12 +16,25 @@ import (
 type fakeBoard struct {
 	mu    sync.Mutex
 	cards []relay.Card
+	lanes []string
 }
 
-func (f *fakeBoard) Cards() ([]relay.Card, error) {
+func (f *fakeBoard) Boards() ([]relay.Board, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]relay.Card(nil), f.cards...), nil
+	byProject := map[string][]relay.Card{}
+	var projects []string
+	for _, card := range f.cards {
+		if _, seen := byProject[card.Project]; !seen {
+			projects = append(projects, card.Project)
+		}
+		byProject[card.Project] = append(byProject[card.Project], card)
+	}
+	boards := make([]relay.Board, 0, len(projects))
+	for _, project := range projects {
+		boards = append(boards, relay.Board{Project: project, Lanes: f.lanes, Cards: byProject[project]})
+	}
+	return boards, nil
 }
 
 func (f *fakeBoard) set(cards ...relay.Card) {

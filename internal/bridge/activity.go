@@ -36,10 +36,11 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	if !ok {
 		return 0, fmt.Errorf("no board configured for forge root %s", root)
 	}
-	cards, err := store.Cards()
+	boards, err := store.Boards()
 	if err != nil {
 		return 0, fmt.Errorf("read the board of %s: %w", root, err)
 	}
+	cards := cardsOf(boards)
 
 	actions := relay.PlanActivity(b.state.Relay, cards)
 	news, moves := splitCardUpdates(actions)
@@ -55,7 +56,31 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 			return 0, err
 		}
 	}
-	return len(actions), nil
+	written, err := b.carryOutFacts(ctx, room.ActivityRoomID, relay.BoardFactType, boardFacts(boards))
+	if err != nil {
+		return written, err
+	}
+	return len(actions) + written, nil
+}
+
+// cardsOf is every card the forge's open boards hold, in board order, which is
+// what the activity planner names.
+func cardsOf(boards []relay.Board) []relay.Card {
+	var cards []relay.Card
+	for _, board := range boards {
+		cards = append(cards, board.Cards...)
+	}
+	return cards
+}
+
+// boardFacts is every open project's board as the waiting fact its room
+// carries: the lanes the project runs and the cards each lane holds.
+func boardFacts(boards []relay.Board) []relay.Fact {
+	facts := make([]relay.Fact, 0, len(boards))
+	for _, board := range boards {
+		facts = append(facts, relay.BoardFact(board.Project, board.Lanes, board.Cards))
+	}
+	return facts
 }
 
 // postCardNews posts a tick's card news as one message - the message the phone

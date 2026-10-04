@@ -46,7 +46,23 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, room R
 		waiting.done(action)
 		carriedOut++
 	}
+	written, err := b.carryOutFacts(ctx, room.ClarificationsRoomID, relay.ClarificationFactType, clarificationFacts(pending))
+	if err != nil {
+		return carriedOut + written, err
+	}
+	carriedOut += written
 	return carriedOut, nil
+}
+
+// clarificationFacts is the questions the forge is still waiting on, each as
+// the state its room carries: a question that is answered is cleared by
+// carrying out the facts without it.
+func clarificationFacts(pending []relay.Clarification) []relay.Fact {
+	facts := make([]relay.Fact, 0, len(pending))
+	for _, clarification := range pending {
+		facts = append(facts, relay.ClarificationFact(clarification))
+	}
+	return facts
 }
 
 // applyClarification is one piece of clarifications work, kept in the state as

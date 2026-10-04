@@ -47,7 +47,9 @@ type ClarificationStore interface {
 // BoardStore is the forge side of one root's boards: the cards its projects
 // hold and the lanes they are in.
 type BoardStore interface {
-	Cards() ([]relay.Card, error)
+	// Boards lists every open project's board: the lanes it runs and the cards
+	// each lane holds, so the room's state carries both.
+	Boards() ([]relay.Board, error)
 }
 
 // Room is the Matrix side the bridge created for a forge.
@@ -71,6 +73,9 @@ type Rooms interface {
 	// SendReaction marks an existing message with a reaction, the way the
 	// operator's own check mark does.
 	SendReaction(ctx context.Context, roomID, targetEventID, key string) (string, error)
+	// SetState writes a state event into a room, or clears it with empty
+	// content when there is nothing left to carry.
+	SetState(ctx context.Context, roomID, eventType, stateKey string, content map[string]any) (string, error)
 	// SendNotice posts a message clients do not notify on: something worth
 	// seeing in the room and not worth waking anyone for.
 	SendNotice(ctx context.Context, roomID, body string) (string, error)
