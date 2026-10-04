@@ -23,13 +23,7 @@ func (q Queue) Cards() ([]relay.Card, error) {
 	}
 	relayed := make([]relay.Card, 0, len(cards))
 	for _, card := range cards {
-		relayed = append(relayed, relay.Card{
-			Key:     Key(q.Forge, card.Project, card.Name),
-			Project: card.Project,
-			Name:    card.Name,
-			Lane:    card.Lane,
-			Done:    card.Done(),
-		})
+		relayed = append(relayed, relayCard(q.Forge, card))
 	}
 	return relayed, nil
 }
@@ -51,17 +45,23 @@ func (q Queue) Boards() ([]relay.Board, error) {
 	for _, board := range boards {
 		cards := make([]relay.Card, 0, len(board.Cards))
 		for _, card := range board.Cards {
-			cards = append(cards, relay.Card{
-				Key:     Key(q.Forge, card.Project, card.Name),
-				Project: card.Project,
-				Name:    card.Name,
-				Lane:    card.Lane,
-				Done:    card.Done(),
-			})
+			cards = append(cards, relayCard(q.Forge, card))
 		}
 		relayed = append(relayed, relay.Board{Project: board.Project, Lanes: board.Lanes, Cards: cards})
 	}
 	return relayed, nil
+}
+
+// relayCard is one card the way the bridge's relay needs it: keyed across the
+// forge, with the lane it is in and whether it is done.
+func relayCard(forge string, card Card) relay.Card {
+	return relay.Card{
+		Key:     Key(forge, card.Project, card.Name),
+		Project: card.Project,
+		Name:    card.Name,
+		Lane:    card.Lane,
+		Done:    card.Done(),
+	}
 }
 
 // Key names a card across the bridge: the forge, the project and the card, so

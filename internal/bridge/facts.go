@@ -16,28 +16,61 @@ import (
 // many events it wrote or cleared.
 func (b *Bridge) carryOutFacts(ctx context.Context, roomID, factType string, facts []relay.Fact) (int, error) {
 	b.state.Relay.EnsureMaps()
+	desired := factsByKey(facts)
+
+	written, err := b.writeChangedFacts(ctx, roomID, factType, desired)
+	if err != nil {
+		return written, err
+	}
+	cleared, err := b.clearStoppedFacts(ctx, roomID, factType, desired)
+	if err != nil {
+		return written + cleared, err
+	}
+	if written+cleared == 0 {
+		return 0, nil
+	}
+	if err := b.state.Save(b.statePath); err != nil {
+		return written + cleared, err
+	}
+	return written + cleared, nil
+}
+
+// factsByKey indexes the facts a room should carry by their state key, so a
+// fact the room already holds is compared with the one that replaces it.
+func factsByKey(facts []relay.Fact) map[string]relay.Fact {
 	desired := make(map[string]relay.Fact, len(facts))
 	for _, fact := range facts {
 		desired[fact.Key] = fact
 	}
+	return desired
+}
 
-	carriedOut := 0
+// writeChangedFacts writes the state of every fact the room does not already
+// hold and remembers it, so the same facts twice are left alone.
+func (b *Bridge) writeChangedFacts(ctx context.Context, roomID, factType string, desired map[string]relay.Fact) (int, error) {
+	written := 0
 	for key, fact := range desired {
 		content, err := factContent(fact)
 		if err != nil {
-			return carriedOut, err
+			return written, err
 		}
 		remembered := waitingKey(roomID, factType, key)
 		if b.state.Relay.Waiting[remembered] == content {
 			continue
 		}
 		if _, err := b.rooms.SetState(ctx, roomID, factType, key, fact.Content); err != nil {
-			return carriedOut, fmt.Errorf("write the %s state %s: %w", factType, key, err)
+			return written, fmt.Errorf("write the %s state %s: %w", factType, key, err)
 		}
 		b.state.Relay.Waiting[remembered] = content
-		carriedOut++
+		written++
 	}
+	return written, nil
+}
 
+// clearStoppedFacts clears the state of every fact this room carried that is no
+// longer waiting, so reading the room's state never shows a stale item.
+func (b *Bridge) clearStoppedFacts(ctx context.Context, roomID, factType string, desired map[string]relay.Fact) (int, error) {
+	cleared := 0
 	for remembered := range b.state.Relay.Waiting {
 		room, typ, key, ok := splitWaitingKey(remembered)
 		if !ok || room != roomID || typ != factType {
@@ -47,19 +80,12 @@ func (b *Bridge) carryOutFacts(ctx context.Context, roomID, factType string, fac
 			continue
 		}
 		if _, err := b.rooms.SetState(ctx, roomID, factType, key, map[string]any{}); err != nil {
-			return carriedOut, fmt.Errorf("clear the %s state %s: %w", factType, key, err)
+			return cleared, fmt.Errorf("clear the %s state %s: %w", factType, key, err)
 		}
 		delete(b.state.Relay.Waiting, remembered)
-		carriedOut++
+		cleared++
 	}
-
-	if carriedOut == 0 {
-		return 0, nil
-	}
-	if err := b.state.Save(b.statePath); err != nil {
-		return carriedOut, err
-	}
-	return carriedOut, nil
+	return cleared, nil
 }
 
 // waitingKey names one state event the bridge wrote, across the room it is in,
