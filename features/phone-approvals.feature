@@ -28,6 +28,19 @@ Feature: Phone Approvals
   # "Resolved on the desktop" and takes no reaction. A resolution the bridge has
   # already reported is not reported again, whichever mark or message reported
   # it.
+  # The bridge writes two events for one approval: the message the operator
+  # reads and acts on from Element, and the state event that carries the
+  # approval - its id, its card and its gate - which is the only thing the phone
+  # can read, because its reading is the rooms' state. A signal on either event
+  # is the same decision, so a check reaction the phone puts on the state event
+  # approves exactly as one on the message does, and a reply that names the
+  # state event is the send back a reply that names the message is. The state
+  # event's own id is remembered when it is written, so a signal names the
+  # approval it belongs to rather than being guessed at from the room, and only
+  # the operator's signal counts on either event. The check mark counts in
+  # either form the two sides send it - the phone's, and Element's with the
+  # variation selector - so a mark the room reads as a decision is one the
+  # bridge acts on.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -177,3 +190,48 @@ Feature: Phone Approvals
     Then the operator decrypts the approval reply "Resolved on the desktop" to the approval message for the card phone-approvals
     And the approval message's thread holds exactly one reply
     And the approval message for the card phone-approvals carries no reaction from the bridge
+
+  # Phone Approvals 15: the operator approves the approval by reacting to its state event
+  Scenario: Phone Approvals 15: the operator approves the approval by reacting to its state event
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator taps ✅ on the approval's state event for the card phone-approvals
+    Then the forge's dashboard recorded the approval for the card phone-approvals as approved
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 16: a reaction to the approval's state event from anyone else decides nothing
+  Scenario: Phone Approvals 16: a reaction to the approval's state event from anyone else decides nothing
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    And the matrix client @stranger:example.org has joined the approvals room
+    When the matrix client @stranger:example.org reacts ✅ to the approval's state event for the card phone-approvals
+    Then the approval for the card phone-approvals is still pending in the forge
+    And the forge's dashboard was never asked to delete or tear down
+
+  # Phone Approvals 17: the operator sends the approval back by replying to its state event
+  Scenario: Phone Approvals 17: the operator sends the approval back by replying to its state event
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator replies "the timesheet total is still wrong" to the approval's state event for the card phone-approvals
+    Then the forge's dashboard recorded the approval for the card phone-approvals as sent back with exactly "the timesheet total is still wrong"
+    And the approval message for the card phone-approvals carries the bridge's ⬅ reaction
+    And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 18: a check mark with the variation selector approves too
+  Scenario: Phone Approvals 18: a check mark with the variation selector approves too
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the bridge has caught up with the forge
+    When the operator taps the check mark with the variation selector on the approval message for the card phone-approvals
+    Then the forge's dashboard recorded the approval for the card phone-approvals as approved
+    And the approval message for the card phone-approvals carries the bridge's ➡ reaction
+    And the approval message's thread holds no reply from the bridge
+
+  # Phone Approvals 19: a signal on one approval's state event decides only that approval
+  Scenario: Phone Approvals 19: a signal on one approval's state event decides only that approval
+    Given the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
+    And the forge's dashboard already holds the pending approval for the card refund-card with its handover roles
+    And the bridge has caught up with the forge
+    When the operator taps ✅ on the approval's state event for the card refund-card
+    Then the forge's dashboard recorded the approval for the card refund-card as approved
+    And the approval for the card phone-approvals is still pending in the forge

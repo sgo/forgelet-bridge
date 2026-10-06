@@ -30,6 +30,13 @@ Feature: Phone Clarifications
   # reaction, so the mark means the forge confirmed what was asked and answered
   # here. An answer the bridge has already reported is not reported again,
   # whichever way it was reported.
+  # A clarification reaches the phone as a message and as the state event that
+  # carries the question, the project and the blocked role - the state event
+  # being the only thing the phone can read, because its reading is the rooms'
+  # state. The answer is a reply, so a reply that names the clarification's
+  # state event is the answer a reply that names the message is, and the state
+  # event's own id is remembered when it is written, so the reply names the
+  # question it answers rather than being guessed at from the room.
 
   Background:
     Given the fixture forge root forge-a has its dashboard running
@@ -108,3 +115,13 @@ Feature: Phone Clarifications
     When the operator replies "yes" in the clarification message's thread for the project forgelet-bridge
     Then the clarification message's thread holds exactly one reply
     And the clarification message for the project forgelet-bridge carries no reaction from the bridge
+
+  # Phone Clarifications 9: a reply naming the clarification's state event is the answer
+  Scenario: Phone Clarifications 9: a reply naming the clarification's state event is the answer
+    Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
+    And the bridge has caught up with the forge
+    When the operator replies "yes" to the clarification's state event for the project forgelet-bridge
+    Then the forge's dashboard recorded the clarification for the project forgelet-bridge as answered with exactly "yes"
+    And the blocked role coder is woken with the answer "yes"
+    And the clarification message for the project forgelet-bridge carries the bridge's ➡ reaction
+    And the clarification message's thread holds no reply from the bridge
