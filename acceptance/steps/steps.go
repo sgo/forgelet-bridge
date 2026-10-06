@@ -370,3 +370,7 @@ func captured(captures []string, index int) (string, error) {
 func stepContext() (context.Context, context.CancelFunc) {
 	return contextWithTimeout()
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-10-06T08:58:08+02:00","module_hash":"643b45a957f0c5ecdbe1c787f0f515eb523e25b1bfc9460a6cb0f741451f3824","functions":[{"id":"func/register","name":"register","line":13,"end_line":354,"hash":"b84d8fb3518e7d477cece039e5da6a763937a8b15e35d20cbd6a0f17e85defac"},{"id":"func/singleForge","name":"singleForge","line":356,"end_line":361,"hash":"c159b751fb8de89780d723bdfc0864526c8d893cbb288b7bc2188535fa02f9e6"},{"id":"func/captured","name":"captured","line":363,"end_line":368,"hash":"7caccdf3131a07e65a0eac1af3efadd154c6e523de3ef93b0e2547333a8a7cf6"},{"id":"func/stepContext","name":"stepContext","line":370,"end_line":372,"hash":"e0fe228a765a53304a32f9f425ddc30f0f4191214c27f4c15b84a341bc672a85"}]}
+// mutate4go-manifest-end

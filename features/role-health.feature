@@ -1,6 +1,6 @@
-# mutation-stamp: sha256=aa1171419b2a7169517aa843199999ff4a899eab0f0086679f2adfdd264a20e4
+# mutation-stamp: sha256=5528a1b53fd0c08ab7631a68673168af51c71db5f4dc8c05c27edefc6e7838dc
 # acceptance-mutation-manifest-begin
-# {"version":1,"tested_at":"2026-09-26T11:50:21.983479Z","feature_name":"Role Health","feature_path":"features/role-health.feature","background_hash":"1d989f071c65a110cd748176f85254577c6f592812d666af2643c2fe11b3bca4","implementation_hash":"sha256:f8a95a0020f95ba9364f81418032e9644e0f3482161e62942d65811d784b43e7","scenarios":[]}
+# {"version":1,"tested_at":"2026-10-06T07:00:01.624627Z","feature_name":"Role Health","feature_path":"features/role-health.feature","background_hash":"1d989f071c65a110cd748176f85254577c6f592812d666af2643c2fe11b3bca4","implementation_hash":"sha256:f8a95a0020f95ba9364f81418032e9644e0f3482161e62942d65811d784b43e7","scenarios":[]}
 # acceptance-mutation-manifest-end
 
 Feature: Role Health
