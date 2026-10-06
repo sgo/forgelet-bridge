@@ -204,7 +204,6 @@ func idlerCheckReportsForgeNotRunning(_ context.Context, world any, _ []string) 
 	return nil
 }
 
-// idlerLine is the check's report line for one role.
 // idlerCheckReportsTheNoteMissing checks the check says the card's note went
 // missing, which is its own verdict: the board says a role holds work and
 // nothing anywhere exists to hand it over.

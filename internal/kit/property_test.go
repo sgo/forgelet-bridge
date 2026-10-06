@@ -274,3 +274,47 @@ func randBytes(rnd *rand.Rand) []byte {
 	}
 	return body
 }
+
+// TestPropertyTheReportReadsBackWhateverVerdictItPrinted is the report parser's
+// own promise, and the reason a verdict can be added without touching it: for
+// any role and any verdict the check prints - the standing ones and the agent
+// that has gone - a reader gets that role and that verdict back, and reads no
+// card where the check wrote none. A column carrying a key ("new=",
+// "in_process=") is the check's count, never the card a role holds.
+func TestPropertyTheReportReadsBackWhateverVerdictItPrinted(t *testing.T) {
+	property := func(role, verdict string) bool {
+		// "not-running" is the forge's own line rather than a role's verdict,
+		// and the check names a role or a verdict with no space in it.
+		if role == "" || verdict == "" || verdict == "not-running" {
+			return true
+		}
+		notRunning, readings := parseIdlerReport(role + " " + verdict)
+		if notRunning || len(readings) != 1 {
+			return false
+		}
+		found := readings[0]
+		return found.Role == role && found.Verdict == verdict &&
+			found.Card == "-" && found.MailCount == 0
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(plainReportWord(rnd))
+			values[1] = reflect.ValueOf(plainReportWord(rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// plainReportWord is one word of a report line as the check writes it: letters
+// and dashes, never a space and never the "=" that would make a column a count
+// rather than a name.
+func plainReportWord(rnd *rand.Rand) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz-"
+	word := make([]byte, 1+rnd.Intn(8))
+	for index := range word {
+		word[index] = alphabet[rnd.Intn(len(alphabet))]
+	}
+	return string(word)
+}
