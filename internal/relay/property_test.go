@@ -226,3 +226,11 @@ func randomText(rnd *rand.Rand) string {
 	texts := []string{"", " ", "is the build green?", "yes, the build is green", "two  spaces", "$event-1"}
 	return texts[rnd.Intn(len(texts))]
 }
+
+// randomEventID is an id a room holds for one item: the message the bridge
+// posts for it, the state event it writes beside that message, or an id of
+// neither kind. It is what a reaction or a reply can name.
+func randomEventID(messageToken, stateToken string, rnd *rand.Rand) string {
+	ids := []string{messageToken, stateToken, "$state-2", "plain-id"}
+	return ids[rnd.Intn(len(ids))]
+}

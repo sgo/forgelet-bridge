@@ -314,3 +314,57 @@ func randomApprovalText(rnd *rand.Rand) string {
 	texts := []string{"", " ", "send it back", "the timesheet total is still wrong", "$event-1"}
 	return texts[rnd.Intn(len(texts))]
 }
+
+// TestPropertyEitherOfAnApprovalsEventsDecidesIt is the promise the whole path
+// rests on and one example cannot spell out: the room holds two events for an
+// approval - the message Element reads, and the state event a phone reads - and
+// the operator's own check mark on either of them resolves it, while a mark on
+// an event the approval does not name decides nothing. The index names every
+// event the state records for the approval and no others.
+func TestPropertyEitherOfAnApprovalsEventsDecidesIt(t *testing.T) {
+	property := func(messageID, stateEventID string) bool {
+		if messageID == "" {
+			// An approval with no message is one the room has not posted, which
+			// is a different question than the one this property asks.
+			return true
+		}
+		state := State{Approvals: map[string]ApprovalState{
+			approvalKey: {MessageID: messageID, StateEventID: stateEventID},
+		}}
+		events := []string{messageID}
+		if stateEventID != "" && stateEventID != messageID {
+			events = append(events, stateEventID)
+		}
+
+		for _, event := range events {
+			if !resolvedAsApproved(PlanApprovals(operator, state, []Approval{approval()},
+				[]Reaction{{Sender: operator, Key: ApproveReaction, TargetEventID: event}}, nil)) {
+				return false
+			}
+		}
+
+		// An id no event of this approval carries - the message's, with a marker
+		// the room's own ids never hold - decides nothing.
+		return !resolvedAsApproved(PlanApprovals(operator, state, []Approval{approval()},
+			[]Reaction{{Sender: operator, Key: ApproveReaction, TargetEventID: messageID + "!"}}, nil))
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomEventID(approvalMessageID, "$approval-state", rnd))
+			values[1] = reflect.ValueOf(randomEventID(approvalMessageID, "$approval-state", rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// resolvedAsApproved reports whether a plan carries back an approval.
+func resolvedAsApproved(actions []ApprovalAction) bool {
+	for _, action := range actions {
+		if action.Kind == ResolveApproval && action.Resolution == ResolutionApproved {
+			return true
+		}
+	}
+	return false
+}

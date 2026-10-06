@@ -226,31 +226,7 @@ func (u *User) SwipeReply(ctx context.Context, roomID, targetEventID, words stri
 	if !ok {
 		return "", fmt.Errorf("%s cannot quote %s: it never saw that message", u.UserID, targetEventID)
 	}
-	body := quoteBack(quoted.Body) + "\n\n" + words
-	content := &event.MessageEventContent{
-		MsgType:   event.MsgText,
-		Body:      body,
-		RelatesTo: (&event.RelatesTo{}).SetReplyTo(id.EventID(targetEventID)),
-	}
-	encrypted, err := u.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)
-	if err != nil {
-		return "", err
-	}
-	resp, err := u.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventEncrypted, encrypted)
-	if err != nil {
-		return "", err
-	}
-	u.mu.Lock()
-	u.messages = append(u.messages, Message{
-		RoomID:    roomID,
-		EventID:   resp.EventID.String(),
-		Sender:    u.UserID,
-		Body:      body,
-		ReplyTo:   targetEventID,
-		Encrypted: true,
-	})
-	u.mu.Unlock()
-	return resp.EventID.String(), nil
+	return u.swipeReplyQuoting(ctx, roomID, targetEventID, quoted.Body, words)
 }
 
 // SwipeReplyTo sends the reply a phone makes when it swipes an event it did not
@@ -259,6 +235,13 @@ func (u *User) SwipeReply(ctx context.Context, roomID, targetEventID, words stri
 // given rather than looked up, and the reply names that event as what it
 // answers.
 func (u *User) SwipeReplyTo(ctx context.Context, roomID, targetEventID, quotedBody, words string) (string, error) {
+	return u.swipeReplyQuoting(ctx, roomID, targetEventID, quotedBody, words)
+}
+
+// swipeReplyQuoting is the reply both swipe forms share: the quoted event with
+// the client's quote marker, the operator's own words under it, sent as a reply
+// that names the event it quotes and recorded as this client sent it.
+func (u *User) swipeReplyQuoting(ctx context.Context, roomID, targetEventID, quotedBody, words string) (string, error) {
 	body := quoteBack(quotedBody) + "\n\n" + words
 	content := &event.MessageEventContent{
 		MsgType:   event.MsgText,

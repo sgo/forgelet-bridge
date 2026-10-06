@@ -284,3 +284,67 @@ func randomClarificationText(rnd *rand.Rand) string {
 	texts := []string{"", " ", "yes, the refund lane", "the timesheet total is still wrong", "$event-1"}
 	return texts[rnd.Intn(len(texts))]
 }
+
+// TestPropertyEitherOfAClarificationsEventsAnswersIt is the same promise for a
+// question: the room holds two events for a clarification - the message and the
+// state event - and a reply that names either of them carries the operator's
+// answer back, while a reply that names an event the clarification does not
+// hold answers nothing.
+func TestPropertyEitherOfAClarificationsEventsAnswersIt(t *testing.T) {
+	property := func(messageID, stateEventID string) bool {
+		if messageID == "" {
+			// A clarification with no message is one the room has not posted,
+			// which is a different question than the one this property asks.
+			return true
+		}
+		pending := []Clarification{clarification()}
+		state := State{Clarifications: map[string]ClarificationState{
+			clarification().Key: {MessageID: messageID, StateEventID: stateEventID},
+		}}
+		events := []string{messageID}
+		if stateEventID != "" && stateEventID != messageID {
+			events = append(events, stateEventID)
+		}
+
+		for _, event := range events {
+			if !carriedBackAnAnswer(PlanClarifications(operator, state, pending,
+				[]RoomEvent{answerQuoting(event)})) {
+				return false
+			}
+		}
+
+		return !carriedBackAnAnswer(PlanClarifications(operator, state, pending,
+			[]RoomEvent{answerQuoting(messageID + "!")}))
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			values[0] = reflect.ValueOf(randomEventID(clarificationMessageID, "$clarification-state", rnd))
+			values[1] = reflect.ValueOf(randomEventID(clarificationMessageID, "$clarification-state", rnd))
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// carriedBackAnAnswer reports whether a plan carries an answer back for a
+// clarification.
+func carriedBackAnAnswer(actions []ClarificationAction) bool {
+	for _, action := range actions {
+		if action.Kind == AnswerClarification {
+			return true
+		}
+	}
+	return false
+}
+
+// answerQuoting is the reply the operator sends when answering by quoting the
+// event it names: the quoted question, then their own words.
+func answerQuoting(event string) RoomEvent {
+	return RoomEvent{
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Clarification for forgelet-bridge from coder\n> Question: which lane?\n\nyes, the refund lane",
+		ReplyTo: event,
+	}
+}
