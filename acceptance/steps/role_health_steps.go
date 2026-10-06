@@ -220,6 +220,36 @@ func idlerCheckReportsTheNoteMissing(_ context.Context, world any, captures []st
 	return fmt.Errorf("the idler check does not report the note for the card %s as missing:\n%s", card, w.idlerOutput)
 }
 
+// idlerCheckDoesNotReportAnAgentThatHasGone checks the check did not judge a
+// role whose pane runs a tool the agent is inside as an agent that has gone: a
+// tool's foreground is the agent at work, not an agent that stopped.
+func idlerCheckDoesNotReportAnAgentThatHasGone(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	line, err := idlerLine(w, captures[1])
+	if err != nil {
+		return err
+	}
+	if columns := strings.Fields(line); len(columns) >= 2 && columns[1] == "agent-gone" {
+		return fmt.Errorf("the idler check reports the role %s as an agent that has gone:\n%s", captures[1], w.idlerOutput)
+	}
+	return nil
+}
+
+// theForgeHoldsTheAlertTheIdlerRaisedAboutAnAgentThatHasGone checks the alert a
+// dead agent raised reached the forge's dashboard queue, naming the role and the
+// reading. There is no card in it: an agent that has gone is a stall whether or
+// not the role holds one.
+func theForgeHoldsTheAlertTheIdlerRaisedAboutAnAgentThatHasGone(_ context.Context, world any, captures []string) error {
+	_, body, err := world.(*World).idlersAlert("Stall watch: "+captures[1], "agent-gone")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(body, "Stall watch") {
+		return fmt.Errorf("the alert in the dashboard's queue does not read as a stall watch: %s", body)
+	}
+	return nil
+}
+
 // idlerLine is the check's report line for one role.
 func idlerLine(w *World, role string) (string, error) {
 	for _, line := range strings.Split(strings.TrimRight(w.idlerOutput, "\n"), "\n") {
@@ -248,6 +278,10 @@ func idlerVerdict(phrase string) (string, string, error) {
 		return "waiting-on-a-decision", "", nil
 	case phrase == "waiting on the operator":
 		return "waiting-on-the-operator", "", nil
+	case phrase == "an agent that has gone":
+		return "agent-gone", "", nil
+	case phrase == "a session that has gone":
+		return "session-gone", "", nil
 	}
 	return "", "", fmt.Errorf("the step does not know the wording %q", phrase)
 }

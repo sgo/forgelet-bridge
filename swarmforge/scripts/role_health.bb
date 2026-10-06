@@ -34,10 +34,11 @@
        "pickup (mail in new/); idle holding a card; quiet between turns; idle with\n"
        "nothing to pick up (the card's note is somewhere, waiting to be handed\n"
        "over); note missing (the board holds the card and no note exists anywhere);\n"
-       "idle with nothing assigned; session gone; a tool the check does not know;\n"
-       "or a forge with no role session up.\n"
+       "idle with nothing assigned; the agent has gone (the pane is at a shell where\n"
+       "a known agent should be); session gone (no pane at all); a tool the check\n"
+       "does not know; or a forge with no role session up.\n"
        "Exit status is non-zero when any role is stalled (waiting for pickup, idle\n"
-       "holding a card, session gone, or a note missing).\n"))
+       "holding a card, the agent has gone, session gone, or a note missing).\n"))
 
 (def grace-minutes 3)
 (def ask-cooldown-minutes 30)
@@ -86,20 +87,40 @@
 ;; A forge does not run one agent: the roles file records a tool per role, and
 ;; Saibill mixes codex and claude — its lieutenant is claude. Two lessons from
 ;; reading those sessions rather than assuming: a pane's command is not the
-;; agent's name (Claude Code's shows as its version, e.g. 2.1.277), so "is the
-;; session alive" is decided by the pane having a foreground process that is not a
-;; shell; and the reliable sign of work is the agent's own transcript, because the
-;; marker a terminal draws is that agent's wording and changes between versions.
-;; An agent we do not know yet is reported as such rather than judged idle — a
-;; false stall on a healthy session is the failure worth avoiding.
-(def shells #{"zsh" "bash" "sh" "dash" "ksh" "fish" "tcsh" "csh"})
+;; agent's name (Claude Code's shows as its version, e.g. 2.1.277), and the
+;; reliable sign of work is the agent's own transcript, because the marker a
+;; terminal draws is that agent's wording and changes between versions. An agent
+;; we do not know yet is reported as such rather than judged idle — a false stall
+;; on a healthy session is the failure worth avoiding.
+;;
+;; A role's session outlives its agent. When the agent exits, the pane falls back
+;; to the shell the session was started with, and a check that only asks whether
+;; the pane is *there* reads the shell as a live role. What tells the two apart is
+;; the pane's foreground: a shell, where a known agent should be, is the agent
+;; that has gone. The set is the layer's own (`dead-agent?`): `login` is the name
+;; a login shell is started with, and `-zsh`/`-bash` the name a login shell gives
+;; itself, so a pane at the login shell reads as a shell rather than as a tool.
+(def agent-shells
+  #{"zsh" "bash" "sh" "dash" "ksh" "fish" "tcsh" "csh" "login" "-zsh" "-bash"})
 
-(defn alive? [command]
-  (and (some? command)
-       (not (contains? shells (str/lower-case command)))))
+(defn shell-command? [command]
+  (contains? agent-shells (str/lower-case (str command))))
 
 (defn known-tool? [tool]
   (contains? #{"codex" "claude"} (str/lower-case (or tool ""))))
+
+;; A pane the check could not name at all is the session that is gone: tmux says
+;; nothing for a session that is not there, while a session that outlived its
+;; agent still names the shell it fell back to.
+(defn no-pane? [command]
+  (str/blank? (str command)))
+
+;; A shell where a known agent should be is the agent that has gone: the session
+;; is still there - the pane exists - but the agent behind it is not. It is not
+;; the session that is gone (there is no pane at all), and it is not a role
+;; waiting between turns.
+(defn dead-agent? [tool command]
+  (and (known-tool? tool) (some? command) (shell-command? command)))
 
 ;; Claude Code keeps one transcript directory per working directory, the path
 ;; with its separators turned into dashes: /Users/sgo/sgo -> -Users-sgo-sgo.
@@ -259,7 +280,12 @@
      :quiet quiet
      :verdict
      (cond
-       (not (alive? command)) :session-gone
+       ;; No pane at all is the session that is gone; a pane at a shell, where a
+       ;; known agent should be, is the agent that has gone. They are two things:
+       ;; the first has nothing behind it, the second has a live session whose
+       ;; agent has stopped.
+       (no-pane? command) :session-gone
+       (dead-agent? tool command) :agent-gone
        (not (known-tool? tool)) :tool-not-known
        (working? tool (:worktree role) text) :working
        ;; Before anything about quiet mail: if this role's handoff is sitting with
@@ -280,7 +306,7 @@
        holding :quiet-between-turns
        :else :idle-nothing-assigned)}))
 
-(def stalled? #{:waiting-for-pickup :idle-holding-card :session-gone :note-missing})
+(def stalled? #{:waiting-for-pickup :idle-holding-card :session-gone :note-missing :agent-gone})
 
 ;; A forge that is not running at all is not a stall: at login the agents do not
 ;; exist yet, and a watcher that speaks then cries wolf every morning. The forge
@@ -300,10 +326,10 @@
                  new in_process
                  (if quiet (str quiet "m") "?")
                  (or tool "?"))
-         ;; A session judged dead because its pane runs something else should say
-         ;; what it found: that is a mismatch to read, not silence to guess at.
-         (if (= verdict :session-gone)
-           (str " (pane runs " (or command "nothing") ")")
+         ;; A session judged dead, or an agent judged gone, should say what the
+         ;; pane runs: that is a reading to make, not silence to guess at.
+         (if (contains? #{:session-gone :agent-gone} verdict)
+           (str " (pane runs " (if (str/blank? (str command)) "nothing" command) ")")
            ""))))
 
 (defn ask-text [{:keys [role card verdict quiet] :as r}]

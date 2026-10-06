@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+// shellPaneCommand is what a pane whose agent has gone looks like: the shell the
+// session was started with, left behind when the agent typed into it exited. The
+// pane is still there, so it is a live session - not the session that is gone -
+// whose agent has stopped.
+const shellPaneCommand = "zsh"
+
+// toolPaneCommand is a tool the agent is inside: the foreground for as long as
+// it runs, like the java or mvn of a build. A check that read "the pane is not
+// the agent" as gone would ring a false alarm here, so the tool's own foreground
+// is a pane that is left alone.
+const toolPaneCommand = "exec sleep 3600"
+
 // claudeProjects is where the fixture keeps the transcript record the check
 // reads to decide whether a claude session is working. It lives inside the
 // fixture so no developer's own transcript decides what a scenario sees.
@@ -168,6 +180,50 @@ func forgeGivesWorkingSession(_ context.Context, world any, captures []string) e
 	}
 	transcript := filepath.Join(w.claudeProjects(), dashedPath(worktree), "session.jsonl")
 	return writeFile(transcript, "{\"type\":\"assistant\"}\n")
+}
+
+// forgeGivesLiveSessionAtAShell gives the named role a live session whose pane
+// is at a shell: the session outlived its agent, which is the state the check
+// has to tell from a role that is simply idle.
+func forgeGivesLiveSessionAtAShell(_ context.Context, world any, captures []string) error {
+	return forgeGivesSession(world.(*World), captures[1], captures[2], shellPaneCommand)
+}
+
+// forgeGivesASessionRunningATool gives the named role a live session whose pane
+// runs a tool the agent is inside, which is the agent at work rather than an
+// agent that has gone.
+func forgeGivesASessionRunningATool(_ context.Context, world any, captures []string) error {
+	return forgeGivesSession(world.(*World), captures[1], captures[2], toolPaneCommand)
+}
+
+// theForgeEndsTheRolesSession takes the named role's session down, leaving the
+// session that is genuinely gone: the pane is not there at all, which is the
+// other reading and not the agent that has gone.
+func theForgeEndsTheRolesSession(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	root, err := w.forgeRootOf(captures[1])
+	if err != nil {
+		return err
+	}
+	projects, err := projectsOf(root)
+	if err != nil {
+		return err
+	}
+	if len(projects) != 1 {
+		return fmt.Errorf("the forge root %s holds %d projects, want exactly one here", captures[1], len(projects))
+	}
+	pane, err := paneOf(projects[0], captures[2])
+	if err != nil {
+		return err
+	}
+	socket, err := w.projectSocket(projects[0])
+	if err != nil {
+		return err
+	}
+	// A session that is already down is the reading this step wants, so a kill
+	// that finds nothing to kill is not a failure.
+	_, _ = tmux(socket, "kill-session", "-t", pane)
+	return nil
 }
 
 // dashedPath is how Claude Code names one directory's transcript record: the
