@@ -30,7 +30,7 @@ func TestCarryOutFactsReportsEveryStateItWritesAndClears(t *testing.T) {
 	const room = "!approvals-forge-a"
 
 	written, err := built.carryOutFacts(context.Background(), room, relay.ApprovalFactType,
-		[]relay.Fact{approvalStateFact("a", "one"), approvalStateFact("b", "two")})
+		[]relay.Fact{approvalStateFact("a", "one"), approvalStateFact("b", "two")}, nil)
 	if err != nil {
 		t.Fatalf("first carry: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestCarryOutFactsReportsEveryStateItWritesAndClears(t *testing.T) {
 	// reports both, and the state it saved holds the change and not the stale
 	// fact.
 	changed, err := built.carryOutFacts(context.Background(), room, relay.ApprovalFactType,
-		[]relay.Fact{approvalStateFact("a", "three")})
+		[]relay.Fact{approvalStateFact("a", "three")}, nil)
 	if err != nil {
 		t.Fatalf("second carry: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestCarryOutFactsReportsEveryStateItWritesAndClears(t *testing.T) {
 
 	// One changed fact alone is one event, and it is reported as one.
 	alone, err := built.carryOutFacts(context.Background(), room, relay.ApprovalFactType,
-		[]relay.Fact{approvalStateFact("a", "four")})
+		[]relay.Fact{approvalStateFact("a", "four")}, nil)
 	if err != nil {
 		t.Fatalf("third carry: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestCarryOutFactsSurfacesAStateItCannotSave(t *testing.T) {
 	built.statePath = t.TempDir()
 
 	if _, err := built.carryOutFacts(context.Background(), "!approvals-forge-a", relay.ApprovalFactType,
-		[]relay.Fact{approvalStateFact("a", "one")}); err == nil {
+		[]relay.Fact{approvalStateFact("a", "one")}, nil); err == nil {
 		t.Fatal("carryOutFacts: want the save failure, got nil")
 	}
 }
@@ -104,7 +104,7 @@ func TestCarryOutFactsLeavesAnotherRoomsFactsAlone(t *testing.T) {
 	// Nothing waits in the activity room, so its own stale fact is cleared -
 	// and only it: another room's facts, and this room's facts of another type,
 	// are neither this writer's to clear.
-	if _, err := built.carryOutFacts(context.Background(), mine, relay.BoardFactType, nil); err != nil {
+	if _, err := built.carryOutFacts(context.Background(), mine, relay.BoardFactType, nil, nil); err != nil {
 		t.Fatalf("carryOutFacts: %v", err)
 	}
 	states := rooms.sentStates()
@@ -127,7 +127,7 @@ func TestCarryOutFactsSurfacesAStateItCannotClear(t *testing.T) {
 	built.state.Relay.EnsureMaps()
 	built.state.Relay.Waiting[waitingKey("!activity-forge-a", relay.BoardFactType, "forgelet-bridge")] = `{"projects":[]}`
 
-	if _, err := built.carryOutFacts(context.Background(), "!activity-forge-a", relay.BoardFactType, nil); err == nil {
+	if _, err := built.carryOutFacts(context.Background(), "!activity-forge-a", relay.BoardFactType, nil, nil); err == nil {
 		t.Fatal("carryOutFacts: want the clear failure, got nil")
 	}
 }

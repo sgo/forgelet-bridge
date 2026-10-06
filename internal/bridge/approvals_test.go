@@ -167,6 +167,87 @@ func TestTickApprovesWhenTheOperatorReacts(t *testing.T) {
 	}
 }
 
+func TestTickRemembersTheApprovalsStateEvent(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	state := built.State().Relay.Approvals["forgelet-bridge/approval-1"]
+	if state.StateEventID == "" {
+		t.Fatalf("the bridge did not remember the approval's state event: %+v", state)
+	}
+	if state.StateEventID == state.MessageID {
+		t.Errorf("the state event id equals the message id (%q)", state.StateEventID)
+	}
+}
+
+func TestTickApprovesWhenTheOperatorReactsToTheStateEvent(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	stateEventID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].StateEventID
+	if stateEventID == "" {
+		t.Fatalf("the bridge did not remember the approval's state event")
+	}
+	rooms.pushReaction(relay.Reaction{
+		RoomID:        "!approvals-forge-a",
+		Sender:        operator,
+		Key:           relay.ApproveReaction,
+		TargetEventID: stateEventID,
+	})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	approved, _ := store.decisions()
+	if len(approved) != 1 || approved[0] != "forgelet-bridge/approval-1" {
+		t.Fatalf("approved = %v, want the check mark on the state event to reach the forge", approved)
+	}
+}
+
+func TestTickSendsBackAReplyThatNamesTheApprovalsStateEvent(t *testing.T) {
+	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithApprovals(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	stateEventID := built.State().Relay.Approvals["forgelet-bridge/approval-1"].StateEventID
+	if stateEventID == "" {
+		t.Fatalf("the bridge did not remember the approval's state event")
+	}
+	rooms.push(relay.RoomEvent{
+		RoomID:  "!approvals-forge-a",
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Approval for phone-approvals in forgelet-bridge\n\nthe timesheet total is still wrong",
+		ReplyTo: stateEventID,
+	})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	approved, back := store.decisions()
+	if len(approved) != 0 || len(back) != 1 || back[0].id != "approval-1" {
+		t.Fatalf("decisions = (%v, %+v), want the operator's reply on the state event sent back", approved, back)
+	}
+	if back[0].feedback != "the timesheet total is still wrong" {
+		t.Errorf("feedback = %q, want the operator's own words", back[0].feedback)
+	}
+}
+
 func TestTickMarksAnApprovalItResolvedOnTheMessage(t *testing.T) {
 	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
 	rooms := &fakeRooms{}

@@ -14,11 +14,16 @@ import (
 // has its event cleared with empty content, and a fact the room already holds is
 // left alone, so a restart writes nothing the rooms already have. It reports how
 // many events it wrote or cleared.
-func (b *Bridge) carryOutFacts(ctx context.Context, roomID, factType string, facts []relay.Fact) (int, error) {
+//
+// Every event it writes is handed to remember with the item's own state key, so
+// a caller can keep the event's id - the phone reads the room's state, and the
+// id is what a signal on that event names. A caller with nothing to remember
+// passes nil.
+func (b *Bridge) carryOutFacts(ctx context.Context, roomID, factType string, facts []relay.Fact, remember func(stateKey, eventID string)) (int, error) {
 	b.state.Relay.EnsureMaps()
 	desired := factsByKey(facts)
 
-	written, err := b.writeChangedFacts(ctx, roomID, factType, desired)
+	written, err := b.writeChangedFacts(ctx, roomID, factType, desired, remember)
 	if err != nil {
 		return written, err
 	}
@@ -46,8 +51,9 @@ func factsByKey(facts []relay.Fact) map[string]relay.Fact {
 }
 
 // writeChangedFacts writes the state of every fact the room does not already
-// hold and remembers it, so the same facts twice are left alone.
-func (b *Bridge) writeChangedFacts(ctx context.Context, roomID, factType string, desired map[string]relay.Fact) (int, error) {
+// hold and remembers it, so the same facts twice are left alone. Each event it
+// writes is handed to remember with the item's state key.
+func (b *Bridge) writeChangedFacts(ctx context.Context, roomID, factType string, desired map[string]relay.Fact, remember func(stateKey, eventID string)) (int, error) {
 	written := 0
 	for key, fact := range desired {
 		content, err := factContent(fact)
@@ -58,10 +64,14 @@ func (b *Bridge) writeChangedFacts(ctx context.Context, roomID, factType string,
 		if b.state.Relay.Waiting[remembered] == content {
 			continue
 		}
-		if _, err := b.rooms.SetState(ctx, roomID, factType, key, fact.Content); err != nil {
+		eventID, err := b.rooms.SetState(ctx, roomID, factType, key, fact.Content)
+		if err != nil {
 			return written, fmt.Errorf("write the %s state %s: %w", factType, key, err)
 		}
 		b.state.Relay.Waiting[remembered] = content
+		if remember != nil {
+			remember(key, eventID)
+		}
 		written++
 	}
 	return written, nil

@@ -56,7 +56,7 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 			return 0, err
 		}
 	}
-	written, err := b.carryOutFacts(ctx, room.ActivityRoomID, relay.BoardFactType, boardFacts(boards))
+	written, err := b.carryOutFacts(ctx, room.ActivityRoomID, relay.BoardFactType, boardFacts(boards), nil)
 	if err != nil {
 		return written, err
 	}

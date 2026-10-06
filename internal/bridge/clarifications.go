@@ -46,7 +46,8 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, room R
 		waiting.done(action)
 		carriedOut++
 	}
-	written, err := b.carryOutFacts(ctx, room.ClarificationsRoomID, relay.ClarificationFactType, clarificationFacts(pending))
+	written, err := b.carryOutFacts(ctx, room.ClarificationsRoomID, relay.ClarificationFactType, clarificationFacts(pending),
+		b.rememberClarificationStateEvents(pending))
 	if err != nil {
 		return carriedOut + written, err
 	}
@@ -63,6 +64,28 @@ func clarificationFacts(pending []relay.Clarification) []relay.Fact {
 		facts = append(facts, relay.ClarificationFact(clarification))
 	}
 	return facts
+}
+
+// rememberClarificationStateEvents records the id of each state event a room
+// writes for a clarification, so a reply that names that event answers the
+// question. The room keys the event by the question's own id, while the state
+// keeps it under its project-qualified key, so the two are mapped here rather
+// than guessed at.
+func (b *Bridge) rememberClarificationStateEvents(pending []relay.Clarification) func(stateKey, eventID string) {
+	keys := make(map[string]string, len(pending))
+	for _, clarification := range pending {
+		keys[clarification.ID] = clarification.Key
+	}
+	return func(stateKey, eventID string) {
+		key, known := keys[stateKey]
+		if !known {
+			return
+		}
+		b.recordClarification(key, func(state relay.ClarificationState) relay.ClarificationState {
+			state.StateEventID = eventID
+			return state
+		})
+	}
 }
 
 // applyClarification is one piece of clarifications work, kept in the state as

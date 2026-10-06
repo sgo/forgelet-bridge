@@ -125,6 +125,38 @@ func TestTickCarriesTheOperatorsReplyBackAsTheAnswer(t *testing.T) {
 	}
 }
 
+func TestTickAnswersAReplyThatNamesTheClarificationsStateEvent(t *testing.T) {
+	store := &fakeClarifications{pending: []relay.Clarification{
+		clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?"),
+	}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithClarifications(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ClarificationStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	stateEventID := built.State().Relay.Clarifications["forgelet-bridge/clar-1"].StateEventID
+	if stateEventID == "" {
+		t.Fatalf("the bridge did not remember the clarification's state event")
+	}
+	rooms.push(relay.RoomEvent{
+		EventID: "$reply",
+		RoomID:  "!clarifications-forge-a",
+		Sender:  operator,
+		Body:    "> Clarification for forgelet-bridge from coder\n\nyes",
+		ReplyTo: stateEventID,
+	})
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	answers := store.answered()
+	if len(answers) != 1 || answers[0].id != "clar-1" || answers[0].text != "yes" {
+		t.Fatalf("answers = %+v, want the reply on the state event carried back", answers)
+	}
+}
+
 func TestTickMarksAnAnswerTheOperatorGaveOnlyOnce(t *testing.T) {
 	store := &fakeClarifications{pending: []relay.Clarification{
 		clarificationOf("forgelet-bridge", "clar-1", "coder", "which lane?"),

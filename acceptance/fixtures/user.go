@@ -253,6 +253,39 @@ func (u *User) SwipeReply(ctx context.Context, roomID, targetEventID, words stri
 	return resp.EventID.String(), nil
 }
 
+// SwipeReplyTo sends the reply a phone makes when it swipes an event it did not
+// see as a message. The room's state - the approval or clarification fact the
+// phone reads and acts on - is such an event, so the quote the phone writes is
+// given rather than looked up, and the reply names that event as what it
+// answers.
+func (u *User) SwipeReplyTo(ctx context.Context, roomID, targetEventID, quotedBody, words string) (string, error) {
+	body := quoteBack(quotedBody) + "\n\n" + words
+	content := &event.MessageEventContent{
+		MsgType:   event.MsgText,
+		Body:      body,
+		RelatesTo: (&event.RelatesTo{}).SetReplyTo(id.EventID(targetEventID)),
+	}
+	encrypted, err := u.helper.Encrypt(ctx, id.RoomID(roomID), event.EventMessage, content)
+	if err != nil {
+		return "", err
+	}
+	resp, err := u.cli.SendMessageEvent(ctx, id.RoomID(roomID), event.EventEncrypted, encrypted)
+	if err != nil {
+		return "", err
+	}
+	u.mu.Lock()
+	u.messages = append(u.messages, Message{
+		RoomID:    roomID,
+		EventID:   resp.EventID.String(),
+		Sender:    u.UserID,
+		Body:      body,
+		ReplyTo:   targetEventID,
+		Encrypted: true,
+	})
+	u.mu.Unlock()
+	return resp.EventID.String(), nil
+}
+
 // quoteBack is the message a phone writes into a swipe-reply's body, the way
 // Matrix clients quote it.
 func quoteBack(body string) string {

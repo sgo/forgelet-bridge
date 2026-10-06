@@ -59,7 +59,8 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 		waiting.done(action)
 		carriedOut++
 	}
-	written, err := b.carryOutFacts(ctx, room.ApprovalsRoomID, relay.ApprovalFactType, approvalFacts(pending))
+	written, err := b.carryOutFacts(ctx, room.ApprovalsRoomID, relay.ApprovalFactType, approvalFacts(pending),
+		b.rememberApprovalStateEvents(pending))
 	if err != nil {
 		return carriedOut + written, err
 	}
@@ -76,6 +77,28 @@ func approvalFacts(pending []relay.Approval) []relay.Fact {
 		facts = append(facts, relay.ApprovalFact(approval))
 	}
 	return facts
+}
+
+// rememberApprovalStateEvents records the id of each state event a room writes
+// for an approval, so a reaction or a reply that names that event decides the
+// approval. The room keys the event by the approval's own id, while the state
+// keeps the approval under its project-qualified key, so the two are mapped
+// here rather than guessed at.
+func (b *Bridge) rememberApprovalStateEvents(pending []relay.Approval) func(stateKey, eventID string) {
+	keys := make(map[string]string, len(pending))
+	for _, approval := range pending {
+		keys[approval.ID] = approval.Key
+	}
+	return func(stateKey, eventID string) {
+		key, known := keys[stateKey]
+		if !known {
+			return
+		}
+		b.recordApproval(key, func(state relay.ApprovalState) relay.ApprovalState {
+			state.StateEventID = eventID
+			return state
+		})
+	}
 }
 
 func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {

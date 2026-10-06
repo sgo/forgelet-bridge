@@ -62,6 +62,28 @@ func TestPlanClarificationsCarriesAQuotedReplyBackAsTheAnswer(t *testing.T) {
 	}
 }
 
+func TestPlanClarificationsCarriesAReplyThatNamesTheStateEventBackAsTheAnswer(t *testing.T) {
+	state := State{Clarifications: map[string]ClarificationState{
+		"forgelet-bridge/clar-1": {MessageID: "$message", StateEventID: "$clarification-state"},
+	}}
+	replies := []RoomEvent{{
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Clarification for forgelet-bridge from coder\n> Question: should the invoice card retry on its own?\n\nyes",
+		ReplyTo: "$clarification-state",
+	}}
+
+	actions := PlanClarifications(operator, state, []Clarification{clarification()}, replies)
+
+	want := []ClarificationAction{{
+		Kind: AnswerClarification, Key: "forgelet-bridge/clar-1", Clarification: clarification(),
+		Answer: "yes",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the reply that names the state event carried back %+v", actions, want)
+	}
+}
+
 func TestPlanClarificationsIgnoresAnAnswerFromAnyoneElse(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{"forgelet-bridge/clar-1": {MessageID: "$message"}}}
 	replies := []RoomEvent{{EventID: "$reply", Sender: "@stranger:example.org", Body: "yes", ThreadRoot: "$message"}}

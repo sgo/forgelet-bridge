@@ -26,19 +26,19 @@ func TestPropertyWaitingFactsAreWrittenOnceAndClearedOnce(t *testing.T) {
 			map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, "/forges/forge-a")
 		ctx := context.Background()
 
-		written, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, facts)
+		written, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, facts, nil)
 		if err != nil || written != len(facts) || len(rooms.sentStates()) != len(facts) {
 			return false
 		}
 
 		rooms.states = nil
-		again, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, facts)
+		again, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, facts, nil)
 		if err != nil || again != 0 || len(rooms.sentStates()) != 0 {
 			return false
 		}
 
 		rooms.states = nil
-		cleared, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, nil)
+		cleared, err := built.carryOutFacts(ctx, "!approvals-forge-a", relay.ApprovalFactType, nil, nil)
 		if err != nil || cleared != len(facts) {
 			return false
 		}

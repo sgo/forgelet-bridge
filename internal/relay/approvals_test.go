@@ -24,6 +24,62 @@ func posted() State {
 	}}
 }
 
+// postedWithStateEvent is an approval the room already carries both events for:
+// the message Element reads, and the state event a phone reads.
+func postedWithStateEvent() State {
+	return State{Approvals: map[string]ApprovalState{
+		"forgelet-bridge/approval-1": {MessageID: "$approval-message", StateEventID: "$approval-state"},
+	}}
+}
+
+func TestPlanApprovalsCarriesBackAReactionOnTheStateEvent(t *testing.T) {
+	reactions := []Reaction{{Sender: operator, Key: ApproveReaction, TargetEventID: "$approval-state"}}
+
+	actions := PlanApprovals(operator, postedWithStateEvent(), []Approval{approval()}, reactions, nil)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(), Resolution: ResolutionApproved,
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the check mark on the state event to approve %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsIgnoresAReactionOnTheStateEventFromAnyoneElse(t *testing.T) {
+	reactions := []Reaction{{Sender: "@stranger:example.org", Key: ApproveReaction, TargetEventID: "$approval-state"}}
+
+	if actions := PlanApprovals(operator, postedWithStateEvent(), []Approval{approval()}, reactions, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want nothing from someone else's reaction on the state event", actions)
+	}
+}
+
+func TestPlanApprovalsSendsBackAReplyThatNamesTheStateEvent(t *testing.T) {
+	replies := []RoomEvent{{
+		EventID: "$reply",
+		Sender:  operator,
+		Body:    "> Approval for phone-approvals in forgelet-bridge\n> Gate: coder → refactorer\n\nthe timesheet total is still wrong",
+		ReplyTo: "$approval-state",
+	}}
+
+	actions := PlanApprovals(operator, postedWithStateEvent(), []Approval{approval()}, nil, replies)
+
+	want := []ApprovalAction{{
+		Kind: ResolveApproval, Key: "forgelet-bridge/approval-1", Approval: approval(),
+		Resolution: ResolutionSentBack, Feedback: "the timesheet total is still wrong",
+	}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the reply that names the state event sent back %+v", actions, want)
+	}
+}
+
+func TestPlanApprovalsIgnoresAReactionToAStateEventTheRoomDoesNotHold(t *testing.T) {
+	reactions := []Reaction{{Sender: operator, Key: ApproveReaction, TargetEventID: "$some-other-state"}}
+
+	if actions := PlanApprovals(operator, postedWithStateEvent(), []Approval{approval()}, reactions, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want a signal on an event the approval does not name to decide nothing", actions)
+	}
+}
+
 func TestPlanApprovalsPostsAnApprovalTheRoomHasNotSeen(t *testing.T) {
 	actions := PlanApprovals(operator, State{}, []Approval{approval()}, nil, nil)
 

@@ -2,7 +2,55 @@ package steps
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
+
+// clarificationStateEvent is the state event the clarifications room carries for
+// a project's question: the event a phone reads and acts on, keyed by the
+// question's own id. The quote is what a phone shows for it when it swipes it.
+func clarificationStateEvent(ctx context.Context, w *World, project string) (roomID, eventID, quote string, err error) {
+	roomID, err = w.clarificationsRoom(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	err = waitFor(ctx, fmt.Sprintf("the clarifications room never carried the state event for %s", project), func() (bool, error) {
+		id, content, found, err := operator.StateEvent(ctx, roomID, relay.ClarificationFactType, clarificationID(project))
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+		eventID, quote = id, stateQuote(content)
+		return true, nil
+	})
+	return roomID, eventID, quote, err
+}
+
+// operatorRepliesToClarificationStateEvent sends the operator's answer as a
+// reply that names the clarification's state event, which is the event a phone
+// swipes.
+func operatorRepliesToClarificationStateEvent(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, eventID, quote, err := clarificationStateEvent(ctx, w, captures[2])
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = operator.SwipeReplyTo(ctx, roomID, eventID, quote, captures[1])
+	return err
+}
 
 // operatorRepliesToClarification sends the operator's answer in the
 // clarification's thread.

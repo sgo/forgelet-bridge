@@ -20,6 +20,12 @@ type ApprovalState struct {
 	RoomID string `json:"room_id,omitempty"`
 	// MessageID is the chat message that carries the approval.
 	MessageID string `json:"message_id,omitempty"`
+	// StateEventID is the room's state event that carries the approval - its id,
+	// its card and its gate. It is the only thing a phone can read, because a
+	// phone reads the room's state, so the id is remembered when the event is
+	// written: a reaction or a reply that names it decides this approval, the
+	// same way one that names the message does.
+	StateEventID string `json:"state_event_id,omitempty"`
 	// Resolution is how the approval was resolved: approved, sent_back, or
 	// desktop.
 	Resolution string `json:"resolution,omitempty"`
@@ -128,38 +134,44 @@ func PlanApprovals(operator string, st State, pending []Approval, reactions []Re
 // nothing when neither wrote one down. Only the operator's own approval
 // reaction, or a reply of theirs in the approval's thread, decides anything.
 func PlanApprovalsWithDesk(operator string, st State, pending []Approval, desk map[string]string, reactions []Reaction, replies []RoomEvent) []ApprovalAction {
-	byMessage, byKey := approvalsByMessage(st, pending)
+	byEvent, byKey := approvalsByEvent(st, pending)
 
-	actions := approvedByReaction(operator, st, byMessage, reactions)
-	actions = append(actions, textGestures(operator, st, pending, byMessage, replies)...)
+	actions := approvedByReaction(operator, st, byEvent, reactions)
+	actions = append(actions, textGestures(operator, st, pending, byEvent, replies)...)
 	actions = append(actions, unansweredReactions(operator, reactions)...)
 	actions = append(actions, unpostedApprovals(st, pending)...)
 	return append(actions, resolutionsToReport(st, byKey, desk)...)
 }
 
-// approvalsByMessage indexes the approvals two ways: by the message the room
-// holds for them, and by their key, so a lookup can answer both "which
-// approval is this event about" and "is this approval still pending".
-func approvalsByMessage(st State, pending []Approval) (map[string]Approval, map[string]Approval) {
-	byMessage := map[string]Approval{}
+// approvalsByEvent indexes the approvals two ways: by every event the room
+// holds for them - the message the operator reads, and the state event that
+// carries the approval - and by their key, so a lookup can answer both "which
+// approval is this event about" and "is this approval still pending". A
+// reaction or a reply names one of the two, and either names the approval.
+func approvalsByEvent(st State, pending []Approval) (map[string]Approval, map[string]Approval) {
+	byEvent := map[string]Approval{}
 	byKey := map[string]Approval{}
 	for _, approval := range pending {
 		byKey[approval.Key] = approval
-		if messageID := st.Approvals[approval.Key].MessageID; messageID != "" {
-			byMessage[messageID] = approval
+		state := st.Approvals[approval.Key]
+		if state.MessageID != "" {
+			byEvent[state.MessageID] = approval
+		}
+		if state.StateEventID != "" {
+			byEvent[state.StateEventID] = approval
 		}
 	}
-	return byMessage, byKey
+	return byEvent, byKey
 }
 
 // approvedByReaction plans the approvals the operator approved by reacting.
-func approvedByReaction(operator string, st State, byMessage map[string]Approval, reactions []Reaction) []ApprovalAction {
+func approvedByReaction(operator string, st State, byEvent map[string]Approval, reactions []Reaction) []ApprovalAction {
 	var actions []ApprovalAction
 	for _, reaction := range reactions {
 		if reaction.Sender != operator || !Approves(reaction.Key) {
 			continue
 		}
-		approval, known := byMessage[reaction.TargetEventID]
+		approval, known := byEvent[reaction.TargetEventID]
 		if !known || !undecided(st, approval.Key) {
 			continue
 		}
@@ -179,13 +191,13 @@ func approvedByReaction(operator string, st State, byMessage map[string]Approval
 // the room that only approves - the word, or the card's name - approves too;
 // and anything the room can read as none of those is answered with the gestures
 // it does take, so a dead room and a working one cannot look the same.
-func textGestures(operator string, st State, pending []Approval, byMessage map[string]Approval, messages []RoomEvent) []ApprovalAction {
+func textGestures(operator string, st State, pending []Approval, byEvent map[string]Approval, messages []RoomEvent) []ApprovalAction {
 	var actions []ApprovalAction
 	for _, message := range messages {
 		if message.Sender != operator || OwnWords(message.Body) == "" {
 			continue
 		}
-		if approval, replied := repliedApproval(byMessage, message); replied {
+		if approval, replied := repliedApproval(byEvent, message); replied {
 			if !undecided(st, approval.Key) {
 				continue // already decided: a later reply in its thread says nothing
 			}
@@ -204,13 +216,14 @@ func textGestures(operator string, st State, pending []Approval, byMessage map[s
 }
 
 // repliedApproval is the approval a message replies under, when the room knows
-// that approval's message. A reply is written in the approval's thread, or made
-// by quoting the approval message, which is the reply a phone sends.
-func repliedApproval(byMessage map[string]Approval, message RoomEvent) (Approval, bool) {
+// one of that approval's events. A reply is written in the approval's thread,
+// or made by quoting one of the events the room holds for it - the message, or
+// the state event a phone swipes - which is the reply a phone sends.
+func repliedApproval(byEvent map[string]Approval, message RoomEvent) (Approval, bool) {
 	if repliedTo(message) == "" {
 		return Approval{}, false
 	}
-	approval, known := byMessage[repliedTo(message)]
+	approval, known := byEvent[repliedTo(message)]
 	return approval, known
 }
 

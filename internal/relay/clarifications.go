@@ -17,6 +17,12 @@ type ClarificationState struct {
 	RoomID string `json:"room_id,omitempty"`
 	// MessageID is the chat message that carries the clarification.
 	MessageID string `json:"message_id,omitempty"`
+	// StateEventID is the room's state event that carries the question - the
+	// project, the blocked role and the question itself. It is the only thing a
+	// phone can read, because a phone reads the room's state, so the id is
+	// remembered when the event is written: a reply that names it answers this
+	// clarification, the same way one that names the message does.
+	StateEventID string `json:"state_event_id,omitempty"`
 	// Answer is the answer the bridge carried back, empty when the
 	// clarification was answered somewhere else.
 	Answer string `json:"answer,omitempty"`
@@ -71,37 +77,43 @@ type ClarificationAction struct {
 // rather than a gesture: any reply of the operator's in the clarification's
 // thread, written there or made by quoting the message, is the answer.
 func PlanClarifications(operator string, st State, pending []Clarification, replies []RoomEvent) []ClarificationAction {
-	byMessage, byKey := clarificationsByMessage(st, pending)
+	byEvent, byKey := clarificationsByEvent(st, pending)
 
-	actions := answeredByReply(operator, st, byMessage, replies)
+	actions := answeredByReply(operator, st, byEvent, replies)
 	actions = append(actions, unpostedClarifications(st, pending)...)
 	return append(actions, answersToReport(st, byKey)...)
 }
 
-// clarificationsByMessage indexes the clarifications two ways: by the message
-// the room holds for them, and by their key, so a lookup can answer both "which
-// clarification is this reply about" and "is this clarification still waiting".
-func clarificationsByMessage(st State, pending []Clarification) (map[string]Clarification, map[string]Clarification) {
-	byMessage := map[string]Clarification{}
+// clarificationsByEvent indexes the clarifications two ways: by every event the
+// room holds for them - the message the operator reads, and the state event
+// that carries the question - and by their key, so a lookup can answer both
+// "which clarification is this reply about" and "is this clarification still
+// waiting". A reply names one of the two, and either names the question.
+func clarificationsByEvent(st State, pending []Clarification) (map[string]Clarification, map[string]Clarification) {
+	byEvent := map[string]Clarification{}
 	byKey := map[string]Clarification{}
 	for _, clarification := range pending {
 		byKey[clarification.Key] = clarification
-		if messageID := st.Clarifications[clarification.Key].MessageID; messageID != "" {
-			byMessage[messageID] = clarification
+		state := st.Clarifications[clarification.Key]
+		if state.MessageID != "" {
+			byEvent[state.MessageID] = clarification
+		}
+		if state.StateEventID != "" {
+			byEvent[state.StateEventID] = clarification
 		}
 	}
-	return byMessage, byKey
+	return byEvent, byKey
 }
 
 // answeredByReply plans the answers the operator gave in a clarification's
 // thread.
-func answeredByReply(operator string, st State, byMessage map[string]Clarification, replies []RoomEvent) []ClarificationAction {
+func answeredByReply(operator string, st State, byEvent map[string]Clarification, replies []RoomEvent) []ClarificationAction {
 	var actions []ClarificationAction
 	for _, reply := range replies {
 		if reply.Sender != operator {
 			continue
 		}
-		clarification, known := byMessage[repliedTo(reply)]
+		clarification, known := byEvent[repliedTo(reply)]
 		if !known || !awaitingAnswer(st, clarification.Key) {
 			continue
 		}

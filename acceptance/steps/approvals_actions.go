@@ -2,8 +2,114 @@ package steps
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
+
+	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
+
+// approveWithVariationSelector is the check mark one side sends with the
+// variation selector and the other without. The bridge counts either, so a mark
+// the room reads as a decision is one it acts on.
+const approveWithVariationSelector = "\u2705\ufe0f"
+
+// approvalStateEvent is the state event the approvals room carries for a card's
+// approval: the event a phone reads and acts on, keyed by the approval's own id.
+// The quote is what a phone shows for it when it swipes the event.
+func approvalStateEvent(ctx context.Context, w *World, card string) (roomID, eventID, quote string, err error) {
+	roomID, err = w.approvalsRoom(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	err = waitFor(ctx, fmt.Sprintf("the approvals room never carried the state event for %s", card), func() (bool, error) {
+		id, content, found, err := operator.StateEvent(ctx, roomID, relay.ApprovalFactType, approvalCardID(card))
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+		eventID, quote = id, stateQuote(content)
+		return true, nil
+	})
+	return roomID, eventID, quote, err
+}
+
+// stateQuote is what a phone shows for a state event it swipes: the event's own
+// facts, as the JSON the room holds. The bridge reads only the operator's own
+// words out of a reply, so this is the client's own rendering of the quote.
+func stateQuote(content map[string]any) string {
+	data, err := json.Marshal(content)
+	if err != nil {
+		return "the room's state event"
+	}
+	return string(data)
+}
+
+// approvalStateEventTapped reacts to the approval's state event, the way the
+// phone does: its reading is the room's state, so the event it can act on is the
+// state event rather than the message Element shows.
+func approvalStateEventTapped(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	return reactToApprovalStateEvent(ctx, w, w.operatorID, "✅", captures[1])
+}
+
+// someoneReactsToTheApprovalStateEvent sends the same mark from another client,
+// which must decide nothing.
+func someoneReactsToTheApprovalStateEvent(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	return reactToApprovalStateEvent(ctx, w, captures[1], "✅", captures[2])
+}
+
+// reactToApprovalStateEvent reacts to the state event the room carries for a
+// card's approval.
+func reactToApprovalStateEvent(ctx context.Context, w *World, userID, reaction, card string) error {
+	roomID, eventID, _, err := approvalStateEvent(ctx, w, card)
+	if err != nil {
+		return err
+	}
+	user, err := w.user(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return user.React(ctx, roomID, eventID, reaction)
+}
+
+// operatorRepliesToApprovalStateEvent sends the operator's decision as a reply
+// that names the approval's state event, which is the event a phone swipes.
+func operatorRepliesToApprovalStateEvent(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	roomID, eventID, quote, err := approvalStateEvent(ctx, w, captures[2])
+	if err != nil {
+		return err
+	}
+	operator, err := w.operator(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = operator.SwipeReplyTo(ctx, roomID, eventID, quote, captures[1])
+	return err
+}
+
+// approvalMessageVariationSelectorTapped taps the check mark with the variation
+// selector on the approval's message, the form one side sends for the mark.
+func approvalMessageVariationSelectorTapped(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	ctx, cancel := stepContext()
+	defer cancel()
+	return reactToApproval(ctx, w, w.operatorID, approveWithVariationSelector, captures[1])
+}
 
 // approvalTapped sends the operator's approval reaction.
 func approvalTapped(_ context.Context, world any, captures []string) error {
