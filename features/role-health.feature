@@ -40,6 +40,19 @@ Feature: Role Health
   # writes the request - and the direct write stays as the fallback for a forge
   # whose dashboard is not running, so an alarm is never lost for want of one
   # path.
+  #
+  # A role's session outlives its agent, and a pane left at a shell is still a
+  # pane. The check asked only whether the pane was there and read that as alive,
+  # so an agent that had gone - the pane at a shell where the agent should be -
+  # went unsaid: with a card in its lane it read as a role waiting between turns,
+  # and with nothing in the lane it read as an idle role between cards, and
+  # neither rings. So a shell where a known agent should be gets its own verdict,
+  # the agent that has gone, beside the session that has gone and the role idle
+  # holding a card, and is neither of them: an agent that stopped is not a
+  # session with nothing behind it, and it is not a role waiting its turn. It is
+  # a stall whether or not the role holds a card, so the stall watch rings it
+  # with the rest. Noticing is all the check does - bringing the agent back is
+  # the forge's own restart, and the check never runs it.
 
   Background:
     Given the fixture forge root forge-a holds the project forgelet-bridge
@@ -141,3 +154,46 @@ Feature: Role Health
     And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
     When the idler check raises the alerts for the project forgelet-bridge of the forge root forge-a
     Then the forge holds the alert the idler raised about the role coder being idle holding the card refund-card
+
+  # Role Health 12: a pane at a shell where an agent should be is the agent that has gone
+  Scenario: Role Health 12: a pane at a shell where an agent should be is the agent that has gone
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session whose pane is at a shell
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as an agent that has gone
+    And the idler check fails
+
+  # Role Health 13: the agent that has gone stalls holding a card, and is not a role idle holding it
+  Scenario: Role Health 13: the agent that has gone stalls holding a card, and is not a role idle holding it
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session whose pane is at a shell
+    And the forge's board already holds the card refund-card in the project forgelet-bridge in the lane coder
+    And the project forgelet-bridge of the forge root forge-a has handed the card refund-card to the role coder
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as an agent that has gone
+    And the idler check fails
+
+  # Role Health 14: an agent still working is not an agent that has gone
+  Scenario: Role Health 14: an agent still working is not an agent that has gone
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a working session
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as working
+    And the idler check passes
+
+  # Role Health 15: a session that has genuinely gone is still the session that has gone
+  Scenario: Role Health 15: a session that has genuinely gone is still the session that has gone
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session
+    And the forge root forge-a ends the role coder's session
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check reports the role coder as a session that has gone
+    And the idler check fails
+
+  # Role Health 16: the agent that has gone reaches the operator even with nothing in the lane
+  Scenario: Role Health 16: the agent that has gone reaches the operator even with nothing in the lane
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session whose pane is at a shell
+    And the fixture forge root forge-a has its dashboard running
+    When the idler check raises the alerts for the project forgelet-bridge of the forge root forge-a
+    Then the forge holds the alert the idler raised about the role coder being an agent that has gone
