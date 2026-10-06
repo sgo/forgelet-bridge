@@ -53,6 +53,12 @@ Feature: Role Health
   # a stall whether or not the role holds a card, so the stall watch rings it
   # with the rest. Noticing is all the check does - bringing the agent back is
   # the forge's own restart, and the check never runs it.
+  #
+  # Only a shell is the agent gone. A pane running a tool the agent is inside -
+  # the `java` or `mvn` of a build, which is the foreground for as long as the
+  # build runs - is the agent at work, and a check that read "the pane is not the
+  # agent" as gone would ring a false alarm at the operator on every build. So a
+  # tool's foreground is left alone, not named as an agent that has gone.
 
   Background:
     Given the fixture forge root forge-a holds the project forgelet-bridge
@@ -197,3 +203,11 @@ Feature: Role Health
     And the fixture forge root forge-a has its dashboard running
     When the idler check raises the alerts for the project forgelet-bridge of the forge root forge-a
     Then the forge holds the alert the idler raised about the role coder being an agent that has gone
+
+  # Role Health 17: a pane running a tool the agent is inside is not an agent that has gone
+  Scenario: Role Health 17: a pane running a tool the agent is inside is not an agent that has gone
+    Given the project forgelet-bridge of the forge root forge-a records the role coder running codex
+    And the forge root forge-a gives the role coder a live session whose pane runs a tool the agent is inside
+    When the idler check runs for the project forgelet-bridge of the forge root forge-a
+    Then the idler check does not report the role coder as an agent that has gone
+    And the idler check passes
