@@ -31,6 +31,12 @@ fi
 # run generates them first, exactly as the normal acceptance run does.
 stem="$(basename "$feature" .feature)"
 mkdir -p build/acceptance-mutation/ir build/acceptance-mutation/generated
+# The generated entry points are this run's alone, as they are for the normal
+# acceptance run: an entry point left from an earlier feature would run too, and
+# each one loads the IR this run points at, so a stale file multiplies every
+# mutant run by the features it left behind.
+rm -f build/acceptance-mutation/generated/*_acceptance_test.go
+rm -rf build/acceptance-mutation/generated/metadata
 "$parser" "$feature" "build/acceptance-mutation/ir/$stem.json"
 go build -tags goolm -o build/acceptance/bin/acceptance-entrypoint-generator ./cmd/acceptance-entrypoint-generator
 ./build/acceptance/bin/acceptance-entrypoint-generator \

@@ -276,6 +276,41 @@ func TestTickDoesNotReplayTheBoardAForgeArrivesWith(t *testing.T) {
 	}
 }
 
+// The smallest history a forge can arrive with is one card: a single card that
+// finished before the bridge got to it is remembered quietly, and the
+// remembering is saved, so a restart does not narrate it after all. One card
+// and a board of them must take the same path.
+func TestTickRemembersTheOneCardAForgeArrivesWith(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(finishedCards(1)...)
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	if sent := rooms.sentMessages(); len(sent) != 0 {
+		t.Fatalf("sent = %d messages, want the one card the forge arrived with left unsaid", len(sent))
+	}
+
+	restartedRooms := &fakeRooms{}
+	restarted, err := New(cfg, restartedRooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
+		map[string]BoardStore{"/forges/forge-a": board}, nil)
+	if err != nil {
+		t.Fatalf("New after restart: %v", err)
+	}
+	if err := restarted.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick after restart: %v", err)
+	}
+	if sent := restartedRooms.sentMessages(); len(sent) != 0 {
+		t.Errorf("sent = %d messages after a restart, want the remembered history left unsaid", len(sent))
+	}
+}
+
 // The news notifies and the routine step does not: a card appearing and a card
 // finishing go as ordinary messages, and a lane-to-lane move goes as a notice.
 func TestTickSendsTheNewsAsMessagesAndTheRoutineStepAsANotice(t *testing.T) {
