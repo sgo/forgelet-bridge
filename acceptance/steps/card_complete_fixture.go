@@ -111,7 +111,7 @@ func (f *cardCompleteFixture) withOrigin() error {
 	if err := os.MkdirAll(bare, 0o755); err != nil {
 		return err
 	}
-	if _, err := git(bare, "init", "--quiet", "--bare"); err != nil {
+	if _, err := git(bare, "init", "--quiet", "--bare", "--initial-branch="+f.branch); err != nil {
 		return err
 	}
 	if _, err := git(f.root, "remote", "add", "origin", bare); err != nil {

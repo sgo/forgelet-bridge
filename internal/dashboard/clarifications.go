@@ -14,6 +14,9 @@ import (
 type Clarifications struct {
 	Root          string
 	ConfiguredURL string
+	// Project names the project when the dashboard serves one project root and
+	// its clarification files do not carry a project field.
+	Project string
 }
 
 // Pending reads the clarifications the dashboard is showing and the forge is
@@ -23,7 +26,16 @@ func (c Clarifications) Pending(ctx context.Context) ([]relay.Clarification, err
 	if err != nil {
 		return nil, err
 	}
-	return api.Clarifications(ctx)
+	pending, err := api.Clarifications(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index := range pending {
+		if pending[index].Project == "" {
+			pending[index].Project = c.Project
+		}
+	}
+	return pending, nil
 }
 
 // Answer asks the dashboard to answer a clarification, which is what wakes the

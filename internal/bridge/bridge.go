@@ -25,6 +25,22 @@ type ForgeStore interface {
 	CreateRequest(ctx context.Context, body string) (string, error)
 }
 
+// Project is one single-agent project root served inside its forge's space.
+// Its store is the project's own dashboard queue; its room is created in the
+// forge's space rather than in a space of its own.
+type Project struct {
+	Name           string
+	Root           string
+	Store          ForgeStore
+	Clarifications ClarificationStore
+}
+
+// ProjectSource discovers the single-agent projects a forge root currently has
+// open. A project without the marker is a pack project and is not returned.
+type ProjectSource interface {
+	Projects(forgeRoot string) ([]Project, error)
+}
+
 // ApprovalStore is the forge side of one root's approvals: the handoffs its
 // projects are waiting for.
 type ApprovalStore interface {
@@ -69,6 +85,12 @@ type Rooms interface {
 	// membership to rooms the bridge already has. What the configuration says
 	// about a forge is true on every start, not only when the rooms are new.
 	RefreshForge(ctx context.Context, room Room, forgeName, operator string) error
+	// EnsureProjectRoom finds or creates one single-agent project's room inside
+	// the forge's space.
+	EnsureProjectRoom(ctx context.Context, spaceID, forgeName, projectName, operator string) (string, error)
+	// RefreshProjectRoom applies the project's name and the operator's
+	// membership to a room the bridge already has.
+	RefreshProjectRoom(ctx context.Context, roomID, forgeName, projectName, operator string) error
 	SendText(ctx context.Context, roomID, body, threadAnchor string) (string, error)
 	// SendReaction marks an existing message with a reaction, the way the
 	// operator's own check mark does.
@@ -98,6 +120,7 @@ type Bridge struct {
 	tick           uint64
 	provisioned    map[string]Room
 	device         Device
+	projects       ProjectSource
 	// Work the forge refused, kept so it is tried again rather than lost.
 	pending               map[string]*pendingChat
 	pendingApprovals      map[string]*pendingApprovals
@@ -135,6 +158,13 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		pendingClarifications: map[string]*pendingClarifications{},
 		unhappy:               map[string]string{},
 	}, nil
+}
+
+// SetProjectSource lets the bridge discover single-agent projects from the
+// forge's own open-project list. The bridge tests and a forge with no
+// single-agent projects leave it unset.
+func (b *Bridge) SetProjectSource(source ProjectSource) {
+	b.projects = source
 }
 
 // State exposes the bridge's bookkeeping for tests and status reporting.
@@ -196,6 +226,22 @@ func (b *Bridge) Tick(ctx context.Context) error {
 			continue
 		}
 		carriedOut += done
+		if b.projects == nil {
+			continue
+		}
+		projects, err := b.projects.Projects(forge.Root)
+		if err != nil {
+			b.refuse(err, forge.Root)
+			continue
+		}
+		for _, project := range projects {
+			done, err := b.tickProject(ctx, forge.Root, project, seen)
+			if err != nil {
+				b.refuse(err, project.Root)
+				continue
+			}
+			carriedOut += done
+		}
 	}
 
 	b.tick++
@@ -348,7 +394,7 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		carriedOut += activity
 	}
 
-	clarifications, err := b.carryOutClarifications(ctx, root, room, seen.messages[room.ClarificationsRoomID])
+	clarifications, err := b.carryOutClarifications(ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID])
 	if err != nil {
 		b.refuse(err, root)
 	} else {

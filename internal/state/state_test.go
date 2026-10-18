@@ -45,16 +45,39 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 
 	forge, ok := loaded.ForgeFor("/forges/forge-a")
-	if !ok || forge != (Forge{
-		SpaceID: "!space", RoomID: "!room",
-		ApprovalsRoomID: "!approvals", ActivityRoomID: "!activity", ClarificationsRoomID: "!clarifications",
-	}) {
+	if !ok || forge.SpaceID != "!space" || forge.RoomID != "!room" ||
+		forge.ApprovalsRoomID != "!approvals" ||
+		forge.ActivityRoomID != "!activity" ||
+		forge.ClarificationsRoomID != "!clarifications" {
 		t.Errorf("forge = %+v, %v", forge, ok)
 	}
 	if loaded.Relay.Threads["req-1"] != "$message" ||
 		loaded.Relay.Replied["req-1"] != "$reply" ||
 		loaded.Relay.Relayed["$operator-message"] != "req-1" {
 		t.Errorf("relay state = %+v", loaded.Relay)
+	}
+}
+
+func TestProjectRoomRoundTrip(t *testing.T) {
+	path := statePath(t)
+	saved := &State{}
+	saved.EnsureMaps()
+	saved.RecordForge("/forges/forge-a", Forge{
+		SpaceID: "!space", RoomID: "!room",
+		ApprovalsRoomID: "!approvals", ActivityRoomID: "!activity", ClarificationsRoomID: "!clarifications",
+	})
+	saved.RecordProject("/forges/forge-a", "agent", Project{RoomID: "!project"})
+
+	if err := saved.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	project, ok := loaded.ProjectFor("/forges/forge-a", "agent")
+	if !ok || project.RoomID != "!project" {
+		t.Errorf("project = %+v, %v", project, ok)
 	}
 }
 

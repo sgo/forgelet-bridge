@@ -72,16 +72,18 @@ type sentState struct {
 }
 
 type fakeRooms struct {
-	mu        sync.Mutex
-	ensured   []string
-	sent      []sentMessage
-	marks     []sentReaction
-	states    []sentState
-	events    []relay.RoomEvent
-	refreshed []refresh
-	reactions []relay.Reaction
-	drainErr  error
-	stateErr  map[string]error
+	mu                sync.Mutex
+	ensured           []string
+	ensuredProjects   []projectRoomCall
+	refreshed         []refresh
+	refreshedProjects []projectRoomCall
+	sent              []sentMessage
+	marks             []sentReaction
+	states            []sentState
+	events            []relay.RoomEvent
+	reactions         []relay.Reaction
+	drainErr          error
+	stateErr          map[string]error
 }
 
 func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, error) {
@@ -101,6 +103,37 @@ func (r *fakeRooms) RefreshForge(_ context.Context, room Room, forgeName, operat
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.refreshed = append(r.refreshed, refresh{room: room, forgeName: forgeName, operator: operator})
+	return nil
+}
+
+type projectRoomCall struct {
+	spaceID     string
+	forgeName   string
+	projectName string
+	roomID      string
+}
+
+func (r *fakeRooms) EnsureProjectRoom(_ context.Context, spaceID, forgeName, projectName, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	roomID := "!project-" + projectName + "-" + forgeName
+	r.ensuredProjects = append(r.ensuredProjects, projectRoomCall{
+		spaceID:     spaceID,
+		forgeName:   forgeName,
+		projectName: projectName,
+		roomID:      roomID,
+	})
+	return roomID, nil
+}
+
+func (r *fakeRooms) RefreshProjectRoom(_ context.Context, roomID, forgeName, projectName, _ string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.refreshedProjects = append(r.refreshedProjects, projectRoomCall{
+		forgeName:   forgeName,
+		projectName: projectName,
+		roomID:      roomID,
+	})
 	return nil
 }
 
@@ -156,6 +189,18 @@ func (r *fakeRooms) refreshes() []refresh {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]refresh(nil), r.refreshed...)
+}
+
+func (r *fakeRooms) ensuredProjectRooms() []projectRoomCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]projectRoomCall(nil), r.ensuredProjects...)
+}
+
+func (r *fakeRooms) refreshedProjectRooms() []projectRoomCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]projectRoomCall(nil), r.refreshedProjects...)
 }
 
 func (r *fakeRooms) sentMessages() []sentMessage {

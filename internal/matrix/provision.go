@@ -58,6 +58,24 @@ func (c *Client) EnsureForge(ctx context.Context, forgeName, operator string) (b
 	}, nil
 }
 
+// EnsureProjectRoom finds or creates one single-agent project's room inside its
+// forge's space. The room is named for the project and the forge, and the
+// operator is invited to it like every other room in the space.
+func (c *Client) EnsureProjectRoom(ctx context.Context, spaceID, forgeName, projectName, operator string) (string, error) {
+	return c.ensureRoom(ctx, spaceID, operator, forgeName, projectRoomChannel(projectName))
+}
+
+// RefreshProjectRoom applies the project's current name and the operator's
+// membership to a room the bridge already has, so a restart does not depend on
+// the room having been created by this process.
+func (c *Client) RefreshProjectRoom(ctx context.Context, roomID, forgeName, projectName, operator string) error {
+	return c.applyRoom(ctx, roomID, config.RoomNameIn(forgeName, projectRoomChannel(projectName)), forgeName, operator)
+}
+
+func projectRoomChannel(projectName string) string {
+	return "Project " + projectName
+}
+
 // ensureRoom finds or creates one of the forge's rooms inside its space, makes
 // sure the operator is in it, and names the bridge after the forge there. The
 // name it looks for and the name it applies are the same one, composed from the

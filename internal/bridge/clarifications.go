@@ -22,9 +22,8 @@ func clarificationMessage(clarification relay.Clarification) string {
 
 // carryOutClarifications brings the clarifications room and the forge's
 // blocked roles in step with each other, and reports how much work it did.
-func (b *Bridge) carryOutClarifications(ctx context.Context, root string, room Room, replies []relay.RoomEvent) (int, error) {
-	store, ok := b.clarifications[root]
-	if !ok {
+func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store ClarificationStore, room Room, replies []relay.RoomEvent) (int, error) {
+	if store == nil {
 		return 0, fmt.Errorf("no clarifications configured for forge root %s", root)
 	}
 	pending, err := store.Pending(ctx)

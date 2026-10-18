@@ -13,11 +13,18 @@ import (
 
 // Forge is the Matrix side the bridge created for one forge root.
 type Forge struct {
-	SpaceID              string `json:"space_id"`
-	RoomID               string `json:"room_id"`
-	ApprovalsRoomID      string `json:"approvals_room_id,omitempty"`
-	ActivityRoomID       string `json:"activity_room_id,omitempty"`
-	ClarificationsRoomID string `json:"clarifications_room_id,omitempty"`
+	SpaceID              string             `json:"space_id"`
+	RoomID               string             `json:"room_id"`
+	ApprovalsRoomID      string             `json:"approvals_room_id,omitempty"`
+	ActivityRoomID       string             `json:"activity_room_id,omitempty"`
+	ClarificationsRoomID string             `json:"clarifications_room_id,omitempty"`
+	Projects             map[string]Project `json:"projects,omitempty"`
+}
+
+// Project is the Matrix room the bridge created for one single-agent project
+// inside its forge's space.
+type Project struct {
+	RoomID string `json:"room_id,omitempty"`
 }
 
 // State is everything the bridge remembers between runs.
@@ -65,6 +72,27 @@ func (s *State) ForgeFor(root string) (Forge, bool) {
 // RecordForge remembers the Matrix side of a forge root.
 func (s *State) RecordForge(root string, forge Forge) {
 	s.EnsureMaps()
+	s.Forges[root] = forge
+}
+
+// ProjectFor returns the project room already recorded for a forge root.
+func (s *State) ProjectFor(root, name string) (Project, bool) {
+	forge, ok := s.Forges[root]
+	if !ok {
+		return Project{}, false
+	}
+	project, ok := forge.Projects[name]
+	return project, ok && project.RoomID != ""
+}
+
+// RecordProject remembers the room of one single-agent project.
+func (s *State) RecordProject(root, name string, project Project) {
+	s.EnsureMaps()
+	forge := s.Forges[root]
+	if forge.Projects == nil {
+		forge.Projects = map[string]Project{}
+	}
+	forge.Projects[name] = project
 	s.Forges[root] = forge
 }
 
