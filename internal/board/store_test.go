@@ -47,6 +47,17 @@ func writeLanes(t *testing.T, store *Store, project, body string) {
 	}
 }
 
+func writeStageLanes(t *testing.T, store *Store, project, body string) {
+	t.Helper()
+	path := filepath.Join(store.root, "projects", project, ".swarmforge", "board", "lanes.tsv")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBoardsReadsEachOpenProjectsLanesAndCards(t *testing.T) {
 	store := newStore(t, "forgelet-bridge", "forgelet-app")
 	writeLanes(t, store, "forgelet-bridge", "specifier\tmaster\t/w\tw\tSpecifier\tcodex\ttask\tforward-only\ncoder\tcoder\t/w\tw\tCoder\tcodex\ttask\tforward-only\n")
@@ -81,6 +92,26 @@ func TestLanesForLeavesAProjectWithoutRolesLaneLess(t *testing.T) {
 	}
 	if len(lanes) != 0 {
 		t.Errorf("lanes = %v, want none for a project with no roles file", lanes)
+	}
+}
+
+func TestLanesForPrefersTheStageLanesAProjectWrites(t *testing.T) {
+	store := newStore(t, "agent")
+	writeLanes(t, store, "agent", "agent\tmaster\t/w\tw\tAgent\tcodex\ttask\n")
+	writeStageLanes(t, store, "agent", "spec\ncode\nclean\ndone\n")
+
+	lanes, err := store.LanesFor("agent")
+	if err != nil {
+		t.Fatalf("LanesFor: %v", err)
+	}
+	want := []string{"spec", "code", "clean", "done"}
+	if len(lanes) != len(want) {
+		t.Fatalf("lanes = %v, want %v", lanes, want)
+	}
+	for index := range want {
+		if lanes[index] != want[index] {
+			t.Fatalf("lanes = %v, want %v", lanes, want)
+		}
 	}
 }
 

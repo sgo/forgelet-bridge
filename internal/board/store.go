@@ -16,6 +16,9 @@ const (
 	TasksFile = ".swarmforge/board/tasks.tsv"
 	// RolesFile is the lane list inside a project: one lane per role.
 	RolesFile = ".swarmforge/roles.tsv"
+	// LanesFile is the explicit lane list a single-agent project writes for
+	// its stage gates; it replaces the role-derived list when present.
+	LanesFile = ".swarmforge/board/lanes.tsv"
 	// DoneLane is the lane a finished card sits in.
 	DoneLane = "done"
 )
@@ -89,13 +92,21 @@ func (s *Store) CardsFor(project string) ([]Card, error) {
 // LanesFor lists the lanes one project runs: the roles its board moves cards
 // between, in the order the project names them.
 func (s *Store) LanesFor(project string) ([]string, error) {
-	path := filepath.Join(forge.ProjectDir(s.root, project), filepath.FromSlash(RolesFile))
+	dir := forge.ProjectDir(s.root, project)
+	path := filepath.Join(dir, filepath.FromSlash(LanesFile))
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
+		if !os.IsNotExist(err) {
+			return nil, err
 		}
-		return nil, err
+		path = filepath.Join(dir, filepath.FromSlash(RolesFile))
+		data, err = os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
 	}
 	var lanes []string
 	for _, line := range strings.Split(string(data), "\n") {
