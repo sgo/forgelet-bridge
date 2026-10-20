@@ -41,9 +41,10 @@ func (s ApprovalState) Room() string { return s.RoomID }
 
 // Resolutions an approval can end up with.
 const (
-	ResolutionApproved = "approved"
-	ResolutionSentBack = "sent_back"
-	ResolutionDesktop  = "desktop"
+	ResolutionApproved   = "approved"
+	ResolutionSentBack   = "sent_back"
+	ResolutionDesktop    = "desktop"
+	ResolutionSuperseded = "superseded"
 )
 
 // Reaction is one reaction the bridge has seen, with the event it annotates.
@@ -383,6 +384,8 @@ func ApprovalsReply(resolution string) string {
 		return "Approved"
 	case ResolutionSentBack:
 		return "Sent back with feedback"
+	case ResolutionSuperseded:
+		return "Superseded by a newer proposal"
 	default:
 		return "Resolved on the desktop"
 	}

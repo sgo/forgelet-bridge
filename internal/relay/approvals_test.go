@@ -495,10 +495,11 @@ func TestPlanApprovalsKeepsApprovalsApart(t *testing.T) {
 
 func TestApprovalsReply(t *testing.T) {
 	cases := map[string]string{
-		ResolutionApproved: "Approved",
-		ResolutionSentBack: "Sent back with feedback",
-		ResolutionDesktop:  "Resolved on the desktop",
-		"":                 "Resolved on the desktop",
+		ResolutionApproved:   "Approved",
+		ResolutionSentBack:   "Sent back with feedback",
+		ResolutionDesktop:    "Resolved on the desktop",
+		ResolutionSuperseded: "Superseded by a newer proposal",
+		"":                   "Resolved on the desktop",
 	}
 	for resolution, want := range cases {
 		if got := ApprovalsReply(resolution); got != want {
