@@ -172,6 +172,11 @@
                     (:err result) (:out result))))
     (str/trim (:out result))))
 
+(defn initial-lane [project]
+  (if (fs/regular-file? (fs/path project ".swarmforge" "single-agent"))
+    "spec"
+    (master-lane project)))
+
 (defn board-task-id [project card-name]
   (let [file (fs/path project ".swarmforge" "board" "tasks.tsv")]
     (when (fs/regular-file? file)
@@ -200,7 +205,7 @@
           (exit! 1 (str "Not approved: \"" (str/trim (first (str/split-lines (str/trim (or words "")))))
                         "\" — nothing recorded.")))))
     (let [note (str/trimr (slurp (str note-file)))
-          lane (master-lane project)
+          lane (initial-lane project)
           ;; The proposal is only ever a record here. The clarification store
           ;; belongs to the pack's agents asking the operator to unblock a card;
           ;; a card proposal is the lieutenant's own question to the operator,
@@ -247,7 +252,7 @@
           (exit! 1 (str "Not approved: " (:via record) " reads \""
                         (str/trim (first (str/split-lines (str/trim (or (:text record) "")))))
                         "\" — nothing created. Re-propose with route_card.sh propose.")))
-        (let [current-lane (master-lane project)
+        (let [current-lane (initial-lane project)
               _ (when (not= current-lane lane)
                   (binding [*out* *err*]
                     (println (str "Note: lane moved from '" lane "' to '" current-lane
@@ -267,7 +272,9 @@
             (println "APPROVED:" (:via record))
             (println "CREATED:" name "in lane" current-lane
                      (when created-id (str "task-id " created-id)))
-            (println "The New Task note is in the project's outbox for the handoff daemon.")
+            (if (fs/regular-file? (fs/path project ".swarmforge" "single-agent"))
+              (println "The new card request is pending on the single-agent dashboard.")
+              (println "The New Task note is in the project's outbox for the handoff daemon."))
             created-id))))))
 
 (defn -main [& args]
