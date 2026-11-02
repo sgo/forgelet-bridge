@@ -64,3 +64,46 @@ bridge state JSON directly.
 - The host removal endpoint.
 - The desktop removal button.
 - Homeserver-admin room purge.
+
+## Specification
+
+The public command is the project-owned adapter command
+`matrix-bridge.sh remove-forge <forge-root>`. It accepts exactly one root that
+identifies one configured forge. It validates and reads the persisted forge
+record before stopping a running bridge. After a valid removal request, it stops
+the bridge before changing Matrix and leaves it stopped so the host can remove
+the configuration entry and start it again. It does not restart a bridge whose
+configuration still names the removed forge.
+
+The command writes one JSON object to standard output. `status` is one of
+`removed`, `nothing_to_remove`, `retryable`, or `refused`; a non-removed result
+may carry a stable `reason`. The object carries no Matrix room or event ids,
+user ids, credentials, error text from the homeserver, or filesystem paths.
+
+For a complete removal, the bridge first reads all recorded room ids. It then
+targets each distinct room exactly once. In each room it clears the
+`com.forgelet.*` relay facts, removes the operator, and leaves or forgets its own
+membership. Only after every room succeeds does it clear the forge's relay
+bookkeeping and remove the forge and project records from bridge state. A
+failure returns `retryable` and retains every room id plus per-room cleanup
+progress, so a later invocation resumes without losing the rooms it has not
+finished.
+
+The validation boundary is before the first Matrix mutation. A root that is not
+configured is `unknown_root`; a blank, relative, or parent-traversing root, or
+one with extra arguments, is `unsafe_root`; a root whose identity does not name
+exactly one configured forge is `ambiguous_root`; and a configured forge with a
+partial persisted forge record is `incomplete_state`. A configured root with no
+persisted forge record is already removed and returns `nothing_to_remove`.
+
+The bridge configuration and every forge file outside the bridge state
+directory retain their exact bytes. In particular, no project, worktree,
+dashboard file, task note, or adapter copy is changed. The bridge state must
+change on a successful removal and may change to record retry progress after a
+partial failure; it is the lifecycle record this command owns.
+
+The scenarios in `features/remove-forge-from-bridge.feature` are the acceptance
+contract. Scenario 1 is an outline over the number of recorded project rooms.
+Scenario 2 is an outline over each failure boundary and proves retry. Scenario 6
+is an outline over unsafe and ambiguous argument forms. The remaining scenarios
+are boolean lifecycle cases and intentionally have no example table.
