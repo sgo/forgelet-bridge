@@ -172,6 +172,18 @@ func TestRemoveCleansEachRoomInOrderAndKeepsProgress(t *testing.T) {
 	if _, ok := final.Relay.Approvals["other"]; !ok {
 		t.Fatalf("successful removal cleared another forge's approval: %+v", final.Relay.Approvals)
 	}
+	if _, ok := final.Relay.Activity["mine"]; ok {
+		t.Fatalf("successful removal retained this forge's activity: %+v", final.Relay.Activity)
+	}
+	if _, ok := final.Relay.Activity["other"]; !ok {
+		t.Fatalf("successful removal cleared another forge's activity with the same project name: %+v", final.Relay.Activity)
+	}
+	if _, ok := final.Relay.Threads["mine"]; ok {
+		t.Fatalf("successful removal retained this forge's scoped thread: %+v", final.Relay.Threads)
+	}
+	if _, ok := final.Relay.Threads["other"]; !ok {
+		t.Fatalf("successful removal cleared another forge's scoped thread: %+v", final.Relay.Threads)
+	}
 }
 
 func TestRemoveReturnsSanitizedRetryReason(t *testing.T) {
@@ -257,6 +269,12 @@ func removalState(root string) *state.State {
 	loaded.Relay.Waiting["!other:example.org\n"+relay.BoardFactType+"\nother"] = `{"projects":[]}`
 	loaded.Relay.Approvals["mine"] = relay.ApprovalState{RoomID: "!approvals:example.org", MessageID: "$mine"}
 	loaded.Relay.Approvals["other"] = relay.ApprovalState{RoomID: "!other-approvals:example.org", MessageID: "$other"}
+	loaded.Relay.Activity["mine"] = relay.CardState{ForgeRoot: root, Project: "project"}
+	loaded.Relay.Activity["other"] = relay.CardState{ForgeRoot: "/forges/other", Project: "project"}
+	loaded.Relay.Threads["mine"] = "$mine"
+	loaded.Relay.Threads["other"] = "$other"
+	loaded.Relay.Scope(relay.ScopeThreads, "mine", root)
+	loaded.Relay.Scope(relay.ScopeThreads, "other", "/forges/other")
 	return loaded
 }
 

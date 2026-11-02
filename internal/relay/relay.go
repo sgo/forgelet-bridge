@@ -56,7 +56,21 @@ type State struct {
 	// keyed by the room, the event type and the state key, so a restart writes
 	// nothing the room already holds and an item that stops waiting is cleared.
 	Waiting map[string]string `json:"waiting,omitempty"`
+	// Scopes maps the entries whose keys do not name a room to the forge root
+	// that owns them, so removing one forge cannot clear another forge's relay
+	// bookkeeping.
+	Scopes map[string]string `json:"scopes,omitempty"`
 }
+
+// Scope sections name the relay bookkeeping maps whose entries are keyed by an
+// event or request rather than by a room.
+const (
+	ScopeThreads        = "threads"
+	ScopeReplied        = "replied"
+	ScopeRelayed        = "relayed"
+	ScopePending        = "pending"
+	ScopePendingThreads = "pendingthreads"
+)
 
 // Kind names the work an action asks for.
 type Kind string
@@ -116,6 +130,69 @@ func (s *State) EnsureMaps() {
 	if s.Waiting == nil {
 		s.Waiting = map[string]string{}
 	}
+	if s.Scopes == nil {
+		s.Scopes = map[string]string{}
+	}
+}
+
+// Scope records the forge root that owns one relay-state entry.
+func (s *State) Scope(section, key, forgeRoot string) {
+	s.EnsureMaps()
+	s.Scopes[scopeKey(section, key)] = forgeRoot
+}
+
+// Unscope forgets the ownership of one relay-state entry after that entry is
+// consumed.
+func (s *State) Unscope(section, key string) {
+	s.EnsureMaps()
+	delete(s.Scopes, scopeKey(section, key))
+}
+
+// InScope reports whether one relay-state entry belongs to a forge root.
+func (s State) InScope(section, key, forgeRoot string) bool {
+	return s.ScopeOwner(section, key) == forgeRoot
+}
+
+// ScopeOwner names the forge root that owns one relay-state entry. An empty
+// result is state written before scopes were recorded.
+func (s State) ScopeOwner(section, key string) string {
+	return s.Scopes[scopeKey(section, key)]
+}
+
+// ForgetScoped removes the relay entries scoped to one forge root.
+func (s *State) ForgetScoped(forgeRoot string) {
+	s.EnsureMaps()
+	for scoped, owner := range s.Scopes {
+		if owner != forgeRoot {
+			continue
+		}
+		section, key, ok := splitScope(scoped)
+		if !ok {
+			continue
+		}
+		switch section {
+		case ScopeThreads:
+			delete(s.Threads, key)
+		case ScopeReplied:
+			delete(s.Replied, key)
+		case ScopeRelayed:
+			delete(s.Relayed, key)
+		case ScopePending:
+			delete(s.Pending, key)
+		case ScopePendingThreads:
+			delete(s.PendingThreads, key)
+		}
+		delete(s.Scopes, scoped)
+	}
+}
+
+func scopeKey(section, key string) string {
+	return section + "\n" + key
+}
+
+func splitScope(scoped string) (string, string, bool) {
+	section, key, found := strings.Cut(scoped, "\n")
+	return section, key, found && section != "" && key != ""
 }
 
 // Anchor returns the chat message a request's answer belongs under.

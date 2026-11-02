@@ -177,7 +177,7 @@ func (s Service) Remove(ctx context.Context, inspection Inspection) Result {
 	if !ok {
 		return Result{Status: NothingToRemove}
 	}
-	purgeRelay(&loaded.Relay, persisted)
+	purgeRelay(&loaded.Relay, fresh.Root, persisted)
 	delete(loaded.Forges, fresh.Root)
 	if err := loaded.Save(s.StatePath); err != nil {
 		return Result{Status: Retryable, Reason: "state_unavailable"}
@@ -270,8 +270,9 @@ func orderedRooms(forge state.Forge) []string {
 	return rooms
 }
 
-func purgeRelay(bookkeeping *relay.State, forge state.Forge) {
+func purgeRelay(bookkeeping *relay.State, root string, forge state.Forge) {
 	bookkeeping.EnsureMaps()
+	bookkeeping.ForgetScoped(root)
 	rooms := make(map[string]bool)
 	for _, roomID := range orderedRooms(forge) {
 		rooms[roomID] = true
@@ -283,21 +284,17 @@ func purgeRelay(bookkeeping *relay.State, forge state.Forge) {
 		}
 	}
 	for key, approval := range bookkeeping.Approvals {
-		if rooms[approval.RoomID] {
+		if approval.ForgeRoot == root || rooms[approval.RoomID] {
 			delete(bookkeeping.Approvals, key)
 		}
 	}
 	for key, clarification := range bookkeeping.Clarifications {
-		if rooms[clarification.RoomID] {
+		if clarification.ForgeRoot == root || rooms[clarification.RoomID] {
 			delete(bookkeeping.Clarifications, key)
 		}
 	}
-	projects := make(map[string]bool, len(forge.Projects))
-	for project := range forge.Projects {
-		projects[project] = true
-	}
 	for key, activity := range bookkeeping.Activity {
-		if projects[activity.Project] {
+		if activity.ForgeRoot == root {
 			delete(bookkeeping.Activity, key)
 		}
 	}

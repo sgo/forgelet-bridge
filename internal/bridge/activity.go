@@ -45,13 +45,13 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 	actions := relay.PlanActivity(b.state.Relay, cards)
 	news, moves := splitCardUpdates(actions)
 	posted := map[string]bool{}
-	if err := b.postCardNews(ctx, room.ActivityRoomID, news, posted); err != nil {
+	if err := b.postCardNews(ctx, root, room.ActivityRoomID, news, posted); err != nil {
 		return 0, err
 	}
-	if err := b.postCardMoves(ctx, room.ActivityRoomID, moves, posted); err != nil {
+	if err := b.postCardMoves(ctx, root, room.ActivityRoomID, moves, posted); err != nil {
 		return 0, err
 	}
-	if seeded := b.rememberQuietCards(cards, posted); seeded > 0 {
+	if seeded := b.rememberQuietCards(root, cards, posted); seeded > 0 {
 		if err := b.state.Save(b.statePath); err != nil {
 			return 0, err
 		}
@@ -85,26 +85,26 @@ func boardFacts(boards []relay.Board) []relay.Fact {
 
 // postCardNews posts a tick's card news as one message - the message the phone
 // is woken for - and remembers that the room has it.
-func (b *Bridge) postCardNews(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) postCardNews(ctx context.Context, root, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
 	if len(actions) == 0 {
 		return nil
 	}
 	if _, err := b.rooms.SendText(ctx, roomID, cardUpdates(actions), ""); err != nil {
 		return fmt.Errorf("post the tick's card news: %w", err)
 	}
-	return b.rememberCardUpdates(actions, posted)
+	return b.rememberCardUpdates(root, actions, posted)
 }
 
 // postCardMoves posts a tick's routine lane moves as one notice, which the
 // clients do not notify on, and remembers that the room has it.
-func (b *Bridge) postCardMoves(ctx context.Context, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) postCardMoves(ctx context.Context, root, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
 	if len(actions) == 0 {
 		return nil
 	}
 	if _, err := b.rooms.SendNotice(ctx, roomID, cardUpdates(actions)); err != nil {
 		return fmt.Errorf("post the tick's card moves: %w", err)
 	}
-	return b.rememberCardUpdates(actions, posted)
+	return b.rememberCardUpdates(root, actions, posted)
 }
 
 // splitCardUpdates keeps the tick's news apart from its routine moves: the news
@@ -134,15 +134,16 @@ func cardUpdates(actions []relay.ActivityAction) string {
 
 // rememberCardUpdates records what the operator has been told about every card
 // in a group, once that group is in the room: a restart then repeats nothing.
-func (b *Bridge) rememberCardUpdates(actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) rememberCardUpdates(root string, actions []relay.ActivityAction, posted map[string]bool) error {
 	b.state.Relay.EnsureMaps()
 	for _, action := range actions {
 		posted[action.Card.Key] = true
 		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
-			Lane:     action.Card.Lane,
-			Reported: string(action.Kind),
-			Project:  action.Card.Project,
-			Name:     action.Card.Name,
+			ForgeRoot: root,
+			Lane:      action.Card.Lane,
+			Reported:  string(action.Kind),
+			Project:   action.Card.Project,
+			Name:      action.Card.Name,
 		}
 	}
 	return b.state.Save(b.statePath)
@@ -153,7 +154,7 @@ func (b *Bridge) rememberCardUpdates(actions []relay.ActivityAction, posted map[
 // not narrated on the next tick either. A card the bridge meets in flight is
 // announced, so what it remembers quietly here is the history: cards that had
 // already finished before the bridge got to them.
-func (b *Bridge) rememberQuietCards(cards []relay.Card, posted map[string]bool) int {
+func (b *Bridge) rememberQuietCards(root string, cards []relay.Card, posted map[string]bool) int {
 	seeded := 0
 	for _, card := range cards {
 		if _, known := b.state.Relay.Activity[card.Key]; known {
@@ -164,10 +165,11 @@ func (b *Bridge) rememberQuietCards(cards []relay.Card, posted map[string]bool) 
 		}
 		b.state.Relay.EnsureMaps()
 		b.state.Relay.Activity[card.Key] = relay.CardState{
-			Lane:     card.Lane,
-			Reported: relay.ReportedFinished,
-			Project:  card.Project,
-			Name:     card.Name,
+			ForgeRoot: root,
+			Lane:      card.Lane,
+			Reported:  relay.ReportedFinished,
+			Project:   card.Project,
+			Name:      card.Name,
 		}
 		seeded++
 	}

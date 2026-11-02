@@ -20,10 +20,11 @@ type Board struct {
 // CardState is what the bridge remembers about one card, so that the activity
 // room only hears about real changes.
 type CardState struct {
-	Lane     string `json:"lane,omitempty"`
-	Reported string `json:"reported,omitempty"`
-	Project  string `json:"project,omitempty"`
-	Name     string `json:"name,omitempty"`
+	ForgeRoot string `json:"forge_root,omitempty"`
+	Lane      string `json:"lane,omitempty"`
+	Reported  string `json:"reported,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 // What the bridge has told the operator about a card.

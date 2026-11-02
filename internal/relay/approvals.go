@@ -15,6 +15,7 @@ type Approval struct {
 
 // ApprovalState is what the bridge remembers about one approval.
 type ApprovalState struct {
+	ForgeRoot string `json:"forge_root,omitempty"`
 	// RoomID is the room the approval's message was posted in, so a room
 	// reports on its own approvals and no other forge's.
 	RoomID string `json:"room_id,omitempty"`

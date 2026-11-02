@@ -38,7 +38,7 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store 
 
 	carriedOut := 0
 	for _, action := range waiting.list() {
-		if err := b.applyClarification(ctx, store, room, action); err != nil {
+		if err := b.applyClarification(ctx, root, store, room, action); err != nil {
 			b.refuse(err, root)
 			continue
 		}
@@ -46,7 +46,7 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store 
 		carriedOut++
 	}
 	written, err := b.carryOutFacts(ctx, room.ClarificationsRoomID, relay.ClarificationFactType, clarificationFacts(pending),
-		b.rememberClarificationStateEvents(pending))
+		b.rememberClarificationStateEvents(root, pending))
 	if err != nil {
 		return carriedOut + written, err
 	}
@@ -70,7 +70,7 @@ func clarificationFacts(pending []relay.Clarification) []relay.Fact {
 // question. The state keeps the question under its project-qualified key while
 // the room keys the event the way the relay's own fact does, so the two are
 // mapped here, the room's key asked of the relay rather than assumed.
-func (b *Bridge) rememberClarificationStateEvents(pending []relay.Clarification) func(stateKey, eventID string) {
+func (b *Bridge) rememberClarificationStateEvents(root string, pending []relay.Clarification) func(stateKey, eventID string) {
 	keys := make(map[string]string, len(pending))
 	for _, clarification := range pending {
 		keys[relay.ClarificationFact(clarification).Key] = clarification.Key
@@ -80,7 +80,7 @@ func (b *Bridge) rememberClarificationStateEvents(pending []relay.Clarification)
 		if !known {
 			return
 		}
-		b.recordClarification(key, func(state relay.ClarificationState) relay.ClarificationState {
+		b.recordClarification(root, key, func(state relay.ClarificationState) relay.ClarificationState {
 			state.StateEventID = eventID
 			return state
 		})
@@ -89,8 +89,8 @@ func (b *Bridge) rememberClarificationStateEvents(pending []relay.Clarification)
 
 // applyClarification is one piece of clarifications work, kept in the state as
 // soon as it lands so a restart does not repeat it.
-func (b *Bridge) applyClarification(ctx context.Context, store ClarificationStore, room Room, action relay.ClarificationAction) error {
-	if err := b.carryOutClarification(ctx, store, room, action); err != nil {
+func (b *Bridge) applyClarification(ctx context.Context, root string, store ClarificationStore, room Room, action relay.ClarificationAction) error {
+	if err := b.carryOutClarification(ctx, root, store, room, action); err != nil {
 		return err
 	}
 	return b.state.Save(b.statePath)
@@ -98,28 +98,29 @@ func (b *Bridge) applyClarification(ctx context.Context, store ClarificationStor
 
 // carryOutClarification is the one piece of clarifications work an action asks
 // for.
-func (b *Bridge) carryOutClarification(ctx context.Context, store ClarificationStore, room Room, action relay.ClarificationAction) error {
+func (b *Bridge) carryOutClarification(ctx context.Context, root string, store ClarificationStore, room Room, action relay.ClarificationAction) error {
 	switch action.Kind {
 	case relay.PostClarification:
-		return b.postClarification(ctx, room, action)
+		return b.postClarification(ctx, root, room, action)
 	case relay.AnswerClarification:
-		return b.answerClarification(ctx, store, action)
+		return b.answerClarification(ctx, root, store, action)
 	case relay.ReplyClarification:
-		return b.reportClarificationAnswer(ctx, room, action)
+		return b.reportClarificationAnswer(ctx, root, room, action)
 	case relay.ReactClarification:
-		return b.reactClarification(ctx, room, action)
+		return b.reactClarification(ctx, root, room, action)
 	}
 	return fmt.Errorf("unknown clarification action %q", action.Kind)
 }
 
 // postClarification posts a pending clarification into the room and remembers
 // its message.
-func (b *Bridge) postClarification(ctx context.Context, room Room, action relay.ClarificationAction) error {
+func (b *Bridge) postClarification(ctx context.Context, root string, room Room, action relay.ClarificationAction) error {
 	eventID, err := b.rooms.SendText(ctx, room.ClarificationsRoomID, clarificationMessage(action.Clarification), "")
 	if err != nil {
 		return fmt.Errorf("post clarification %s: %w", action.Key, err)
 	}
-	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+		state.ForgeRoot = root
 		state.RoomID = room.ClarificationsRoomID
 		state.MessageID = eventID
 		return state
@@ -129,12 +130,12 @@ func (b *Bridge) postClarification(ctx context.Context, room Room, action relay.
 
 // reactClarification marks the clarification's own message with the bridge's
 // reaction, so an answer the operator gave here leaves the thread quiet.
-func (b *Bridge) reactClarification(ctx context.Context, room Room, action relay.ClarificationAction) error {
+func (b *Bridge) reactClarification(ctx context.Context, root string, room Room, action relay.ClarificationAction) error {
 	eventID, err := b.rooms.SendReaction(ctx, room.ClarificationsRoomID, action.MessageID, action.Reaction)
 	if err != nil {
 		return fmt.Errorf("mark clarification %s: %w", action.Key, err)
 	}
-	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {
 		state.ReactionID = eventID
 		return state
 	})
@@ -152,11 +153,11 @@ func (b *Bridge) clarificationState(room Room) relay.State {
 
 // answerClarification carries the operator's answer back through the forge's
 // dashboard, which is what wakes the blocked role with it.
-func (b *Bridge) answerClarification(ctx context.Context, store ClarificationStore, action relay.ClarificationAction) error {
+func (b *Bridge) answerClarification(ctx context.Context, root string, store ClarificationStore, action relay.ClarificationAction) error {
 	if err := store.Answer(ctx, action.Clarification.Project, action.Clarification.ID, action.Answer); err != nil {
 		return fmt.Errorf("answer %s: %w", action.Key, err)
 	}
-	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {
 		state.Answer = action.Answer
 		return state
 	})
@@ -165,21 +166,23 @@ func (b *Bridge) answerClarification(ctx context.Context, store ClarificationSto
 
 // reportClarificationAnswer reports in the clarification's thread that it was
 // answered, and how.
-func (b *Bridge) reportClarificationAnswer(ctx context.Context, room Room, action relay.ClarificationAction) error {
+func (b *Bridge) reportClarificationAnswer(ctx context.Context, root string, room Room, action relay.ClarificationAction) error {
 	eventID, err := b.rooms.SendText(ctx, room.ClarificationsRoomID, action.Text, action.MessageID)
 	if err != nil {
 		return fmt.Errorf("report clarification %s: %w", action.Key, err)
 	}
-	b.recordClarification(action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {
 		state.ReplyID = eventID
 		return state
 	})
 	return nil
 }
 
-func (b *Bridge) recordClarification(key string, update func(relay.ClarificationState) relay.ClarificationState) {
+func (b *Bridge) recordClarification(root, key string, update func(relay.ClarificationState) relay.ClarificationState) {
 	b.state.Relay.EnsureMaps()
-	b.state.Relay.Clarifications[key] = update(b.state.Relay.Clarifications[key])
+	state := update(b.state.Relay.Clarifications[key])
+	state.ForgeRoot = root
+	b.state.Relay.Clarifications[key] = state
 }
 
 // mutate4go-manifest-begin

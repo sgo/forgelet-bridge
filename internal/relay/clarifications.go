@@ -12,6 +12,7 @@ type Clarification struct {
 
 // ClarificationState is what the bridge remembers about one clarification.
 type ClarificationState struct {
+	ForgeRoot string `json:"forge_root,omitempty"`
 	// RoomID is the room the clarification's message was posted in, so a room
 	// reports on its own clarifications and no other forge's.
 	RoomID string `json:"room_id,omitempty"`

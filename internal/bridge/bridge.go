@@ -424,7 +424,7 @@ func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore
 		carriedOut++
 	}
 
-	paired, err := b.pairPendingRequests(store)
+	paired, err := b.pairPendingRequests(root, store)
 	if err != nil {
 		b.refuse(err, root)
 		return carriedOut
@@ -443,9 +443,9 @@ func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room 
 func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
 	switch action.Kind {
 	case relay.PostRequestMessage:
-		return b.postRequestMessage(ctx, room, action)
+		return b.postRequestMessage(ctx, root, room, action)
 	case relay.PostRequestReply:
-		return b.postRequestReply(ctx, room, action)
+		return b.postRequestReply(ctx, root, room, action)
 	case relay.CreateForgeRequest:
 		return b.createForgeRequest(ctx, store, root, action)
 	}

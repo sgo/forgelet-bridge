@@ -49,7 +49,7 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 
 	carriedOut := 0
 	for _, action := range waiting.list() {
-		if err := b.applyApproval(ctx, store, room, action); err != nil {
+		if err := b.applyApproval(ctx, root, store, room, action); err != nil {
 			b.reportApprovalFailure(ctx, room, waiting, action, err)
 			// The forge refused this action: it is named in the status, and
 			// the rest of the tick - the other forges included - goes ahead.
@@ -60,7 +60,7 @@ func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, 
 		carriedOut++
 	}
 	written, err := b.carryOutFacts(ctx, room.ApprovalsRoomID, relay.ApprovalFactType, approvalFacts(pending),
-		b.rememberApprovalStateEvents(pending))
+		b.rememberApprovalStateEvents(root, pending))
 	if err != nil {
 		return carriedOut + written, err
 	}
@@ -84,7 +84,7 @@ func approvalFacts(pending []relay.Approval) []relay.Fact {
 // approval. The state keeps the approval under its project-qualified key while
 // the room keys the event the way the relay's own fact does, so the two are
 // mapped here, the room's key asked of the relay rather than assumed.
-func (b *Bridge) rememberApprovalStateEvents(pending []relay.Approval) func(stateKey, eventID string) {
+func (b *Bridge) rememberApprovalStateEvents(root string, pending []relay.Approval) func(stateKey, eventID string) {
 	keys := make(map[string]string, len(pending))
 	for _, approval := range pending {
 		keys[relay.ApprovalFact(approval).Key] = approval.Key
@@ -94,31 +94,31 @@ func (b *Bridge) rememberApprovalStateEvents(pending []relay.Approval) func(stat
 		if !known {
 			return
 		}
-		b.recordApproval(key, func(state relay.ApprovalState) relay.ApprovalState {
+		b.recordApproval(root, key, func(state relay.ApprovalState) relay.ApprovalState {
 			state.StateEventID = eventID
 			return state
 		})
 	}
 }
 
-func (b *Bridge) applyApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {
-	if err := b.carryOutApproval(ctx, store, room, action); err != nil {
+func (b *Bridge) applyApproval(ctx context.Context, root string, store ApprovalStore, room Room, action relay.ApprovalAction) error {
+	if err := b.carryOutApproval(ctx, root, store, room, action); err != nil {
 		return err
 	}
 	return b.state.Save(b.statePath)
 }
 
 // carryOutApproval is the one piece of approvals work an action asks for.
-func (b *Bridge) carryOutApproval(ctx context.Context, store ApprovalStore, room Room, action relay.ApprovalAction) error {
+func (b *Bridge) carryOutApproval(ctx context.Context, root string, store ApprovalStore, room Room, action relay.ApprovalAction) error {
 	switch action.Kind {
 	case relay.PostApproval:
-		return b.postApproval(ctx, room, action)
+		return b.postApproval(ctx, root, room, action)
 	case relay.ResolveApproval:
-		return b.resolveApproval(ctx, store, action)
+		return b.resolveApproval(ctx, root, store, action)
 	case relay.ReplyApproval:
-		return b.reportResolution(ctx, room, action)
+		return b.reportResolution(ctx, root, room, action)
 	case relay.ReactApproval:
-		return b.reactApproval(ctx, room, action)
+		return b.reactApproval(ctx, root, room, action)
 	case relay.AnswerGestures:
 		return b.answerGestures(ctx, room)
 	}
@@ -126,12 +126,13 @@ func (b *Bridge) carryOutApproval(ctx context.Context, store ApprovalStore, room
 }
 
 // postApproval posts a pending approval into the room and remembers its message.
-func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.ApprovalAction) error {
+func (b *Bridge) postApproval(ctx context.Context, root string, room Room, action relay.ApprovalAction) error {
 	eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, approvalMessage(action.Approval), "")
 	if err != nil {
 		return fmt.Errorf("post approval %s: %w", action.Key, err)
 	}
-	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+	b.recordApproval(root, action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+		state.ForgeRoot = root
 		state.RoomID = room.ApprovalsRoomID
 		state.MessageID = eventID
 		return state
@@ -142,12 +143,12 @@ func (b *Bridge) postApproval(ctx context.Context, room Room, action relay.Appro
 // reactApproval marks the approval's own message with the bridge's reaction -
 // the arrow that answers how the approval went - so the outcome sits on the
 // line the operator acted on and the approval's thread stays quiet.
-func (b *Bridge) reactApproval(ctx context.Context, room Room, action relay.ApprovalAction) error {
+func (b *Bridge) reactApproval(ctx context.Context, root string, room Room, action relay.ApprovalAction) error {
 	eventID, err := b.rooms.SendReaction(ctx, room.ApprovalsRoomID, action.MessageID, action.Reaction)
 	if err != nil {
 		return fmt.Errorf("mark approval %s: %w", action.Key, err)
 	}
-	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+	b.recordApproval(root, action.Key, func(state relay.ApprovalState) relay.ApprovalState {
 		state.Resolution = action.Resolution
 		state.ReactionID = eventID
 		return state
@@ -165,12 +166,12 @@ func (b *Bridge) approvalState(room Room) relay.State {
 }
 
 // reportResolution reports in the approval's thread how it was resolved.
-func (b *Bridge) reportResolution(ctx context.Context, room Room, action relay.ApprovalAction) error {
+func (b *Bridge) reportResolution(ctx context.Context, root string, room Room, action relay.ApprovalAction) error {
 	eventID, err := b.rooms.SendText(ctx, room.ApprovalsRoomID, action.Text, action.MessageID)
 	if err != nil {
 		return fmt.Errorf("report approval %s: %w", action.Key, err)
 	}
-	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+	b.recordApproval(root, action.Key, func(state relay.ApprovalState) relay.ApprovalState {
 		state.Resolution = action.Resolution
 		state.ReplyID = eventID
 		return state
@@ -189,7 +190,7 @@ func (b *Bridge) answerGestures(ctx context.Context, room Room) error {
 // gestureAnswer tells the operator, briefly, what this room can read.
 const gestureAnswer = `Reply "approve" or react ✅ to approve; reply with anything else in the thread to send it back.`
 
-func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, action relay.ApprovalAction) error {
+func (b *Bridge) resolveApproval(ctx context.Context, root string, store ApprovalStore, action relay.ApprovalAction) error {
 	approval := action.Approval
 	switch action.Resolution {
 	case relay.ResolutionApproved:
@@ -203,16 +204,18 @@ func (b *Bridge) resolveApproval(ctx context.Context, store ApprovalStore, actio
 	default:
 		return fmt.Errorf("unknown resolution %q for %s", action.Resolution, action.Key)
 	}
-	b.recordApproval(action.Key, func(state relay.ApprovalState) relay.ApprovalState {
+	b.recordApproval(root, action.Key, func(state relay.ApprovalState) relay.ApprovalState {
 		state.Resolution = action.Resolution
 		return state
 	})
 	return nil
 }
 
-func (b *Bridge) recordApproval(key string, update func(relay.ApprovalState) relay.ApprovalState) {
+func (b *Bridge) recordApproval(root, key string, update func(relay.ApprovalState) relay.ApprovalState) {
 	b.state.Relay.EnsureMaps()
-	b.state.Relay.Approvals[key] = update(b.state.Relay.Approvals[key])
+	state := update(b.state.Relay.Approvals[key])
+	state.ForgeRoot = root
+	b.state.Relay.Approvals[key] = state
 }
 
 // mutate4go-manifest-begin

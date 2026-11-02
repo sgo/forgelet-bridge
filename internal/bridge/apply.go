@@ -10,18 +10,19 @@ import (
 
 // postRequestMessage posts a forge chat request into the room and remembers
 // the message its answer belongs under.
-func (b *Bridge) postRequestMessage(ctx context.Context, room Room, action relay.Action) error {
+func (b *Bridge) postRequestMessage(ctx context.Context, root string, room Room, action relay.Action) error {
 	eventID, err := b.rooms.SendText(ctx, room.RoomID, action.Body, "")
 	if err != nil {
 		return fmt.Errorf("post chat message for %s: %w", action.RequestID, err)
 	}
 	b.state.Relay.Threads[action.RequestID] = eventID
+	b.state.Relay.Scope(relay.ScopeThreads, action.RequestID, root)
 	return nil
 }
 
 // postRequestReply posts the lieutenant's answer as a reply in the request's
 // thread.
-func (b *Bridge) postRequestReply(ctx context.Context, room Room, action relay.Action) error {
+func (b *Bridge) postRequestReply(ctx context.Context, root string, room Room, action relay.Action) error {
 	anchor := action.AnchorEventID
 	if anchor == "" {
 		anchor, _ = b.state.Relay.Anchor(action.RequestID)
@@ -34,6 +35,7 @@ func (b *Bridge) postRequestReply(ctx context.Context, room Room, action relay.A
 		return fmt.Errorf("post chat reply for %s: %w", action.RequestID, err)
 	}
 	b.state.Relay.Replied[action.RequestID] = eventID
+	b.state.Relay.Scope(relay.ScopeReplied, action.RequestID, root)
 	return nil
 }
 
@@ -46,15 +48,17 @@ func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root 
 	}
 	b.state.Relay.EnsureMaps()
 	b.state.Relay.Pending[action.SourceEventID] = action.Body
+	b.state.Relay.Scope(relay.ScopePending, action.SourceEventID, root)
 	if action.SourceThread != "" {
 		b.state.Relay.PendingThreads[action.SourceEventID] = action.SourceThread
+		b.state.Relay.Scope(relay.ScopePendingThreads, action.SourceEventID, root)
 	}
 	return nil
 }
 
 // pairPendingRequests pairs each message the forge has taken with the request
 // it became, so the answer can be threaded under the operator's own message.
-func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
+func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error) {
 	b.state.Relay.EnsureMaps()
 	if len(b.state.Relay.Pending) == 0 {
 		return 0, nil
@@ -64,17 +68,25 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 		return 0, fmt.Errorf("read the queue back: %w", err)
 	}
 	taken := map[string]bool{}
-	for _, requestID := range b.state.Relay.Relayed {
-		taken[requestID] = true
+	for eventID, requestID := range b.state.Relay.Relayed {
+		if b.state.Relay.InScope(relay.ScopeRelayed, eventID, root) ||
+			b.state.Relay.ScopeOwner(relay.ScopeRelayed, eventID) == "" {
+			taken[requestID] = true
+		}
 	}
 	paired := 0
 	for _, eventID := range pendingEvents(b.state.Relay.Pending) {
+		owner := b.state.Relay.ScopeOwner(relay.ScopePending, eventID)
+		if owner != "" && owner != root {
+			continue
+		}
 		requestID, ok := takeRequest(requests, b.state.Relay.Pending[eventID], taken)
 		if !ok {
 			continue
 		}
 		taken[requestID] = true
 		b.state.Relay.Relayed[eventID] = requestID
+		b.state.Relay.Scope(relay.ScopeRelayed, eventID, root)
 		// The answer belongs in the thread the operator wrote in. When their
 		// message was itself a reply, that thread is where it sits, not the
 		// message: a thread cannot start from an event that already carries a
@@ -84,8 +96,11 @@ func (b *Bridge) pairPendingRequests(store ForgeStore) (int, error) {
 		} else {
 			b.state.Relay.Threads[requestID] = eventID
 		}
+		b.state.Relay.Scope(relay.ScopeThreads, requestID, root)
 		delete(b.state.Relay.PendingThreads, eventID)
+		b.state.Relay.Unscope(relay.ScopePendingThreads, eventID)
 		delete(b.state.Relay.Pending, eventID)
+		b.state.Relay.Unscope(relay.ScopePending, eventID)
 		paired++
 	}
 	if paired == 0 {

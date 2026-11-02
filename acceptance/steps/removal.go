@@ -193,8 +193,12 @@ func bridgeRecordedProjectRooms(_ context.Context, world any, captures []string)
 		RoomID: tracked.ClarificationsRoomID, MessageID: "$removal-clarification",
 	}
 	loaded.Relay.Activity["removal/card"] = relay.CardState{
-		Project: scenario.project, Name: "removal-card", Lane: "coder",
+		ForgeRoot: targetRoot, Project: scenario.project, Name: "removal-card", Lane: "coder",
 	}
+	loaded.Relay.Threads["removal/request"] = "$removal-message"
+	loaded.Relay.Scope(relay.ScopeThreads, "removal/request", targetRoot)
+	loaded.Relay.Threads["kept/request"] = "$kept-message"
+	loaded.Relay.Scope(relay.ScopeThreads, "kept/request", w.configured[0])
 	if err := loaded.Save(w.removalStatePath()); err != nil {
 		return err
 	}
@@ -393,6 +397,12 @@ func removalRelayBookkeepingCleared(_ context.Context, world any, captures []str
 		if strings.Contains(key, "/"+captures[1]) {
 			return fmt.Errorf("relay waiting fact %q remains for %s", key, captures[1])
 		}
+	}
+	if _, ok := loaded.Relay.Threads["removal/request"]; ok {
+		return fmt.Errorf("removed forge's scoped relay thread remains")
+	}
+	if _, ok := loaded.Relay.Threads["kept/request"]; !ok {
+		return fmt.Errorf("another forge's scoped relay thread was removed")
 	}
 	return nil
 }
