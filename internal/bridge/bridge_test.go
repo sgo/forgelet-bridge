@@ -379,6 +379,12 @@ func TestTickThreadsTheLieutenantsAnswer(t *testing.T) {
 	if sent[1].anchor != "$event-is the build green?" {
 		t.Errorf("reply anchor = %q, want the posted request message", sent[1].anchor)
 	}
+	if owner := built.State().Relay.ScopeOwner(relay.ScopeThreads, "req-1"); owner != "/forges/forge-a" {
+		t.Errorf("thread scope owner = %q, want the forge root", owner)
+	}
+	if owner := built.State().Relay.ScopeOwner(relay.ScopeReplied, "req-1"); owner != "/forges/forge-a" {
+		t.Errorf("reply scope owner = %q, want the forge root", owner)
+	}
 }
 
 func TestTickQueuesOperatorMessageAsChatRequest(t *testing.T) {
@@ -399,6 +405,12 @@ func TestTickQueuesOperatorMessageAsChatRequest(t *testing.T) {
 	}
 	if anchor, ok := built.State().Relay.Anchor("req-1"); !ok || anchor != "$operator-message" {
 		t.Errorf("anchor = %q, %v, want the operator's own message", anchor, ok)
+	}
+	if owner := built.State().Relay.ScopeOwner(relay.ScopeThreads, "req-1"); owner != "/forges/forge-a" {
+		t.Errorf("thread scope owner = %q, want the forge root", owner)
+	}
+	if owner := built.State().Relay.ScopeOwner(relay.ScopeRelayed, "$operator-message"); owner != "/forges/forge-a" {
+		t.Errorf("relayed scope owner = %q, want the forge root", owner)
 	}
 	if sent := rooms.sentMessages(); len(sent) != 0 {
 		t.Errorf("sent = %+v, want no echo of the operator's message", sent)

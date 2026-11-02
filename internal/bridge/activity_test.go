@@ -271,8 +271,12 @@ func TestTickDoesNotReplayTheBoardAForgeArrivesWith(t *testing.T) {
 	if sent := rooms.sentMessages(); len(sent) != 0 {
 		t.Errorf("sent = %d messages, want the history the forge arrived with left unsaid", len(sent))
 	}
-	if _, known := built.State().Relay.Activity["forgelet-bridge/finished-card-0"]; !known {
+	activity, known := built.State().Relay.Activity["forgelet-bridge/finished-card-0"]
+	if !known {
 		t.Errorf("the cards the forge arrived with were not remembered, so a later tick would narrate them")
+	}
+	if activity.ForgeRoot != "/forges/forge-a" {
+		t.Errorf("activity scope owner = %q, want the forge root", activity.ForgeRoot)
 	}
 }
 

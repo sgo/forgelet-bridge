@@ -114,6 +114,9 @@ func TestTickCarriesTheOperatorsReplyBackAsTheAnswer(t *testing.T) {
 		t.Fatalf("answers = %+v, want the operator's reply carried back", answers)
 	}
 	messageID := built.State().Relay.Clarifications["forgelet-bridge/clar-1"].MessageID
+	if owner := built.State().Relay.Clarifications["forgelet-bridge/clar-1"].ForgeRoot; owner != "/forges/forge-a" {
+		t.Errorf("clarification scope owner = %q, want the forge root", owner)
+	}
 	marks := rooms.sentReactions()
 	if len(marks) != 1 || marks[0].roomID != "!clarifications-forge-a" || marks[0].target != messageID || marks[0].key != relay.CarriedOutReaction {
 		t.Fatalf("reactions = %+v, want the bridge's mark on the clarification's own message", marks)

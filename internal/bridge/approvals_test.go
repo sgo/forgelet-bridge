@@ -135,6 +135,9 @@ func TestTickPostsPendingApprovalsIntoTheApprovalsRoom(t *testing.T) {
 	if state.MessageID == "" {
 		t.Error("the bridge did not remember the approval message")
 	}
+	if state.ForgeRoot != "/forges/forge-a" {
+		t.Errorf("approval scope owner = %q, want the forge root", state.ForgeRoot)
+	}
 }
 
 func TestTickApprovesWhenTheOperatorReacts(t *testing.T) {
