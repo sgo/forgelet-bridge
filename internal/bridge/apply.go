@@ -67,17 +67,10 @@ func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("read the queue back: %w", err)
 	}
-	taken := map[string]bool{}
-	for eventID, requestID := range b.state.Relay.Relayed {
-		if b.state.Relay.InScope(relay.ScopeRelayed, eventID, root) ||
-			b.state.Relay.ScopeOwner(relay.ScopeRelayed, eventID) == "" {
-			taken[requestID] = true
-		}
-	}
+	taken := b.takenRequests(root)
 	paired := 0
 	for _, eventID := range pendingEvents(b.state.Relay.Pending) {
-		owner := b.state.Relay.ScopeOwner(relay.ScopePending, eventID)
-		if owner != "" && owner != root {
+		if !b.pendingBelongsTo(root, eventID) {
 			continue
 		}
 		requestID, ok := takeRequest(requests, b.state.Relay.Pending[eventID], taken)
@@ -85,28 +78,48 @@ func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error)
 			continue
 		}
 		taken[requestID] = true
-		b.state.Relay.Relayed[eventID] = requestID
-		b.state.Relay.Scope(relay.ScopeRelayed, eventID, root)
-		// The answer belongs in the thread the operator wrote in. When their
-		// message was itself a reply, that thread is where it sits, not the
-		// message: a thread cannot start from an event that already carries a
-		// relation, and the room answers 400 when we try.
-		if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
-			b.state.Relay.Threads[requestID] = thread
-		} else {
-			b.state.Relay.Threads[requestID] = eventID
-		}
-		b.state.Relay.Scope(relay.ScopeThreads, requestID, root)
-		delete(b.state.Relay.PendingThreads, eventID)
-		b.state.Relay.Unscope(relay.ScopePendingThreads, eventID)
-		delete(b.state.Relay.Pending, eventID)
-		b.state.Relay.Unscope(relay.ScopePending, eventID)
+		b.recordPair(root, eventID, requestID)
 		paired++
 	}
 	if paired == 0 {
 		return 0, nil
 	}
 	return paired, b.state.Save(b.statePath)
+}
+
+func (b *Bridge) takenRequests(root string) map[string]bool {
+	taken := map[string]bool{}
+	for eventID, requestID := range b.state.Relay.Relayed {
+		if b.state.Relay.InScope(relay.ScopeRelayed, eventID, root) ||
+			b.state.Relay.ScopeOwner(relay.ScopeRelayed, eventID) == "" {
+			taken[requestID] = true
+		}
+	}
+	return taken
+}
+
+func (b *Bridge) pendingBelongsTo(root, eventID string) bool {
+	owner := b.state.Relay.ScopeOwner(relay.ScopePending, eventID)
+	return owner == "" || owner == root
+}
+
+func (b *Bridge) recordPair(root, eventID, requestID string) {
+	b.state.Relay.Relayed[eventID] = requestID
+	b.state.Relay.Scope(relay.ScopeRelayed, eventID, root)
+	// The answer belongs in the thread the operator wrote in. When their
+	// message was itself a reply, that thread is where it sits, not the
+	// message: a thread cannot start from an event that already carries a
+	// relation, and the room answers 400 when we try.
+	if thread := b.state.Relay.PendingThreads[eventID]; thread != "" {
+		b.state.Relay.Threads[requestID] = thread
+	} else {
+		b.state.Relay.Threads[requestID] = eventID
+	}
+	b.state.Relay.Scope(relay.ScopeThreads, requestID, root)
+	delete(b.state.Relay.PendingThreads, eventID)
+	b.state.Relay.Unscope(relay.ScopePendingThreads, eventID)
+	delete(b.state.Relay.Pending, eventID)
+	b.state.Relay.Unscope(relay.ScopePending, eventID)
 }
 
 // pendingEvents is the messages waiting to be paired, in a stable order so the

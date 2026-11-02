@@ -28,8 +28,8 @@ func register(registry *runtime.Registry) error {
 		{`^the forge (\S+)'s dashboard is stopped$`, dashboardStopped},
 		{`^the forge (\S+)'s dashboard is started again$`, dashboardStartedAgain},
 
-		{`^the bridge configuration of the forge root (\S+) names the forge roots? (.+)$`, configureAdapterForges},
 		{`^the bridge configuration of the forge root (\S+) names the forge root (\S+) as (.+)$`, bridgeConfigNamesForge},
+		{`^the bridge configuration of the forge root (\S+) names the forge roots? (.+)$`, configureAdapterForges},
 		{`^the bridge configuration of the forge root (\S+) holds only the forge root (\S+)$`, bridgeConfigHoldsOnlyForge},
 		{`^the adapter for the forge root (\S+) has started the bridge$`, adapterStartedBridge},
 		{`^the adapter for the forge root (\S+) adds the forge root (\S+) as (.+)$`, adapterAddsForge},

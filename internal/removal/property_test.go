@@ -5,6 +5,7 @@ package removal
 import (
 	"math/rand"
 	"reflect"
+	"slices"
 	"testing"
 	"testing/quick"
 
@@ -42,7 +43,7 @@ func TestPropertyRemovalPlansEveryDistinctRecordedRoomOnce(t *testing.T) {
 
 		first := Inspect(cfg, loaded, "/forges/one")
 		second := Inspect(cfg, loaded, "/forges/one")
-		if first.Result.Status != Ready || !sameRooms(first.Rooms, second.Rooms) {
+		if first.Result.Status != Ready || !slices.Equal(first.Rooms, second.Rooms) {
 			return false
 		}
 
@@ -106,16 +107,4 @@ func TestPropertyUnsafeRootsNeverPlanMatrixWork(t *testing.T) {
 func randomProjectName(rnd *rand.Rand) string {
 	const letters = "abcdefghijklmnop"
 	return string(letters[rnd.Intn(len(letters))])
-}
-
-func sameRooms(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }

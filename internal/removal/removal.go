@@ -6,12 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/unclebob/forgelet-bridge/internal/config"
-	"github.com/unclebob/forgelet-bridge/internal/relay"
 	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
@@ -63,45 +59,6 @@ type Service struct {
 	Config    config.Config
 }
 
-// Inspect validates everything that can be checked without touching Matrix.
-// It deliberately leaves the state unmarshaled result untouched.
-func Inspect(cfg config.Config, loaded *state.State, root string) Inspection {
-	if blank := strings.TrimSpace(root); blank == "" {
-		return refusedInspection("unsafe_root")
-	}
-	if hasParentTraversal(root) {
-		return refusedInspection("unsafe_root")
-	}
-
-	matched := matchingRoots(cfg, root)
-	if len(matched) > 1 {
-		return refusedInspection("ambiguous_root")
-	}
-	if !filepath.IsAbs(root) {
-		return refusedInspection("unsafe_root")
-	}
-	if len(matched) == 0 {
-		return refusedInspection("unknown_root")
-	}
-	if loaded == nil {
-		return refusedInspection("incomplete_state")
-	}
-	forge, ok := loaded.Forges[root]
-	if !ok {
-		return Inspection{Result: Result{Status: NothingToRemove}}
-	}
-	if !completeForge(forge) {
-		return refusedInspection("incomplete_state")
-	}
-
-	return Inspection{
-		Result: Result{Status: Ready},
-		Root:   root,
-		Forge:  &forge,
-		Rooms:  orderedRooms(forge),
-	}
-}
-
 // Load reads the bridge state a removal request must validate before stopping
 // the running process or connecting to Matrix.
 func (s Service) Load() (*state.State, error) {
@@ -114,73 +71,96 @@ func (s Service) Remove(ctx context.Context, inspection Inspection) Result {
 	if inspection.Result.Status != Ready {
 		return inspection.Result
 	}
-	if s.Cleaner == nil {
-		return Result{Status: Retryable, Reason: "matrix_unavailable"}
+	fresh, result, ready := s.reload(inspection.Root)
+	if !ready {
+		return result
 	}
+	forge := fresh.Forge
+	ensureCleanup(forge)
+	for _, roomID := range fresh.Rooms {
+		_, result := s.cleanRoom(ctx, fresh.Root, roomID, forge)
+		if result.Status != "" {
+			return result
+		}
+	}
+	return s.finalize(fresh.Root)
+}
 
+func (s Service) reload(root string) (Inspection, Result, bool) {
+	if s.Cleaner == nil {
+		return Inspection{}, retryable("matrix_unavailable"), false
+	}
 	loaded, err := s.Load()
 	if err != nil {
-		return Result{Status: Retryable, Reason: "state_unavailable"}
+		return Inspection{}, retryable("state_unavailable"), false
 	}
-	fresh := Inspect(s.Config, loaded, inspection.Root)
-	if fresh.Result.Status != Ready {
-		return fresh.Result
-	}
+	fresh := Inspect(s.Config, loaded, root)
+	return fresh, fresh.Result, fresh.Result.Status == Ready
+}
 
-	forge := fresh.Forge
-	if forge.Cleanup == nil {
-		forge.Cleanup = &state.Cleanup{Rooms: map[string]state.RoomCleanup{}}
+func (s Service) cleanRoom(
+	ctx context.Context,
+	root, roomID string,
+	forge *state.Forge,
+) (state.RoomCleanup, Result) {
+	progress := forge.Cleanup.Rooms[roomID]
+	progress, result := s.cleanStage(ctx, root, roomID, forge, progress, progress.FactsCleared,
+		func() error { return s.Cleaner.ClearFacts(ctx, roomID) },
+		func(progress *state.RoomCleanup) { progress.FactsCleared = true },
+		"relay_cleanup_failed")
+	if result.Status != "" {
+		return progress, result
 	}
-	if forge.Cleanup.Rooms == nil {
-		forge.Cleanup.Rooms = map[string]state.RoomCleanup{}
+	progress, result = s.cleanStage(ctx, root, roomID, forge, progress, progress.OperatorRemoved,
+		func() error { return s.Cleaner.RemoveOperator(ctx, roomID, s.Operator) },
+		func(progress *state.RoomCleanup) { progress.OperatorRemoved = true },
+		"operator_removal_failed")
+	if result.Status != "" {
+		return progress, result
 	}
+	return s.cleanStage(ctx, root, roomID, forge, progress, progress.BridgeLeft,
+		func() error { return s.Cleaner.LeaveAndForget(ctx, roomID) },
+		func(progress *state.RoomCleanup) { progress.BridgeLeft = true },
+		"bridge_membership_failed")
+}
 
-	for _, roomID := range fresh.Rooms {
-		progress := forge.Cleanup.Rooms[roomID]
-		if !progress.FactsCleared {
-			if err := s.Cleaner.ClearFacts(ctx, roomID); err != nil {
-				return Result{Status: Retryable, Reason: "relay_cleanup_failed"}
-			}
-			progress.FactsCleared = true
-			forge.Cleanup.Rooms[roomID] = progress
-			if !s.saveForge(fresh.Root, forge) {
-				return Result{Status: Retryable, Reason: "state_unavailable"}
-			}
-		}
-		if !progress.OperatorRemoved {
-			if err := s.Cleaner.RemoveOperator(ctx, roomID, s.Operator); err != nil {
-				return Result{Status: Retryable, Reason: "operator_removal_failed"}
-			}
-			progress.OperatorRemoved = true
-			forge.Cleanup.Rooms[roomID] = progress
-			if !s.saveForge(fresh.Root, forge) {
-				return Result{Status: Retryable, Reason: "state_unavailable"}
-			}
-		}
-		if !progress.BridgeLeft {
-			if err := s.Cleaner.LeaveAndForget(ctx, roomID); err != nil {
-				return Result{Status: Retryable, Reason: "bridge_membership_failed"}
-			}
-			progress.BridgeLeft = true
-			forge.Cleanup.Rooms[roomID] = progress
-			if !s.saveForge(fresh.Root, forge) {
-				return Result{Status: Retryable, Reason: "state_unavailable"}
-			}
-		}
+func (s Service) cleanStage(
+	_ context.Context,
+	root, roomID string,
+	forge *state.Forge,
+	progress state.RoomCleanup,
+	done bool,
+	run func() error,
+	mark func(*state.RoomCleanup),
+	failureReason string,
+) (state.RoomCleanup, Result) {
+	if done {
+		return progress, Result{}
 	}
+	if err := run(); err != nil {
+		return progress, retryable(failureReason)
+	}
+	mark(&progress)
+	forge.Cleanup.Rooms[roomID] = progress
+	if !s.saveForge(root, forge) {
+		return progress, retryable("state_unavailable")
+	}
+	return progress, Result{}
+}
 
-	loaded, err = s.Load()
+func (s Service) finalize(root string) Result {
+	loaded, err := s.Load()
 	if err != nil {
-		return Result{Status: Retryable, Reason: "state_unavailable"}
+		return retryable("state_unavailable")
 	}
-	persisted, ok := loaded.Forges[fresh.Root]
+	persisted, ok := loaded.Forges[root]
 	if !ok {
 		return Result{Status: NothingToRemove}
 	}
-	purgeRelay(&loaded.Relay, fresh.Root, persisted)
-	delete(loaded.Forges, fresh.Root)
+	purgeRelay(&loaded.Relay, root, persisted)
+	delete(loaded.Forges, root)
 	if err := loaded.Save(s.StatePath); err != nil {
-		return Result{Status: Retryable, Reason: "state_unavailable"}
+		return retryable("state_unavailable")
 	}
 	return Result{Status: Removed}
 }
@@ -199,111 +179,19 @@ func (s Service) saveForge(root string, forge *state.Forge) bool {
 	return loaded.Save(s.StatePath) == nil
 }
 
+func ensureCleanup(forge *state.Forge) {
+	if forge.Cleanup == nil {
+		forge.Cleanup = &state.Cleanup{Rooms: map[string]state.RoomCleanup{}}
+	}
+	if forge.Cleanup.Rooms == nil {
+		forge.Cleanup.Rooms = map[string]state.RoomCleanup{}
+	}
+}
+
+func retryable(reason string) Result {
+	return Result{Status: Retryable, Reason: reason}
+}
+
 func refusedInspection(reason string) Inspection {
 	return Inspection{Result: Result{Status: Refused, Reason: reason}}
-}
-
-func matchingRoots(cfg config.Config, root string) []string {
-	var matched []string
-	for _, forge := range cfg.Forges {
-		if forge.Root == root {
-			return []string{root}
-		}
-		if !filepath.IsAbs(root) && filepath.Base(filepath.Clean(forge.Root)) == root {
-			matched = append(matched, forge.Root)
-		}
-	}
-	return matched
-}
-
-func hasParentTraversal(root string) bool {
-	for _, part := range strings.FieldsFunc(root, func(r rune) bool {
-		return r == '/' || r == '\\'
-	}) {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
-}
-
-func completeForge(forge state.Forge) bool {
-	if forge.SpaceID == "" || forge.RoomID == "" ||
-		forge.ApprovalsRoomID == "" || forge.ActivityRoomID == "" ||
-		forge.ClarificationsRoomID == "" {
-		return false
-	}
-	for _, project := range forge.Projects {
-		if project.RoomID == "" {
-			return false
-		}
-	}
-	return true
-}
-
-func orderedRooms(forge state.Forge) []string {
-	candidates := []string{
-		forge.SpaceID,
-		forge.RoomID,
-		forge.ApprovalsRoomID,
-		forge.ActivityRoomID,
-		forge.ClarificationsRoomID,
-	}
-	names := make([]string, 0, len(forge.Projects))
-	for name := range forge.Projects {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		candidates = append(candidates, forge.Projects[name].RoomID)
-	}
-
-	seen := make(map[string]bool, len(candidates))
-	rooms := make([]string, 0, len(candidates))
-	for _, roomID := range candidates {
-		if roomID == "" || seen[roomID] {
-			continue
-		}
-		seen[roomID] = true
-		rooms = append(rooms, roomID)
-	}
-	return rooms
-}
-
-func purgeRelay(bookkeeping *relay.State, root string, forge state.Forge) {
-	bookkeeping.EnsureMaps()
-	bookkeeping.ForgetScoped(root)
-	rooms := make(map[string]bool)
-	for _, roomID := range orderedRooms(forge) {
-		rooms[roomID] = true
-	}
-	for key := range bookkeeping.Waiting {
-		roomID, _, _, ok := splitWaiting(key)
-		if ok && rooms[roomID] {
-			delete(bookkeeping.Waiting, key)
-		}
-	}
-	for key, approval := range bookkeeping.Approvals {
-		if approval.ForgeRoot == root || rooms[approval.RoomID] {
-			delete(bookkeeping.Approvals, key)
-		}
-	}
-	for key, clarification := range bookkeeping.Clarifications {
-		if clarification.ForgeRoot == root || rooms[clarification.RoomID] {
-			delete(bookkeeping.Clarifications, key)
-		}
-	}
-	for key, activity := range bookkeeping.Activity {
-		if activity.ForgeRoot == root {
-			delete(bookkeeping.Activity, key)
-		}
-	}
-}
-
-func splitWaiting(key string) (string, string, string, bool) {
-	parts := strings.SplitN(key, "\n", 3)
-	if len(parts) != 3 {
-		return "", "", "", false
-	}
-	return parts[0], parts[1], parts[2], true
 }

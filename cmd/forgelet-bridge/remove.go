@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/matrix"
@@ -28,26 +26,10 @@ func remove(configPath, root string, plan bool, extra []string, output io.Writer
 			Reason: "unsafe_root",
 		})
 	}
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return writeRemovalResult(output, removal.Result{
-			Status: removal.Refused,
-			Reason: "configuration_unavailable",
-		})
+	service, inspection, refusal := prepareRemoval(configPath, root)
+	if refusal.Status != "" {
+		return writeRemovalResult(output, refusal)
 	}
-	service := removal.Service{
-		StatePath: filepath.Join(cfg.StateDir, "bridge-state.json"),
-		Operator:  cfg.Operator,
-		Config:    cfg,
-	}
-	loaded, err := service.Load()
-	if err != nil {
-		return writeRemovalResult(output, removal.Result{
-			Status: removal.Refused,
-			Reason: "incomplete_state",
-		})
-	}
-	inspection := removal.Inspect(cfg, loaded, root)
 	if plan {
 		if inspection.Result.Status == removal.Ready {
 			_, err := fmt.Fprintln(output, "ready")
@@ -61,66 +43,44 @@ func remove(configPath, root string, plan bool, extra []string, output io.Writer
 	if inspection.Result.Status != removal.Ready {
 		return writeRemovalResult(output, inspection.Result)
 	}
+	return writeRemovalResult(output, executeRemoval(service, inspection))
+}
 
-	ctx := context.Background()
-	client, err := matrix.Connect(ctx, cfg, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+func prepareRemoval(configPath, root string) (removal.Service, removal.Inspection, removal.Result) {
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		return writeRemovalResult(output, removal.Result{
+		return removal.Service{}, removal.Inspection{}, removal.Result{
+			Status: removal.Refused,
+			Reason: "configuration_unavailable",
+		}
+	}
+	service := removal.Service{
+		StatePath: filepath.Join(cfg.StateDir, "bridge-state.json"),
+		Operator:  cfg.Operator,
+		Config:    cfg,
+	}
+	loaded, err := service.Load()
+	if err != nil {
+		return removal.Service{}, removal.Inspection{}, removal.Result{
+			Status: removal.Refused,
+			Reason: "incomplete_state",
+		}
+	}
+	return service, removal.Inspect(cfg, loaded, root), removal.Result{}
+}
+
+func executeRemoval(service removal.Service, inspection removal.Inspection) removal.Result {
+	ctx := context.Background()
+	client, err := matrix.Connect(ctx, service.Config, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	if err != nil {
+		return removal.Result{
 			Status: removal.Retryable,
 			Reason: "matrix_unavailable",
-		})
+		}
 	}
 	defer client.Close()
 	service.Cleaner = removalCleaner(client)
-	return writeRemovalResult(output, service.Remove(ctx, inspection))
-}
-
-// removalCleaner keeps the acceptance suite's failure boundary injectable
-// without putting a fake Matrix server in the normal removal path.
-func removalCleaner(client removal.Cleaner) removal.Cleaner {
-	failure := os.Getenv("FORGELET_BRIDGE_REMOVE_TEST_FAILURE")
-	stage, roomID, _ := strings.Cut(failure, "=")
-	switch stage {
-	case "relay_cleanup_failed":
-		return failingCleaner{Cleaner: client, stage: stage, roomID: roomID}
-	case "operator_removal_failed":
-		return failingCleaner{Cleaner: client, stage: stage, roomID: roomID}
-	case "bridge_membership_failed":
-		return failingCleaner{Cleaner: client, stage: stage, roomID: roomID}
-	default:
-		return client
-	}
-}
-
-type failingCleaner struct {
-	removal.Cleaner
-	stage  string
-	roomID string
-}
-
-func (f failingCleaner) ClearFacts(ctx context.Context, roomID string) error {
-	if f.stage == "relay_cleanup_failed" && f.matches(roomID) {
-		return errors.New("injected relay failure")
-	}
-	return f.Cleaner.ClearFacts(ctx, roomID)
-}
-
-func (f failingCleaner) RemoveOperator(ctx context.Context, roomID, operator string) error {
-	if f.stage == "operator_removal_failed" && f.matches(roomID) {
-		return errors.New("injected operator failure")
-	}
-	return f.Cleaner.RemoveOperator(ctx, roomID, operator)
-}
-
-func (f failingCleaner) LeaveAndForget(ctx context.Context, roomID string) error {
-	if f.stage == "bridge_membership_failed" && f.matches(roomID) {
-		return errors.New("injected membership failure")
-	}
-	return f.Cleaner.LeaveAndForget(ctx, roomID)
-}
-
-func (f failingCleaner) matches(roomID string) bool {
-	return f.roomID == "" || f.roomID == roomID
+	return service.Remove(ctx, inspection)
 }
 
 func writeRemovalResult(output io.Writer, result removal.Result) int {

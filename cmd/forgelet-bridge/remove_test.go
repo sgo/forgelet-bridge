@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/unclebob/forgelet-bridge/internal/removal"
 	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
@@ -55,6 +57,70 @@ func TestRemovalCommandRefusesMalformedStateWithoutLeakingDetails(t *testing.T) 
 	if output.String() != "{\"status\":\"refused\",\"reason\":\"incomplete_state\"}\n" {
 		t.Fatalf("output = %q", output.String())
 	}
+}
+
+func TestRemovalCleanerInjectsEachFailureAtTheNamedRoom(t *testing.T) {
+	tests := []struct {
+		stage string
+		call  func(removal.Cleaner, string) error
+	}{
+		{"relay_cleanup_failed", func(cleaner removal.Cleaner, roomID string) error {
+			return cleaner.ClearFacts(context.Background(), roomID)
+		}},
+		{"operator_removal_failed", func(cleaner removal.Cleaner, roomID string) error {
+			return cleaner.RemoveOperator(context.Background(), roomID, "@operator:example.org")
+		}},
+		{"bridge_membership_failed", func(cleaner removal.Cleaner, roomID string) error {
+			return cleaner.LeaveAndForget(context.Background(), roomID)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.stage, func(t *testing.T) {
+			base := &recordingCleaner{}
+			t.Setenv("FORGELET_BRIDGE_REMOVE_TEST_FAILURE", test.stage+"=!failed:example.org")
+			cleaner := removalCleaner(base)
+			if err := test.call(cleaner, "!failed:example.org"); err == nil {
+				t.Fatal("the named room did not receive the injected failure")
+			}
+			if err := test.call(cleaner, "!other:example.org"); err != nil {
+				t.Fatalf("another room failed: %v", err)
+			}
+			if len(base.calls) != 1 || base.calls[0] != "!other:example.org" {
+				t.Fatalf("Matrix calls = %v, want only the other room", base.calls)
+			}
+		})
+	}
+}
+
+func TestRemovalCleanerPassesThroughWhenNoFailureIsRequested(t *testing.T) {
+	base := &recordingCleaner{}
+	t.Setenv("FORGELET_BRIDGE_REMOVE_TEST_FAILURE", "")
+	cleaner := removalCleaner(base)
+	if err := cleaner.ClearFacts(context.Background(), "!room:example.org"); err != nil {
+		t.Fatal(err)
+	}
+	if len(base.calls) != 1 || base.calls[0] != "!room:example.org" {
+		t.Fatalf("Matrix calls = %v, want the real cleaner", base.calls)
+	}
+}
+
+type recordingCleaner struct {
+	calls []string
+}
+
+func (c *recordingCleaner) ClearFacts(_ context.Context, roomID string) error {
+	c.calls = append(c.calls, roomID)
+	return nil
+}
+
+func (c *recordingCleaner) RemoveOperator(_ context.Context, roomID, _ string) error {
+	c.calls = append(c.calls, roomID)
+	return nil
+}
+
+func (c *recordingCleaner) LeaveAndForget(_ context.Context, roomID string) error {
+	c.calls = append(c.calls, roomID)
+	return nil
 }
 
 func removalFixture(t *testing.T) (configPath, statePath, forgeRoot string) {
