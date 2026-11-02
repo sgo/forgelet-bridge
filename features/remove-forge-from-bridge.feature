@@ -21,7 +21,7 @@ Feature: Remove A Forge From The Bridge
     And the forge forge-b holds relay facts in its forge and project rooms
     When the adapter for the forge root forge-a removes the forge root forge-b
     Then the removal result reports the status "removed"
-    And the removal targeted every recorded forge and project room exactly once
+    And the removal targeted the forge-b space and its chat, approvals, activity and clarifications rooms, and every recorded project room, exactly once
     And the removal cleared the relay facts before leaving each recorded room
     And the removal removed the operator before the bridge left each recorded room
     And the operator and the bridge are no longer members of the forge-b space or any recorded room
@@ -54,10 +54,10 @@ Feature: Remove A Forge From The Bridge
     And the bridge state records no forge or project rooms for forge-b
 
     Examples:
-      | failed_operation        | reason                     |
-      | clearing the relay facts | relay_cleanup_failed       |
-      | removing the operator    | operator_removal_failed     |
-      | leaving the bridge       | bridge_membership_failed    |
+      | failed_operation                            | reason                     |
+      | clearing the relay facts                     | relay_cleanup_failed       |
+      | removing the operator                        | operator_removal_failed     |
+      | leaving or forgetting the bridge membership  | bridge_membership_failed    |
 
   # Remove A Forge From The Bridge 3: repeating a completed removal changes nothing
   Scenario: Remove A Forge From The Bridge 3: repeating a completed removal changes nothing
