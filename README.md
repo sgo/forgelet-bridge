@@ -97,6 +97,22 @@ Adding another forge to the same bridge is one entry in `forges` and a restart.
 it validates the configuration before it writes, keeps a copy of what it
 replaced, restarts the bridge, and names the new forge in what it echoes.
 
+Removing a configured forge is:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" remove-forge "<forge root>"
+```
+
+The adapter validates the root and saved room ids before stopping the bridge.
+It then clears `com.forgelet.*` relay facts, removes the operator, and leaves
+and forgets the bridge's membership in the forge space and every recorded room.
+Only after those room operations succeed does it remove the forge and project
+records from bridge state. The bridge configuration and the forge's files are
+left byte-for-byte unchanged, and the bridge stays stopped for the host to
+remove the configuration entry. The command prints one JSON object with status
+`removed`, `nothing_to_remove`, `retryable`, or `refused`; a retryable result
+keeps the room ids and completed per-room progress needed for another attempt.
+
 Run it with:
 
 ```sh
@@ -170,9 +186,9 @@ hand-edit them.
   acceptance entry points plus their metadata.
 - `cmd/acceptance-runner` — the runner adapter the Gherkin mutator drives.
 - `cmd/forge-dashboard-stub` — the fixture dashboard that wakes the lieutenant.
-- `internal/config`, `internal/dashboard`, `internal/relay`, `internal/state` —
-  the testable core: configuration, the dashboard queue, the relay decisions,
-  and the restart bookkeeping.
+- `internal/config`, `internal/dashboard`, `internal/relay`, `internal/removal`,
+  `internal/state` — the testable core: configuration, the dashboard queue, the
+  relay decisions, forge removal, and the restart bookkeeping.
 - `internal/bridge` — the orchestrator that carries the decisions out.
 - `internal/matrix` — the mautrix-go adapter (spaces, encryption, relay).
 - `acceptance/runtime`, `acceptance/generator`, `acceptance/steps`,

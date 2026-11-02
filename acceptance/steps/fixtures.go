@@ -22,12 +22,13 @@ func (w *World) homeserver(ctx context.Context) (*fixtures.Synapse, error) {
 	}
 	w.synapse = synapse
 
-	userID, _, _, err := synapse.Register(ctx, "bridge", bridgePassword)
+	userID, token, _, err := synapse.Register(ctx, "bridge", bridgePassword)
 	if err != nil {
 		return nil, err
 	}
 	w.bridgeUserID = userID
 	w.bridgePassword = bridgePassword
+	w.bridgeToken = token
 	return synapse, nil
 }
 

@@ -19,12 +19,33 @@ type Forge struct {
 	ActivityRoomID       string             `json:"activity_room_id,omitempty"`
 	ClarificationsRoomID string             `json:"clarifications_room_id,omitempty"`
 	Projects             map[string]Project `json:"projects,omitempty"`
+	Cleanup              *Cleanup           `json:"cleanup,omitempty"`
 }
 
 // Project is the Matrix room the bridge created for one single-agent project
 // inside its forge's space.
 type Project struct {
 	RoomID string `json:"room_id,omitempty"`
+}
+
+// Cleanup is the progress of removing one forge's Matrix rooms. It stays with
+// the forge record until every room has been cleaned, so a retry knows both
+// which room ids to use and which operations already succeeded.
+type Cleanup struct {
+	Rooms map[string]RoomCleanup `json:"rooms,omitempty"`
+}
+
+// RoomCleanup is one room's completed cleanup stages. A stage is recorded only
+// after Matrix accepted it, so retrying resumes at the first unfinished stage.
+type RoomCleanup struct {
+	FactsCleared    bool `json:"facts_cleared,omitempty"`
+	OperatorRemoved bool `json:"operator_removed,omitempty"`
+	BridgeLeft      bool `json:"bridge_left,omitempty"`
+}
+
+// Done reports whether every cleanup stage succeeded for the room.
+func (r RoomCleanup) Done() bool {
+	return r.FactsCleared && r.OperatorRemoved && r.BridgeLeft
 }
 
 // State is everything the bridge remembers between runs.

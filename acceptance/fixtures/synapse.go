@@ -162,13 +162,25 @@ func synapsePython(ctx context.Context) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(python), 0o755); err != nil {
 		return "", err
 	}
-	if out, err := run(ctx, "", "python3", "-m", "venv", filepath.Dir(filepath.Dir(python))); err != nil {
+	if out, err := run(ctx, "", synapsePythonCommand(), "-m", "venv", filepath.Dir(filepath.Dir(python))); err != nil {
 		return "", fmt.Errorf("create synapse environment: %w: %s", err, out)
 	}
 	if out, err := run(ctx, "", python, "-m", "pip", "install", "--quiet", "--requirement", requirements); err != nil {
 		return "", fmt.Errorf("install pinned synapse: %w: %s", err, out)
 	}
 	return python, nil
+}
+
+// synapsePythonCommand picks an interpreter recent enough for the pinned
+// Synapse release. Older systems put Python 3.9 on PATH as python3, while a
+// supported interpreter is installed under a versioned name.
+func synapsePythonCommand() string {
+	for _, candidate := range []string{"python3.13", "python3.12", "python3.11"} {
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
+		}
+	}
+	return "python3"
 }
 
 func run(ctx context.Context, dir string, name string, args ...string) (string, error) {

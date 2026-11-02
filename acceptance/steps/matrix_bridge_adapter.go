@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -96,8 +97,14 @@ func (w *World) adapterCommand(ctx context.Context, args ...string) (string, err
 		adapterKitBinaryEnv+"="+kitInstaller,
 		adapterKitDirEnv+"="+kitDir,
 	)
-	out, runErr := command.CombinedOutput()
-	w.adapterOutput = string(out)
+	command.Env = append(command.Env, w.adapterEnv...)
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	runErr := command.Run()
+	w.adapterStdout = stdout.String()
+	w.adapterStderr = stderr.String()
+	w.adapterOutput = w.adapterStdout + w.adapterStderr
 	return w.adapterOutput, runErr
 }
 

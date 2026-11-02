@@ -4,6 +4,7 @@
 #
 #   matrix-bridge.sh start | stop | status | logs
 #   matrix-bridge.sh add-forge <forge-root> <name>
+#   matrix-bridge.sh remove-forge <forge-root>
 #   matrix-bridge.sh install-rules
 #   matrix-bridge.sh install-kit
 #
@@ -23,6 +24,11 @@
 # bridge whether the configuration would serve before anything replaces the
 # good file, keeps a copy of what it replaced, restarts the bridge, and prints
 # the line the bridge logged naming the forge it reached.
+#
+# remove-forge validates one configured root and its saved room ids, then stops
+# the bridge before clearing that forge's Matrix rooms. It leaves the bridge
+# stopped, leaves the configuration and forge files alone, and prints one
+# sanitized JSON result. A retry resumes from saved per-room progress.
 #
 # install-rules installs the prompt rules the bridge's rooms rely on into this
 # forge's own constitution and the packs its projects are scaffolded from. It
@@ -199,12 +205,42 @@ cmd_add_forge() {
   wait_for_forge "$name"
 }
 
+cmd_remove_forge() {
+  if (( $# != 1 )) || [[ -z "${1:-}" ]]; then
+    print -- '{"status":"refused","reason":"unsafe_root"}'
+    return 0
+  fi
+  local root="$1"
+  [[ -r "$CONFIG" ]] || {
+    print -- '{"status":"refused","reason":"configuration_unavailable"}'
+    return 0
+  }
+  [[ -x "$BINARY" ]] || {
+    print -- '{"status":"refused","reason":"configuration_unavailable"}'
+    return 0
+  }
+
+  local planned
+  if ! planned="$(cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-forge-plan "$root")"; then
+    print -- '{"status":"retryable","reason":"state_unavailable"}'
+    return 0
+  fi
+  if [[ "$planned" != "ready" ]]; then
+    print -- "$planned"
+    return 0
+  fi
+
+  cmd_stop >/dev/null
+  (cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-forge "$root")
+}
+
 case "${1:-}" in
   start) cmd_start ;;
   stop) cmd_stop ;;
   status) cmd_status ;;
   logs) [[ -f "$LOG" ]] && tail -f "$LOG" || die "no log at $LOG" ;;
   add-forge) shift; cmd_add_forge "$@" ;;
+  remove-forge) shift; cmd_remove_forge "$@" ;;
   install-rules) cmd_install_rules ;;
   install-kit) cmd_install_kit ;;
   ""|-h|--help) usage ;;

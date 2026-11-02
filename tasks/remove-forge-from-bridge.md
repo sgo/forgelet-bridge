@@ -107,3 +107,12 @@ contract. Scenario 1 is an outline over the number of recorded project rooms.
 Scenario 2 is an outline over each failure boundary and proves retry. Scenario 6
 is an outline over unsafe and ambiguous argument forms. The remaining scenarios
 are boolean lifecycle cases and intentionally have no example table.
+
+## Implementation record
+
+- `README.md` documents the public removal command, results, preservation
+  boundary, and retry lifecycle.
+- `docs/adding-a-forge.md` records the operator runbook, validation rules,
+  stopped-bridge handoff to the host, idempotence, and safe result shape.
+- `ARCHITECTURE.md` and the standard `docs/manual.md` / manual-contract layout
+  are not present in this multi-agent project; no such files were invented.

@@ -38,6 +38,7 @@ type World struct {
 	synapse        *fixtures.Synapse
 	bridgeUserID   string
 	bridgePassword string
+	bridgeToken    string
 
 	configPath string
 	stateDir   string
@@ -45,6 +46,9 @@ type World struct {
 	// a scenario works with, and adapterOutput is what that adapter said.
 	servedRoot    string
 	adapterOutput string
+	adapterStdout string
+	adapterStderr string
+	adapterEnv    []string
 	// rulesSnapshot is the tree the last install left behind, rules or kit,
 	// which is what an install that changed nothing is compared against.
 	rulesSnapshot string
@@ -123,6 +127,7 @@ type World struct {
 	anchors    map[string]string
 	devices    []fixtures.DeviceKey
 	lane       *laneState
+	removal    *removalScenario
 }
 
 // Registry builds the acceptance registry.

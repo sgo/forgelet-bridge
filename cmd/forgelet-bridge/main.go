@@ -24,9 +24,20 @@ func main() {
 	configPath := flag.String("config", "forgelet-bridge.json", "path to the bridge configuration")
 	interval := flag.Duration("interval", time.Second, "how often the bridge checks the forge and its chat room")
 	validate := flag.Bool("validate", false, "check the configuration and exit, without serving anything")
+	removeForge := flag.String("remove-forge", removalUnset, "remove one configured forge's Matrix rooms and state")
+	planRemoval := flag.String("remove-forge-plan", removalUnset, "validate a forge removal before the adapter stops the bridge")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if *removeForge != removalUnset || *planRemoval != removalUnset {
+		root := *removeForge
+		plan := false
+		if *planRemoval != removalUnset {
+			root = *planRemoval
+			plan = true
+		}
+		os.Exit(remove(*configPath, root, plan, flag.Args(), os.Stdout))
+	}
 	if *validate {
 		if err := check(*configPath); err != nil {
 			fmt.Fprintln(os.Stderr, err)

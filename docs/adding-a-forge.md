@@ -162,7 +162,45 @@ room, with the operator invited.
    appears in its clarifications room. Replying in its thread carries the answer
    back through the dashboard, and the blocked agent wakes with it.
 
-## 7. Roll back
+## 7. Remove a forge
+
+Use the adapter belonging to the forge whose bridge configuration contains the
+entry:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" remove-forge "<forge root to remove>"
+```
+
+The adapter accepts exactly one configured absolute root. It refuses an
+unknown, relative, parent-traversing or ambiguous root, and refuses a forge
+whose persisted room record is incomplete. Validation and state reads happen
+before the running bridge is stopped.
+
+For a valid forge, the adapter reads every recorded forge and project room id,
+clears the `com.forgelet.*` relay facts in each room, removes the operator, and
+leaves or forgets the bridge's own membership. Each completed room operation is
+saved. The forge and project records are deleted only after every room succeeds.
+A Matrix failure returns `retryable` and preserves the room ids and completed
+progress, so the same command resumes where it stopped.
+
+The command prints exactly one JSON object. Its `status` is `removed`,
+`nothing_to_remove`, `retryable`, or `refused`. A non-removed result can name a
+stable `reason`; it never includes Matrix ids, user ids, credentials, error text
+from the homeserver, or filesystem paths.
+
+The bridge configuration and the forge directory are not edited. The bridge is
+left stopped after a successful removal. The host removes its configuration
+entry and starts the bridge again when ready:
+
+```sh
+# The host edits its own matrix-bridge.json here, then:
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" start
+```
+
+Repeating `remove-forge` after success returns `nothing_to_remove` and changes
+neither the bridge state nor the configuration.
+
+## 8. Roll back
 
 ```sh
 MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" stop
