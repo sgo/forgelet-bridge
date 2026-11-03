@@ -32,7 +32,7 @@
        "pane). Either one passed to propose records the proposal without\n"
        "asking again.\n"))
 
-(def affirmative-re #"(?i)\b(approve|approved|yes|ok|okay|go ahead|go)\b")
+(def affirmative-re #"(?i)\b(approve|approved|yes|ok|okay|go ahead|go|start|started)\b")
 
 (def negative-re #"(?i)\b(no|not|dont|don't|won't|wont|wait|hold|reject|never)\b")
 
@@ -67,8 +67,10 @@
   (let [root (fs/absolutize given)]
     (when-not (fs/directory? root)
       (exit! 1 (str "Project root not found: " root)))
-    (when-not (fs/regular-file? (fs/path root ".swarmforge" "roles.tsv"))
-      (exit! 1 (str "Not a project root (no .swarmforge/roles.tsv): " root)))
+    (when-not (or (fs/regular-file? (fs/path root ".swarmforge" "roles.tsv"))
+                  (fs/regular-file? (fs/path root ".swarmforge" "single-agent")))
+      (exit! 1 (str "Not a project root (no .swarmforge/roles.tsv or "
+                    ".swarmforge/single-agent): " root)))
     root))
 
 (defn parse-request [path]

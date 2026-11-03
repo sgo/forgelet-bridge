@@ -25,7 +25,11 @@
   - Clojure: install with Clojure CLI/deps.edn; mutation `github.com/unclebob/clj-mutate`, CRAP `github.com/unclebob/crap4clj`, DRY `github.com/unclebob/dry4clj`.
   - Java: build with Maven (`mvn`); mutation is PIT through the project's Maven profiles - the
     `mutate4java` repository is not used for Java/Maven projects, the way it is not used for Kotlin -
-    CRAP is `github.com/unclebob/crap4java`, DRY is `github.com/unclebob/dry4java`.
+    CRAP is `github.com/sgo/crap4java`, the family's fork of it: `main` there mirrors upstream and the
+    `forgelet` branch holds ours, which is what the tool registry's Java recipe installs, built as a
+    jar. That branch is what our projects' scripts are written for — upstream never had
+    `--test-command`, and its JaCoCo cannot read the Java 25 class files those projects compile to.
+    DRY is `github.com/unclebob/dry4java`, which has no fork and needs none.
   - Kotlin: build with the project's own Gradle wrapper (`./gradlew`), never a Gradle from PATH.
     Mutation is PIT through its Gradle plugin — the `mutate4java` repository is not used, as it is not
     used for Java — CRAP is `github.com/JeevanThandi/slopguard-kotlin`, built from source by the tool
@@ -49,6 +53,23 @@
   never treat `./gradlew build` as a gate. Each suite has its own named task so a role runs only the
   suite it owns, and the gates stay off unless the role that owns one invokes it.
 
+## Vertical Slices
+- A card is one vertical slice: a public behaviour that can pass every required gate in the same
+  card. It is not a layer of a behaviour.
+- Split by behaviour, never by layer. "API", "storage", "execution", "unit tests", "property
+  tests", "cleanup", "architecture", "mutation" and "verification" are not separate backlog items
+  for one behaviour.
+- Tests, cleanup, architecture, hardening and verification belong to the same slice. Do not defer
+  a gate to a later card, and do not mark a slice complete because its code compiles.
+- A slice has its own spec/task note/Gherkin, implementation, unit/property/architecture coverage,
+  and every required gate. `stage complete` at the slice's tree is its completion.
+- A single-agent project approves its spec automatically by default and proceeds through the same
+  implementation and quality gates. A forge may put `spec=operator` in
+  `swarmforge/local-spec-approval.conf` to restore explicit first-spec approval; in that mode,
+  corrections to the same unfinished card remain automatically approved after the first decision.
+- A spec-only or bootstrap task is not a slice that skips gates. It needs an explicit waiver in its
+  approved spec (and a `waived` record where the tool supports one), never a deferred gate.
+
 ## Java Gate Tasks
 - A Java project provides its gates as Maven profiles, and the profiles are the contract every role uses:
   - `swarm-mode` - the default, with every gate off, so a plain `mvn` invocation runs no suite.
@@ -56,13 +77,57 @@
   - `-Pwith-mutation-tests` - PIT, differential, with its history file kept.
    - `-Pwith-property-tests` - property tests, where the project has them, and never part of the unit
      suite.
-   - `-Pwith-release-tests` - the gate a release activates: unit and property tests with no
-     exclusion, and the profile the deploy step goes through.
+   - `-Pwith-release-tests` - the gate the local install and release paths activate: unit and
+     property tests with no exclusion.
    - the project's own acceptance profile - `with-acceptance-tests` or `acceptance`, whichever its
      scripts name - for the Gherkin acceptance suite.
   - `human-mode` - the gates together, for a person running the build by hand.
 - A project's scripts name the profile for each suite; run a gate the way the script for it does, and
   leave the gates off otherwise. No gate is a homegrown substitute for the tool the table names.
+
+## Documentation Gates
+- A completed slice reviews three documents: `README.md` for installation, coordinates, quick start and
+  project status; `docs/manual.md` for current public behaviour; and `ARCHITECTURE.md` for boundaries
+  and structural decisions. The task records what changed in each or why it needed no change.
+- `docs/manual-contract.edn` maps every maintained document section to its public APIs and executable
+  examples. Each non-conceptual section runs at least one example against the current tree. A section
+  may omit an example only by declaring itself conceptual with a reason.
+- The required `docs` stage runs `scripts/check-documentation.sh`, which rejects missing sections, APIs,
+  examples, required headings and broken local links. It runs after behavioural verification and before
+  local snapshot installation, so documentation about the final tree is what ships.
+
+## End-To-End QA
+- The standard single-agent profile runs `qa`, then the card-specific `e2e` stage, then documentation
+  and deployment. The procedure and script are registered in `qa/e2e.edn`; the script exercises the
+  same user-facing path rather than a private API.
+- Required operator inputs are declared by environment-variable name. Missing values fail the stage,
+  never skip it. Values are read at run time, are never written to the stage record, and are redacted
+  from captured output and evidence.
+- A card with no applicable end-to-end procedure needs an explicit `## E2E waiver` and reason in its
+  approved task note. Library-profile projects use their public-API `verify` gate instead of the
+  standard e2e stage by default.
+
+## Java Snapshot Installation and Release
+- A completed single-agent card installs its current `-SNAPSHOT` into the operator's standard
+  `~/.m2` after all verification gates and after the reviewed commit is pushed. Run
+  `scripts/install-snapshot.sh` through the required `deploy` stage; it requires a SNAPSHOT and uses
+  `-Pwith-release-tests install`. Other projects on the devbox resolve that local artifact normally.
+  `stage complete` must refuse while the stage is absent, optional or stale.
+- GitHub Packages is not part of ordinary card completion. It is the release boundary: only the
+  deliberate `release:prepare` / `release:perform` path publishes there, using the release target in
+  `swarmforge/release.conf`. A release does not run merely because a card reaches `done`.
+- Do not pass a project-local `-Dmaven.repo.local` for a single-agent project. Its `.mvn` settings
+  may configure registries and credentials, but the local artifact repository is `~/.m2`. The local
+  repository is shared by all projects for one operator; do not run concurrent writers for the same
+  GAV.
+
+## Git Checkpoints
+- In a single-agent project, commit the approved spec before implementation, then commit coherent
+  working checkpoints rather than waiting for every gate or collapsing the whole card into one
+  pre-deploy commit. The pre-commit hook requires only an approved current spec.
+- Stage evidence is tied to the Git tree, so committing unchanged contents does not invalidate a
+  passing stage. The final deployment still requires every gate current on the exact committed and
+  pushed tree.
 
 ## Java Releases
 - A Java project's release is `mvn release:prepare` and then `mvn release:perform`, with the exact
@@ -75,7 +140,7 @@
   `-SNAPSHOT` at HEAD, a release tag nobody has taken, no dependency on a SNAPSHOT this project
   does not build itself, a `<scm>` block (without one `mvn release:prepare` stops before it does
   anything), the `with-release-tests` profile the release activates, and, when
-  `swarmforge/deploy.conf` names a target, a `<distributionManagement>` repository and the
+  `swarmforge/release.conf` names a target, a `<distributionManagement>` repository and the
   project's own token helper. When it passes it prints the two commands with the numbers the task
   named. The same two questions are the enforcer's `requireReleaseDeps` and
   `requireReleaseVersion` if a project wants its build to refuse on its own; the parent-snapshot
@@ -94,9 +159,9 @@
   is why the gate belongs on that side. `release:perform` then checks the tag out and runs `deploy`,
   which would run the same suite a second time; cut that one with `-Darguments="-DskipTests"` and let
   the prepare half be the one that counts.
-- Deploy only when `swarmforge/deploy.conf` names a target, through the project's own token
-  helper, the way the deploy step does everywhere. A deploy that fails means no tag and no next
-  development version: report it instead of continuing.
+- Publish a release only when `swarmforge/release.conf` names a target, through the project's own
+  token helper. A release deploy that fails means no next development version: report it instead
+  of continuing. This is distinct from the ordinary `deploy` stage, which installs locally.
 
 ## Kotlin Gate Tasks
 - A Kotlin project's build provides these tasks through its own wrapper, and these names are the
@@ -122,6 +187,9 @@
 
 ## Acceptance Pipeline
 - Use github.com/unclebob/Acceptance-Pipeline-Specification for Gherkin acceptance tests.
+- The family's APS fork is `github.com/sgo/Acceptance-Pipeline-Specification`, branch `forgelet`.
+  Prefer its `gherkin-parser`, `ir-dry-checker` and `gherkin-mutator` over upstream; upstream is
+  only the fallback when the fork cannot be used.
 - The Acceptance Pipeline Specification supplies `gherkin-parser`, `ir-dry-checker`, and `gherkin-mutator`. Install them with the project-local helper; do not search `$HOME` or run `find` for binaries.
 - At Tool Startup, for each required APS tool, run `swarm_tool.sh require <tool>`. If it is missing, run exactly `swarm_tool.sh ensure <tool>`.
 - Two-arg forms:
@@ -130,7 +198,16 @@
 - Prefer the Babashka APS tools for `gherkin-parser`, `ir-dry-checker`, `gherkin-mutator`, and related APS support commands.
 - Use Go-based APS tools only if the Babashka APS tools do not work in the current project environment.
 - Project-specific acceptance pipeline components are the acceptance entrypoint generator, acceptance runtime, project step handlers, runner adapter, and convenience scripts.
+- An approved feature is executed, not merely translated into hand-written tests. The project's
+  acceptance runner must parse every approved feature, dispatch every step to a handler that calls
+  the public behaviour, and fail on an unhandled or ambiguous step. Hand-written unit or property
+  tests are not acceptance evidence.
 - Gherkin acceptance mutation means running `gherkin-mutator` to mutate Gherkin example values.
+- Write value-driven behaviour as Gherkin Scenario Outlines with example tables. `gherkin-mutator`
+  mutates example cells only, so a feature with no examples produces zero mutations and is not
+  acceptance-mutation evidence. A boolean scenario may stay a plain scenario; record that choice in
+  the task note. When a non-waived feature reports zero mutations, parameterize its value-driven
+  scenarios or record the exemption.
 - Gherkin acceptance mutation runs must report periodic progress/status so agents can distinguish normal long-running work from a hang.
 
 ## Verification

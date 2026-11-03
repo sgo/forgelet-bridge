@@ -3,6 +3,34 @@
 forgelet-bridge is the transport for forgelet: the Matrix bridge that lets an
 operator handle a forge's chat channel from their phone.
 
+## Project status
+
+`forgelet-bridge` is a single-agent Go project. Its module is
+`github.com/unclebob/forgelet-bridge`, its build output is
+`build/acceptance/bin`, and its gates use `scripts/acceptance.sh` for Gherkin
+and the Go constitution tools for unit, property, quality and mutation checks.
+The `cmd/forgelet-bridge` process is the deployed bridge. The detailed operator
+contract is in [docs/manual.md](docs/manual.md), and the package boundaries and
+invariants are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Installation and quick start
+
+Go 1.26 or newer is required. The pure-Go Olm implementation needs no libolm
+system package.
+
+```sh
+git clone https://github.com/sgo/forgelet-bridge.git
+cd forgelet-bridge
+make build
+./build/acceptance/bin/forgelet-bridge --config forgelet-bridge.json
+```
+
+`make build` delegates to `scripts/build.sh`.
+`make test`, `make property`, `make acceptance` and
+`make acceptance-mutation` run the individual gates. The stage runner in
+`scripts/stage-gate.sh` writes the evidence for each gate under
+`build/stages/`.
+
 The first slice is the encrypted chat channel. For every configured forge root
 the bridge creates a Matrix space (named after the forge) and an encrypted chat
 room (`Chat`), an encrypted approvals room (`Approvals`), an encrypted activity
@@ -89,7 +117,8 @@ operator knows it by: that name is the forge's Matrix space, and the bridge
 posts in the forge's chat room under that same name, so a phone can tell the
 forges apart. A forge with no configured name falls back to the name of its
 folder. The bridge keeps its Matrix state and its restart bookkeeping under
-`state_dir`.
+`state_dir`. Run the bridge with `--validate` to check a configuration without
+connecting to Matrix.
 
 Adding another forge to the same bridge is one entry in `forges` and a restart.
 [docs/adding-a-forge.md](docs/adding-a-forge.md) is the runbook for it, and
@@ -131,7 +160,8 @@ make test              # unit tests (-tags goolm)
 ```
 
 Plain `go build ./...` and `go test ./...` need `-tags goolm`; the scripts and
-the Makefile pass it.
+the Makefile pass it. `scripts/build.sh` writes every command to the same
+`build/acceptance/bin` layout the adapter uses.
 
 ## Acceptance
 
@@ -173,7 +203,7 @@ that state travels with the code:
 - the language mutation tool embeds its per-function manifest in the source file
   it mutates, between `// mutate4go-manifest-begin` and
   `// mutate4go-manifest-end`;
-- the Gherkin mutator keeps its per-scenario manifest in a comment block at the
+- `gherkin-mutator` keeps its per-scenario manifest in a comment block at the
   top of the feature file.
 
 Each tool writes and updates its own manifest. Commit them with the code; do not

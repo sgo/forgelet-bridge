@@ -1,0 +1,51 @@
+{:task "forgelet-bridge"
+ :stages
+ [{:name "spec"
+   :approval :operator
+   :spec ["features/*.feature" "tasks/*.md"]
+   :stamp ["features" "tasks"]}
+  {:name "code"
+   :runs [["scripts/stage-gate.sh" "code"]]
+   :evidence ["build/stages/code.log"]
+   :stamp [:sources]}
+  {:name "clean"
+   :runs [["scripts/stage-gate.sh" "clean"]]
+   :evidence ["build/stages/clean.log"]
+   :stamp [:sources]}
+  {:name "architect"
+   :runs [["scripts/stage-gate.sh" "architect"]]
+   :evidence ["ARCHITECTURE.md" "build/stages/architect.log"]
+   :stamp [:sources]}
+  {:name "harden"
+   :runs [["scripts/stage-gate.sh" "harden"]]
+   :evidence ["build/stages/harden.log"
+              "target/acceptance-mutation/mutation.log"]
+   :stamp [:features :sources "acceptance"
+           "scripts/acceptance.sh"
+           "scripts/run-acceptance-mutation.sh"
+           "scripts/check-mutation.sh"]}
+  {:name "clean-final"
+   :runs [["scripts/stage-gate.sh" "clean-final"]]
+   :evidence ["build/stages/clean-final.log"]
+   :stamp [:sources]}
+  {:name "qa"
+   :runs [["scripts/stage-gate.sh" "qa"]]
+   :evidence ["build/stages/qa.log"]
+   :stamp [:features :sources "acceptance" "scripts/acceptance.sh"
+           "scripts/property.sh"]}
+  {:name "e2e"
+   :runs [["scripts/stage-gate.sh" "e2e"]]
+   :evidence ["build/stages/e2e.log" "target/e2e/check.log"]
+   :stamp [:features :sources "qa" "scripts/stage-gate.sh"
+           "swarmforge/scripts/check-e2e.bb"]}
+  {:name "docs"
+   :runs [["scripts/stage-gate.sh" "docs"]]
+   :evidence ["build/stages/docs.log" "target/documentation/check.log"]
+   :stamp [:features :sources "README.md" "docs" "ARCHITECTURE.md"
+           "scripts/stage-gate.sh" "scripts/check-documentation.sh"
+           "swarmforge/scripts/check-documentation.bb"]}
+  {:name "deploy"
+   :runs [["scripts/stage-gate.sh" "deploy"]]
+   :evidence ["build/stages/deploy.log"]
+   :stamp [:sources "scripts/stage-gate.sh" "scripts/build.sh"
+           "scripts/deploy-check.sh" "scripts/matrix-bridge.sh"]}]}

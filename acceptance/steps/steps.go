@@ -15,6 +15,8 @@ func register(registry *runtime.Registry) error {
 		pattern string
 		handler runtime.Handler
 	}{
+		{`^the forgelet-bridge project is a single-agent Go project$`, singleAgentGoProject},
+		{`^stage (\S+) runs (\S+) and writes (build/stages/[^ ]+\.log)$`, projectStageRunsToolchain},
 		{`^the fixture forge roots? (.+) (?:has|have) (?:its|their) dashboards? running$`, fixturesRunning},
 		{`^the bridge is configured with the forge root (.+?) and the operator (\S+)$`, configuredForgeAndOperator},
 		{`^the bridge is configured with the forge root (\S+) named (.+)$`, namedForge},

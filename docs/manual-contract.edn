@@ -1,0 +1,130 @@
+{:documents
+ {:readme "README.md"
+  :manual "docs/manual.md"
+  :architecture "ARCHITECTURE.md"}
+ :sections
+ [{:id "readme-status"
+   :document "README.md"
+   :heading "## Project status"
+   :apis ["cmd/forgelet-bridge" "scripts/acceptance.sh" "ARCHITECTURE.md"]
+   :conceptual true
+   :reason "The status section states the project model and points to the detailed executable contracts."}
+  {:id "readme-install"
+   :document "README.md"
+   :heading "## Installation and quick start"
+   :apis ["scripts/build.sh" "build/acceptance/bin/forgelet-bridge"]}
+  {:id "readme-configuration"
+   :document "README.md"
+   :heading "## Configuration"
+   :apis ["scripts/matrix-bridge.sh" "--validate"]
+   :conceptual true
+   :reason "Configuration values are runtime data; the executable API checks appear in the operator manual."}
+  {:id "readme-building"
+   :document "README.md"
+   :heading "## Building"
+   :apis ["scripts/build.sh" "goolm"]
+   :conceptual true
+   :reason "The command examples would rebuild the same commands covered by the install and manual examples."}
+  {:id "readme-acceptance"
+   :document "README.md"
+   :heading "## Acceptance"
+   :apis ["scripts/acceptance.sh" "scripts/acceptance-mutation.sh"]
+   :conceptual true
+   :reason "The end-to-end procedure is described here and executed by the QA and harden stages."}
+  {:id "readme-property"
+   :document "README.md"
+   :heading "## Property tests"
+   :apis ["scripts/property.sh"]
+   :conceptual true
+   :reason "Property testing is executed by the QA stage through scripts/property.sh."}
+  {:id "readme-mutation"
+   :document "README.md"
+   :heading "## Mutation manifests"
+   :apis ["mutate4go" "gherkin-mutator"]
+   :conceptual true
+   :reason "This section explains tool-owned state rather than a directly invoked project API."}
+  {:id "readme-layout"
+   :document "README.md"
+   :heading "## Layout"
+   :apis ["cmd/forgelet-bridge" "internal/matrix" "acceptance/steps"]
+   :conceptual true
+   :reason "The layout is a boundary map; ARCHITECTURE.md owns the executable invariants."}
+
+  {:id "manual-install"
+   :document "docs/manual.md"
+   :heading "## Installation and quick start"
+   :apis ["scripts/build.sh" "build/acceptance/bin/forgelet-bridge"]}
+  {:id "manual-operation"
+   :document "docs/manual.md"
+   :heading "## Bridge operation"
+   :apis ["cmd/forgelet-bridge" "unhappy_forges"]}
+  {:id "manual-configuration"
+   :document "docs/manual.md"
+   :heading "## Configuration"
+   :apis ["internal/config.Config" "scripts/matrix-bridge.sh"]}
+  {:id "manual-removal"
+   :document "docs/manual.md"
+   :heading "## Forge removal"
+   :apis ["internal/removal.Service" "remove-forge"]}
+  {:id "manual-pipeline"
+   :document "docs/manual.md"
+   :heading "## Project pipeline"
+   :apis ["scripts/stage-gate.sh" "scripts/check-clean.sh" "scripts/check-mutation.sh"]}
+  {:id "manual-verification"
+   :document "docs/manual.md"
+   :heading "## Acceptance and verification"
+   :apis ["scripts/acceptance.sh" "acceptance/runtime.Registry" "scripts/property.sh"]}
+  {:id "manual-extension"
+   :document "docs/manual.md"
+   :heading "## Extension points"
+   :apis ["internal/matrix" "acceptance/steps"]
+   :conceptual true
+   :reason "This section directs future changes to the executable APIs and boundaries documented above."}
+
+  {:id "architecture-decision"
+   :document "ARCHITECTURE.md"
+   :heading "## Decision"
+   :apis ["cmd/forgelet-bridge" "internal/bridge" "internal/matrix" "internal/removal.Cleaner"]
+   :conceptual true
+   :reason "The decision is the package graph; the architect gate executes go vet and its boundary checks."}
+  {:id "architecture-why"
+   :document "ARCHITECTURE.md"
+   :heading "## Why"
+   :apis ["scripts/acceptance.sh" "build/acceptance/bin"]
+   :conceptual true
+   :reason "This records the design forces behind the executable package boundaries."}
+  {:id "architecture-invariants"
+   :document "ARCHITECTURE.md"
+   :heading "## Invariants"
+   :apis ["internal/matrix" "internal/bridge" "scripts/check-architecture.sh"]
+   :conceptual true
+   :reason "The architect stage executes these invariants through scripts/check-architecture.sh."}]
+ :examples
+ [{:id "readme-build"
+   :section "readme-install"
+   :command ["bash" "-lc" "go doc ./cmd/forgelet-bridge"]
+   :expect ["Command forgelet-bridge" "relays one forge"]}
+  {:id "manual-install"
+   :section "manual-install"
+   :command ["bash" "-lc" "go doc ./cmd/forgelet-bridge"]
+   :expect ["Command forgelet-bridge" "relays one forge"]}
+  {:id "manual-bridge-help"
+   :section "manual-operation"
+   :command ["bash" "-lc" "go run -tags goolm ./cmd/forgelet-bridge --help"]
+   :expect ["-remove-forge string" "-validate"]}
+  {:id "manual-config-api"
+   :section "manual-configuration"
+   :command ["bash" "-lc" "go doc ./internal/config Config"]
+   :expect ["type Config struct" "HomeserverURL string"]}
+  {:id "manual-removal-api"
+   :section "manual-removal"
+   :command ["bash" "-lc" "go doc ./internal/removal Service"]
+   :expect ["type Service struct" "func (s Service) Remove"]}
+  {:id "manual-pipeline-check"
+   :section "manual-pipeline"
+   :command ["bash" "-lc" "for stage in code clean clean-final architect harden qa docs deploy; do grep -q \"  $stage)\" scripts/stage-gate.sh || exit 1; done; echo native-Go-stages-present"]
+   :expect ["native-Go-stages-present"]}
+  {:id "manual-acceptance-api"
+   :section "manual-verification"
+   :command ["bash" "-lc" "go doc ./acceptance/runtime Registry"]
+   :expect ["type Registry struct" "func (r *Registry) Execute"]}]}

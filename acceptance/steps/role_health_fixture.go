@@ -17,7 +17,7 @@ import (
 const shellPaneCommand = "zsh"
 
 // toolPaneCommand is a tool the agent is inside: the foreground for as long as
-// it runs, like the java or mvn of a build. A check that read "the pane is not
+// it runs, like the go command of a build. A check that read "the pane is not
 // the agent" as gone would ring a false alarm here, so the tool's own foreground
 // is a pane that is left alone.
 const toolPaneCommand = "exec sleep 3600"

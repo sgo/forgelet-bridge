@@ -15,11 +15,17 @@
        "  --no-maven        skip what asks outside this directory: the resolved-dependency\n"
        "                    check and the lookup of the newest release plugin\n"
        "\n"
+       "Exit status:\n"
+       "  0  READY - release it\n"
+       "  1  DO NOT RELEASE - the failures are listed\n"
+       "  2  NOT READY - the snapshot-dependency check did not run, so nothing here says the\n"
+       "     project is free of the dependencies that check exists to catch\n"
+       "\n"
        "It checks what a release must not start without: a clean tree, a version that is\n"
        "still a -SNAPSHOT at HEAD, a release tag nobody has taken, no dependency on a\n"
        "-SNAPSHOT this project does not build itself, the with-release-tests profile the\n"
        "release activates, and the wiring the release runs through - a <scm> block, which\n"
-       "mvn release:prepare needs before it does anything, and, when swarmforge/deploy.conf\n"
+       "mvn release:prepare needs before it does anything, and, when swarmforge/release.conf\n"
        "names a target, a <distributionManagement> repository and the project's own token\n"
        "helper. The snapshot check is the one this exists for - mvn versions:set rewrites\n"
        "this project's own version and looks at nothing else, so a release can ship\n"
@@ -118,6 +124,29 @@
        sort
        vec))
 
+(def ^:private maven-advice
+  "Maven's `[ERROR]` lines that are advice rather than the failure: the last of these is what a
+  reader who took \"the last [ERROR] line\" literally would be handed."
+  ["[ERROR] To see the full stack trace"
+   "[ERROR] Re-run Maven using"
+   "[ERROR] For more information about the errors"
+   "[ERROR] [Help"])
+
+(defn failure-reason
+  "Why a failed command stopped, read as Maven actually writes: `[ERROR]` lines go to **stdout**,
+  and stderr carries only the JVM's warnings. Reading stderr alone reports a warning - which is how
+  a NOT READY once named `sun.misc.Unsafe` instead of the dependency that would not resolve - and a
+  fixture whose stand-in wrote its error to stderr hid that. The last informative `[ERROR]` wins, then
+  the last non-warning line of either stream."
+  [{:keys [out err]}]
+  (let [lines (fn [text] (->> (str/split-lines (or text "")) (map str/trim) (remove str/blank?)))
+        out-lines (lines out)
+        err-lines (lines err)
+        errors (remove (fn [line] (some #(str/starts-with? line %) maven-advice))
+                       (filter #(str/starts-with? % "[ERROR]") out-lines))
+        non-warnings (remove #(str/starts-with? % "WARNING:") (concat out-lines err-lines))]
+    (or (last errors) (last non-warnings) (last err-lines) (last out-lines) "no message")))
+
 (defn maven-resolved-snapshots
   "The same question asked of Maven, which also sees versions held in properties. Returns
   {:checked true :snapshots [...]} or {:checked false :why \"...\"}."
@@ -140,18 +169,19 @@
                             vec)]
             {:checked true :snapshots coords})
           {:checked false
-           :why (str "mvn dependency:list did not run ("
-                     (str/trim (last (str/split-lines (str (:err result)))))
-                     ")")}))
+           :why (str "mvn dependency:list did not run (exit " (:exit result) ": "
+                     (failure-reason result) ")")}))
       (catch Exception e
         {:checked false :why (str "mvn is not available here (" (.getMessage e) ")")})
       (finally
         (fs/delete-if-exists out)))))
 
-(defn deploy-target [root]
-  (let [file (fs/path root "swarmforge" "deploy.conf")]
-    (when (fs/regular-file? file)
-      (not-empty (str/trim (slurp (str file)))))))
+(defn release-target [root]
+  (some (fn [name]
+          (let [file (fs/path root "swarmforge" name)]
+            (when (fs/regular-file? file)
+              (not-empty (str/trim (slurp (str file)))))))
+        ["release.conf" "deploy.conf"]))
 
 (defn pom-text
   "The project's own pom, as text: the wiring checks below are about what a release
@@ -257,9 +287,9 @@
     (when-not version
       (exit! 1 "  the pom has no version of its own; this project's version is inherited"))
     (println (str "  version at HEAD: " version))
-    (println (str "  deploy gate: " (or (deploy-target root)
-                                        "no target in swarmforge/deploy.conf - this release will not deploy")))
-    (let [target (deploy-target root)
+    (println (str "  release target: " (or (release-target root)
+                                            "no target in swarmforge/release.conf - this release will not publish")))
+    (let [target (release-target root)
           text (pom-text root)
           scm (scm-connection text)
           dist (distribution-repositories text)
@@ -298,11 +328,11 @@
                                 "does anything without one: \"Missing required setting: scm connection or "
                                 "developerConnection must be specified\""))
                      (and target (empty? dist))
-                     (conj (str "swarmforge/deploy.conf names " target " but the pom's <distributionManagement> "
+                     (conj (str "swarmforge/release.conf names " target " but the pom's <distributionManagement> "
                                 "names no repository with an id and a url, so release:perform would have "
                                 "nowhere to deploy"))
                      (and target (not helper))
-                     (conj (str "swarmforge/deploy.conf names " target " but the project has no token helper "
+                     (conj (str "swarmforge/release.conf names " target " but the project has no token helper "
                                 "at scripts/" target "-token.sh (or swarmforge/local-scripts/"
                                 target "-token.sh)"))
                      (not (contains? (profile-ids text) release-gate))
@@ -344,7 +374,8 @@
           (println (str "  snapshot dependencies: NOT CHECKED - " (:why resolved))))
         (when (and resolved (:checked resolved) (empty? from-maven) (empty? from-poms))
           (println "  snapshot dependencies: none"))
-        (if (seq failures)
+        (cond
+          (seq failures)
           (do
             (binding [*out* *err*]
               (println "")
@@ -354,6 +385,28 @@
               (doseq [warning warnings]
                 (println (str "  warning: " warning))))
             (System/exit 1))
+
+          ;; A snapshot check that did not run is not a pass. It is the check this tool exists
+          ;; for - versions:set rewrites the project's own version and looks at nothing else -
+          ;; so READY beside it claimed the project was free of foreign snapshots when nothing
+          ;; had looked. That is what happened on 2026-10-16, where READY printed together with
+          ;; "NOT CHECKED - mvn dependency:list did not run (WARNING: sun.misc.Unsafe...)".
+          ;; Distinct verdict and distinct exit status, so a card's "stop unless it says READY"
+          ;; rule covers it as well as the wording does.
+          (and resolved (not (:checked resolved)))
+          (do
+            (binding [*out* *err*]
+              (println "")
+              (println "release preflight: NOT READY - the snapshot-dependency check did not run")
+              (println (str "  " (:why resolved)))
+              (println "  nothing has looked for a dependency on a SNAPSHOT this project does not build,")
+              (println "  which is what this preflight exists to catch: release:prepare is a second")
+              (println "  line of defence, not a substitute for it")
+              (doseq [warning warnings]
+                (println (str "  warning: " warning))))
+            (System/exit 2))
+
+          :else
           (do
             (println "")
             (println "release preflight: READY")
@@ -367,7 +420,7 @@
                           " -Darguments=\"-P" release-gate "\""))
             (println (str "  mvn release:perform -DlocalCheckout=true -Darguments=\"-DskipTests\""
                           (when-not target
-                            "   # only when swarmforge/deploy.conf names a target")))
+                            "   # only when swarmforge/release.conf names a target")))
             (println "  then push the branch and the tag, as the release steps say")
             (System/exit 0)))))))
 

@@ -2,6 +2,7 @@
 
 (ns pack-board
   (:require [babashka.fs :as fs]
+            [clojure.edn :as edn]
             [clojure.java.shell :refer [sh]]
             [clojure.string :as str])
   (:import [java.nio.channels FileChannel]
@@ -84,6 +85,18 @@
 
 (defn tasks-file [root]
   (fs/path (board-dir root) "tasks.tsv"))
+
+(defn lanes-file [root]
+  (fs/path (board-dir root) "lanes.tsv"))
+
+(defn single-agent? [root]
+  (fs/regular-file? (fs/path root ".swarmforge" "single-agent")))
+
+(defn stage-lanes [root]
+  (let [file (fs/path root "stages.edn")]
+    (when (fs/regular-file? file)
+      (conj (mapv :name (:stages (edn/read-string (slurp (str file)))))
+            "done"))))
 
 (defn with-board-lock [root f]
   (let [dir (board-dir root)
@@ -229,13 +242,31 @@
   (map #(str/split % #"\t" -1) (read-rows (roles-file root))))
 
 (defn lanes! [opts]
-  (doseq [cols (role-rows (resolve-root opts))]
-    (println (first cols))))
+  (let [root (resolve-root opts)
+        file (lanes-file root)]
+    (cond
+      (single-agent? root)
+      (doseq [lane (or (stage-lanes root) [])]
+        (println lane))
+
+      (fs/regular-file? file)
+      (doseq [line (read-rows file)]
+        (println (first (str/split line #"\t"))))
+
+      :else
+      (doseq [cols (role-rows root)]
+        (println (first cols))))))
 
 (defn master-lane! [opts]
-  (let [masters (filterv #(= "master" (second %)) (role-rows (resolve-root opts)))]
+  (let [root (resolve-root opts)
+        rows (vec (role-rows root))
+        masters (if (single-agent? root)
+                  rows
+                  (filterv #(= "master" (second %)) rows))]
     (when-not (= 1 (count masters))
-      (exit! 1 "Config must name exactly one master worktree"))
+      (exit! 1 (if (single-agent? root)
+                 "A single-agent project must name exactly one role"
+                 "Config must name exactly one master worktree")))
     (println (ffirst masters))))
 
 (defn tmux-socket [root]

@@ -6,11 +6,14 @@
             [clojure.string :as str]))
 
 (def catalog
-  {"gherkin-parser" {:source "github.com/unclebob/Acceptance-Pipeline-Specification"
+  {"gherkin-parser" {:source "github.com/sgo/Acceptance-Pipeline-Specification"
+                     :ref "forgelet"
                      :bb-task "gherkin-parser"}
-   "ir-dry-checker" {:source "github.com/unclebob/Acceptance-Pipeline-Specification"
+   "ir-dry-checker" {:source "github.com/sgo/Acceptance-Pipeline-Specification"
+                     :ref "forgelet"
                      :bb-task "gherkin-ir-dry-checker"}
-   "gherkin-mutator" {:source "github.com/unclebob/Acceptance-Pipeline-Specification"
+   "gherkin-mutator" {:source "github.com/sgo/Acceptance-Pipeline-Specification"
+                      :ref "forgelet"
                       :bb-task "gherkin-mutator"}
    "crap4clj" {:source "github.com/unclebob/crap4clj" :bb-task "crap4clj"
                :needs ["cloverage"]}
@@ -32,9 +35,17 @@
              :go-package "github.com/unclebob/dry4go/cmd/dry4go"}
    "mutate4go" {:source "github.com/unclebob/mutate4go"
                 :go-package "github.com/unclebob/mutate4go/cmd/mutate4go"}
-   "crap4java" {:source "github.com/unclebob/crap4java" :bb-task "crap4java"}
-   "dry4java" {:source "github.com/unclebob/dry4java" :bb-task "dry4java"}
-   "mutate4java" {:source "github.com/unclebob/mutate4java" :bb-task "mutate4java"}
+   ;; forgelet: the three Java tools are Maven projects, not babashka tasks, so - like the Go
+   ;; entries above, which went upstream as the bug they were - they are built from source and
+   ;; wrapped as jars rather than assumed to carry a bb.edn. crap4java comes from the family's
+   ;; fork: main there mirrors upstream and the `forgelet` branch holds ours, the same shape the
+   ;; layer, the packs and the bridge already use. That branch is what the projects' scripts are
+   ;; written for - --test-command, which upstream never had - and it carries JaCoCo 0.8.14,
+   ;; the first that can read Java 25 class files. dry4java and mutate4java have no fork and
+   ;; need only the mechanism.
+   "crap4java" {:source "github.com/sgo/crap4java" :ref "forgelet" :jar true}
+   "dry4java" {:source "github.com/unclebob/dry4java" :jar true}
+   "mutate4java" {:source "github.com/unclebob/mutate4java" :jar true}
    ;; forgelet: the Kotlin recipe is ours. The registry says how each language's tools are
    ;; installed, and upstream's names Go, Clojure and Java; a Kotlin project needs
    ;; slopguard built from source, and the commit is pinned because it has no release tags
@@ -101,6 +112,24 @@
     (fs/path override)
     (fs/path root ".swarmforge" "tools" (last (str/split source #"/")))))
 
+;; The branch a tool is cloned from, for the tools that live on one of the family's forks.
+;; A tool with no fork names no :ref and clones its default branch; SWARMFORGE_TOOL_REF
+;; overrides the branch of any entry that names one. It is confined to those entries rather
+;; than applied to the whole catalog because most of these tools have no fork at all, and a
+;; branch that does not exist there would fail every one of them.
+(defn tool-ref [spec]
+  (when-let [named (not-empty (:ref spec))]
+    (or (not-empty (System/getenv "SWARMFORGE_TOOL_REF")) named)))
+
+;; The jar a Java tool's wrapper execs. Maven names it after the artifact and its version, so
+;; it is found by pattern rather than written down; a sources or javadoc jar is not it.
+(defn jar-files [root spec]
+  (let [dir (source-dir root (:source spec))]
+    (->> (fs/glob (str dir) "target/*.jar")
+         (remove #(re-find #"-(sources|javadoc)\.jar$" (str (fs/file-name %))))
+         (sort-by str)
+         (vec))))
+
 (defn go-bin-dir [root]
   (fs/path root ".swarmforge" "go-bin"))
 
@@ -116,6 +145,11 @@
 (defn tool-installed? [root tool]
   (let [spec (get catalog (canonical-tool tool))]
     (and (fs/executable? (wrapper-path root tool))
+         ;; A jar tool counts as installed only when the jar its wrapper execs is still
+         ;; there. Checking the wrapper alone is what let `require` report OK for tools that
+         ;; died the moment a role ran them.
+         (or (not (:jar spec))
+             (seq (jar-files root spec)))
          (or (nil? (:go-package spec))
              (fs/executable? (go-binary-path root spec))))))
 
@@ -135,19 +169,49 @@
       (do (println "OK:" tool (str (wrapper-path root tool)))
           (System/exit 0)))))
 
-(defn clone-source! [dir source]
+(defn clone-source! [dir source ref]
   (fs/create-dirs (fs/parent dir))
   (let [url (str "https://" source ".git")
-        result (sh/sh "git" "clone" "--depth" "1" url (str dir))]
+        ;; --branch clones the branch itself, which a depth-1 clone can do and a commit
+        ;; checkout cannot: the commit would not be in the shallow history.
+        result (apply sh/sh (concat ["git" "clone" "--depth" "1"]
+                                    (when ref ["--branch" ref])
+                                    [url (str dir)]))]
     (when-not (zero? (:exit result))
-      (exit! 1 (str "Failed to clone " url "\n" (:err result) (:out result))))))
+      (exit! 1 (str "Failed to clone " url (when ref (str " (branch " ref ")"))
+                    "\n" (:err result) (:out result))))))
 
-(defn ensure-source! [root source]
-  (let [dir (source-dir root source)]
-    (when-not (fs/exists? (fs/path dir "bb.edn"))
-      (when (System/getenv "SWARMFORGE_TOOL_SRC")
-        (exit! 1 (str "SWARMFORGE_TOOL_SRC is missing bb.edn: " dir)))
-      (clone-source! dir source))
+;; Where a checkout came from, so a stale one can be told apart from a current one. Without it
+;; the marker file alone says "already cloned" and a directory fetched by hand - from upstream,
+;; before the catalog named a fork's branch - is built again and silently produces the old tool.
+;; That is exactly how three projects kept a crap4java without `--test-command`.
+(defn source-provenance [source ref]
+  (str source (when ref (str "@" ref))))
+
+(defn recorded-provenance [dir]
+  (let [path (fs/path dir ".swarmforge-source")]
+    (when (fs/exists? path)
+      (not-empty (str/trim (slurp (str path)))))))
+
+(defn ensure-source! [root spec marker]
+  (let [dir (source-dir root (:source spec))
+        wanted (source-provenance (:source spec) (tool-ref spec))
+        override (not-empty (System/getenv "SWARMFORGE_TOOL_SRC"))]
+    (cond
+      override
+      (when-not (fs/exists? (fs/path dir marker))
+        (exit! 1 (str "SWARMFORGE_TOOL_SRC is missing " marker ": " dir)))
+
+      (and (fs/exists? dir) (not= wanted (recorded-provenance dir)))
+      (do (println (str "REPLACING: " dir " - it was "
+                        (or (recorded-provenance dir) "cloned before this recipe recorded where from")
+                        ", and this recipe wants " wanted))
+          (fs/delete-tree dir))
+
+      :else nil)
+    (when-not (fs/exists? (fs/path dir marker))
+      (clone-source! dir (:source spec) (tool-ref spec))
+      (spit (str (fs/path dir ".swarmforge-source")) (str wanted "\n")))
     dir))
 
 (defn mutate-rewrite-bash []
@@ -272,14 +336,8 @@
               (reverse (when (fs/directory? sdk) (sort-by str (fs/list-dir sdk)))))
         (not-empty (System/getenv "JAVA_HOME")))))
 
-(defn ensure-gradle-source! [root source]
-  (let [dir (source-dir root source)]
-    (when-not (fs/exists? (fs/path dir "gradlew"))
-      (clone-source! dir source))
-    dir))
-
 (defn install-gradle-package! [root spec]
-  (let [src (ensure-gradle-source! root (:source spec))
+  (let [src (ensure-source! root spec "gradlew")
         task (str ":" (:gradle-install spec))
         launcher (fs/path src "app" "build" "install" "slopguard-kotlin" "bin" "slopguard-kotlin")]
     (when-not (fs/which "java")
@@ -313,6 +371,61 @@
           "fi\n"
           "exec \"$bin\" \"$@\"\n"))))
 
+;; Java tools are Maven projects built from source, and each README's recipe is what this runs:
+;; package, skipping tests, then wrap the jar. The tool is built with whatever java is ambient -
+;; these are plain CLI applications, and the projects they analyse are the ones written for
+;; Java 25, not the analyser. The mutate argument rewriting still applies: it is plain argument
+;; handling (drop --mutate-all, cap workers) rather than anything babashka-specific.
+;;
+;; The tool's source lives *inside* the project that asked for it, which is what makes the two
+;; explicit settings below necessary rather than fussy. Maven finds `.mvn/maven.config` by
+;; walking up from the build, so a project whose config says `-s .mvn/settings.xml` hands the
+;; tool's build that path relative to the tool's own directory - the build dies with "The
+;; specified user settings file does not exist" before it reads a class. Measured, not assumed:
+;; the same build succeeds when the settings file comes on the command line, because a later
+;; `-s` wins over the one in the config file. The local repository is named for the same reason
+;; and one more: the project's config would point this build at a repository under the tool
+;; directory, and being explicit means the recipe does not depend on where it was invoked from.
+(defn write-tool-build-settings! [src]
+  (let [path (fs/path src "tool-build-settings.xml")]
+    (spit (str path) (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                          "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\"/>\n"))
+    path))
+
+(defn install-maven-jar! [root tool spec]
+  (let [src (ensure-source! root spec "pom.xml")]
+    (when-not (fs/which "mvn")
+      (exit! 1 (str "Maven not found on PATH. Install Maven, then run: swarm_tool.sh ensure " tool)))
+    (when-not (fs/which "java")
+      (exit! 1 (str "No java on PATH. Install a JDK, then run: swarm_tool.sh ensure " tool)))
+    (let [settings (write-tool-build-settings! src)
+          repo (fs/path src ".m2" "repository")
+          result (sh/sh "mvn" "-q" "-DskipTests"
+                        "-s" (str settings)
+                        (str "-Dmaven.repo.local=" repo)
+                        "package" :dir (str src))]
+      (when-not (zero? (:exit result))
+        (exit! 1 (str "Failed to build " (:source spec)
+                      "\n" (:err result) (:out result))))))
+  (let [jars (jar-files root spec)]
+    (when (empty? jars)
+      (exit! 1 (str "No jar under " (str (fs/path (source-dir root (:source spec)) "target"))
+                    " after building " (:source spec))))
+    (str (last jars))))
+
+(defn write-java-wrapper! [root tool spec]
+  (let [jar (install-maven-jar! root tool spec)
+        target (wrapper-path root tool)]
+    (write-wrapper!
+     target
+     (str (rewrite-bash tool)
+          "jar=" (sq jar) "\n"
+          "if [ ! -f \"$jar\" ]; then\n"
+          "  echo \"swarm_tool: missing $jar; run: swarm_tool.sh ensure " tool "\" >&2\n"
+          "  exit 1\n"
+          "fi\n"
+          "exec java -jar \"$jar\" \"$@\"\n"))))
+
 (defn install-one! [tool]
   (let [spec (tool-spec tool)
         root (project-root)
@@ -320,8 +433,9 @@
         target (cond
                  (:go-package spec) (write-go-wrapper! root name spec)
                  (:gradle-install spec) (write-gradle-wrapper! root name spec)
+                 (:jar spec) (write-java-wrapper! root name spec)
                  (:bb-task spec) (write-bb-wrapper! root name (:bb-task spec)
-                                                    (ensure-source! root (:source spec)))
+                                                    (ensure-source! root spec "bb.edn"))
                  :else (write-mvn-wrapper! root name spec))]
     (println "INSTALLED:" name (str target))))
 
