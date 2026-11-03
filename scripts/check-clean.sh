@@ -8,11 +8,36 @@ export PATH="$project_root/.swarmforge/bin:$project_root/swarmforge/scripts:$PAT
 
 mkdir -p tmp target/coverage
 report="tmp/crap4go-report.txt"
+: > "$report"
 
-crap4go \
-  --max-workers 4 \
-  --test-command "go test -tags goolm -count=1 ./internal/... ./acceptance/... ./cmd/..." \
-  2>&1 | tee "$report"
+sources=()
+if [[ -n "${FORGELET_CRAP_FILES:-}" ]]; then
+  read -r -a requested <<< "$FORGELET_CRAP_FILES"
+  sources=("${requested[@]}")
+else
+  base="${FORGELET_BASE_REF:-origin/master}"
+  while IFS= read -r file; do
+    [[ "$file" == *_test.go ]] && continue
+    sources+=("$file")
+  done < <({
+    git diff --name-only "$base" -- '*.go'
+    git ls-files --others --exclude-standard -- '*.go'
+  } | grep -E '^(cmd|internal)/' | sort -u)
+fi
+
+if [[ ${#sources[@]} -eq 0 ]]; then
+  echo "clean: no changed Go production source files to measure" >&2
+  exit 1
+fi
+
+printf 'clean: measuring %d changed Go source file(s)\n' "${#sources[@]}"
+for file in "${sources[@]}"; do
+  package="./$(dirname "$file")"
+  crap4go \
+    --max-workers 4 \
+    --test-command "go test -tags goolm -count=1 $package" \
+    "$file" 2>&1 | tee -a "$report"
+done
 
 python3 - "$report" <<'PY'
 import re
@@ -27,7 +52,7 @@ for line in open(sys.argv[1], encoding="utf-8"):
         continue
     if not in_report:
         continue
-    match = re.match(r"^\s+\S.*\s+(\d+(?:\.\d+)?)\s*$", line)
+    match = re.search(r"\s+(\d+(?:\.\d+)?)\s*$", line)
     if not match:
         continue
     score = float(match.group(1))
@@ -44,5 +69,5 @@ if over:
 print(f"clean: highest CRAP {highest:.1f} (ceiling 6)")
 PY
 
-dry4go --threshold 0.82 --min-lines 4 --min-nodes 20 --format text .
+dry4go --threshold 0.82 --min-lines 4 --min-nodes 20 --format text cmd internal acceptance
 echo "clean: dry4go passed"

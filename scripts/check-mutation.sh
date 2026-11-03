@@ -12,15 +12,14 @@ if [[ -n "${FORGELET_MUTATION_FILES:-}" ]]; then
   read -r -a requested <<< "$FORGELET_MUTATION_FILES"
   selection=("${requested[@]}")
 else
+  base="${FORGELET_BASE_REF:-origin/master}"
   while IFS= read -r file; do
-    scan="$(mutate4go "$file" --scan)"
-    printf '%s\n' "$scan"
-    changed="$(printf '%s\n' "$scan" | sed -n 's/^Changed mutation sites: //p')"
-    manifest="$(printf '%s\n' "$scan" | sed -n 's/^Manifest exists: //p')"
-    if [[ "$changed" != "0" || "$manifest" != "true" ]]; then
-      selection+=("$file")
-    fi
-  done < <(find cmd internal acceptance -type f -name '*.go' ! -name '*_test.go' | sort)
+    [[ "$file" == *_test.go ]] && continue
+    selection+=("$file")
+  done < <({
+    git diff --name-only "$base" -- '*.go'
+    git ls-files --others --exclude-standard -- '*.go'
+  } | grep -E '^(cmd|internal)/' | sort -u)
 fi
 
 if [[ ${#selection[@]} -eq 0 ]]; then

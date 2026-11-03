@@ -1,4 +1,4 @@
-package steps
+package pipeline
 
 import (
 	"strings"
@@ -21,7 +21,7 @@ func TestVerifySingleAgentGoProject(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := verifySingleAgentGoProject(test.marker, test.language, test.module)
+			err := VerifySingleAgentGoProject(test.marker, test.language, test.module)
 			if test.ok && err != nil {
 				t.Fatal(err)
 			}
@@ -45,10 +45,10 @@ func TestVerifyProjectStageKeepsTheCommandAndLogTogether(t *testing.T) {
     ;;
 esac
 `
-	if err := verifyProjectStage(stages, gate, "code", "scripts/test.sh", "build/stages/code.log"); err != nil {
+	if err := VerifyProjectStage(stages, gate, "code", "scripts/test.sh", "build/stages/code.log"); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyProjectStage(stages, gate, "deploy", "scripts/build.sh", "build/stages/deploy.log"); err != nil {
+	if err := VerifyProjectStage(stages, gate, "deploy", "scripts/build.sh", "build/stages/deploy.log"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,7 +68,7 @@ esac
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := verifyProjectStage(test.stages, test.gate, test.stage, test.command, test.log)
+			err := VerifyProjectStage(test.stages, test.gate, test.stage, test.command, test.log)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("err = %v, want it to contain %q", err, test.want)
 			}
