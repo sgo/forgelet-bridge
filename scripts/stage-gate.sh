@@ -51,6 +51,7 @@ case "$stage" in
     ;;
   deploy)
     run scripts/build.sh
+    run scripts/matrix-bridge.sh status
     run scripts/deploy-check.sh
     ;;
   *)
