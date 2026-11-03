@@ -51,6 +51,15 @@ esac
 	if err := VerifyProjectStage(stages, gate, "deploy", "scripts/build.sh", "build/stages/deploy.log"); err != nil {
 		t.Fatal(err)
 	}
+	firstCase := `
+  code)
+    run scripts/test.sh
+    ;;
+esac
+`
+	if err := VerifyProjectStage(stages, firstCase, "code", "scripts/test.sh", "build/stages/code.log"); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name    string
