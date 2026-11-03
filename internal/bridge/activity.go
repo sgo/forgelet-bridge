@@ -44,14 +44,13 @@ func (b *Bridge) carryOutActivity(ctx context.Context, root string, room Room) (
 
 	actions := relay.PlanActivity(b.state.Relay, cards)
 	news, moves := splitCardUpdates(actions)
-	posted := map[string]bool{}
-	if err := b.postCardNews(ctx, root, room.ActivityRoomID, news, posted); err != nil {
+	if err := b.postCardNews(ctx, root, room.ActivityRoomID, news); err != nil {
 		return 0, err
 	}
-	if err := b.postCardMoves(ctx, root, room.ActivityRoomID, moves, posted); err != nil {
+	if err := b.postCardMoves(ctx, root, room.ActivityRoomID, moves); err != nil {
 		return 0, err
 	}
-	if seeded := b.rememberQuietCards(root, cards, posted); seeded > 0 {
+	if seeded := b.rememberQuietCards(root, cards); seeded > 0 {
 		if err := b.state.Save(b.statePath); err != nil {
 			return 0, err
 		}
@@ -85,26 +84,26 @@ func boardFacts(boards []relay.Board) []relay.Fact {
 
 // postCardNews posts a tick's card news as one message - the message the phone
 // is woken for - and remembers that the room has it.
-func (b *Bridge) postCardNews(ctx context.Context, root, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) postCardNews(ctx context.Context, root, roomID string, actions []relay.ActivityAction) error {
 	if len(actions) == 0 {
 		return nil
 	}
 	if _, err := b.rooms.SendText(ctx, roomID, cardUpdates(actions), ""); err != nil {
 		return fmt.Errorf("post the tick's card news: %w", err)
 	}
-	return b.rememberCardUpdates(root, actions, posted)
+	return b.rememberCardUpdates(root, actions)
 }
 
 // postCardMoves posts a tick's routine lane moves as one notice, which the
 // clients do not notify on, and remembers that the room has it.
-func (b *Bridge) postCardMoves(ctx context.Context, root, roomID string, actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) postCardMoves(ctx context.Context, root, roomID string, actions []relay.ActivityAction) error {
 	if len(actions) == 0 {
 		return nil
 	}
 	if _, err := b.rooms.SendNotice(ctx, roomID, cardUpdates(actions)); err != nil {
 		return fmt.Errorf("post the tick's card moves: %w", err)
 	}
-	return b.rememberCardUpdates(root, actions, posted)
+	return b.rememberCardUpdates(root, actions)
 }
 
 // splitCardUpdates keeps the tick's news apart from its routine moves: the news
@@ -134,10 +133,9 @@ func cardUpdates(actions []relay.ActivityAction) string {
 
 // rememberCardUpdates records what the operator has been told about every card
 // in a group, once that group is in the room: a restart then repeats nothing.
-func (b *Bridge) rememberCardUpdates(root string, actions []relay.ActivityAction, posted map[string]bool) error {
+func (b *Bridge) rememberCardUpdates(root string, actions []relay.ActivityAction) error {
 	b.state.Relay.EnsureMaps()
 	for _, action := range actions {
-		posted[action.Card.Key] = true
 		b.state.Relay.Activity[action.Card.Key] = relay.CardState{
 			ForgeRoot: root,
 			Lane:      action.Card.Lane,
@@ -154,13 +152,13 @@ func (b *Bridge) rememberCardUpdates(root string, actions []relay.ActivityAction
 // not narrated on the next tick either. A card the bridge meets in flight is
 // announced, so what it remembers quietly here is the history: cards that had
 // already finished before the bridge got to them.
-func (b *Bridge) rememberQuietCards(root string, cards []relay.Card, posted map[string]bool) int {
+func (b *Bridge) rememberQuietCards(root string, cards []relay.Card) int {
 	seeded := 0
 	for _, card := range cards {
 		if _, known := b.state.Relay.Activity[card.Key]; known {
 			continue
 		}
-		if posted[card.Key] || !card.Done {
+		if !card.Done {
 			continue
 		}
 		b.state.Relay.EnsureMaps()
@@ -177,5 +175,5 @@ func (b *Bridge) rememberQuietCards(root string, cards []relay.Card, posted map[
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-10-07T01:34:29+02:00","module_hash":"adb4e128533f5387745fd054ae00f4e7cd235440c1aabb93acfce4f7810846f1","functions":[{"id":"func/cardUpdate","name":"cardUpdate","line":13,"end_line":25,"hash":"c2a615621bb4fc84f739407ebe1c7dcd74f51548e5749984cf6cd7aae76cb270"},{"id":"func/Bridge.carryOutActivity","name":"Bridge.carryOutActivity","line":34,"end_line":64,"hash":"9eeecdbd05a6c24989fff5c2aadd94e7d0ae44488af15ca0a8882e4a96255ff1"},{"id":"func/cardsOf","name":"cardsOf","line":68,"end_line":74,"hash":"5186c3160df27a8cf7ff74ec5eae2232ff829c974fbd7efc9751960fa2b1ec12"},{"id":"func/boardFacts","name":"boardFacts","line":78,"end_line":84,"hash":"97b90b0e2cab2cb546d31a6bd8c250251e2ea094a8aac40e2a18d02403287248"},{"id":"func/Bridge.postCardNews","name":"Bridge.postCardNews","line":88,"end_line":96,"hash":"fec9ad990d30ec371c780b904f737b4b43c7d22a52583a3cf1bac28d517abfd0"},{"id":"func/Bridge.postCardMoves","name":"Bridge.postCardMoves","line":100,"end_line":108,"hash":"94779c2910f9013e99a9ae95b30025c719abca71114304588b24df0d7011c44a"},{"id":"func/splitCardUpdates","name":"splitCardUpdates","line":113,"end_line":122,"hash":"4620f53099784418e7d7ceedad005d2477009835aa82bc610b2ef326a89b9273"},{"id":"func/cardUpdates","name":"cardUpdates","line":127,"end_line":133,"hash":"555c1b76e5c103dc2b037dc4cd1d73d452f7aea7019f4906eecd50d7a88b7a16"},{"id":"func/Bridge.rememberCardUpdates","name":"Bridge.rememberCardUpdates","line":137,"end_line":149,"hash":"ec86323227b9181d1fca033afc2a02773657fcd1b444fe7d378c9b4402296cd5"},{"id":"func/Bridge.rememberQuietCards","name":"Bridge.rememberQuietCards","line":156,"end_line":175,"hash":"be1aaf8183103c4228e7c7340dbada838f2397dba12b593c0b40f5d97e19fd7f"}]}
+// {"version":1,"tested_at":"2026-11-03T01:03:18+01:00","module_hash":"120ce0eeba6db09ed20e10e7b1d092484de3a554e64ca94727c8d8f8a9353a11","functions":[{"id":"func/cardUpdate","name":"cardUpdate","line":13,"end_line":25,"hash":"c2a615621bb4fc84f739407ebe1c7dcd74f51548e5749984cf6cd7aae76cb270"},{"id":"func/Bridge.carryOutActivity","name":"Bridge.carryOutActivity","line":34,"end_line":63,"hash":"7cdb9598fcf9201c614517d0e5e78a32c6004cf726bc9f0d058e4966111b8c9f"},{"id":"func/cardsOf","name":"cardsOf","line":67,"end_line":73,"hash":"5186c3160df27a8cf7ff74ec5eae2232ff829c974fbd7efc9751960fa2b1ec12"},{"id":"func/boardFacts","name":"boardFacts","line":77,"end_line":83,"hash":"97b90b0e2cab2cb546d31a6bd8c250251e2ea094a8aac40e2a18d02403287248"},{"id":"func/Bridge.postCardNews","name":"Bridge.postCardNews","line":87,"end_line":95,"hash":"1c6188ac909bf9c911fedde2fe15eb205359e086f0847cbf907c73c377ae63aa"},{"id":"func/Bridge.postCardMoves","name":"Bridge.postCardMoves","line":99,"end_line":107,"hash":"f853887095b0fae50c6c3973fca587a20e00f09cc1086637eee7a8bcad9e89c0"},{"id":"func/splitCardUpdates","name":"splitCardUpdates","line":112,"end_line":121,"hash":"4620f53099784418e7d7ceedad005d2477009835aa82bc610b2ef326a89b9273"},{"id":"func/cardUpdates","name":"cardUpdates","line":126,"end_line":132,"hash":"555c1b76e5c103dc2b037dc4cd1d73d452f7aea7019f4906eecd50d7a88b7a16"},{"id":"func/Bridge.rememberCardUpdates","name":"Bridge.rememberCardUpdates","line":136,"end_line":148,"hash":"3afff224687bcfce9e3d0a313fa2eb7a833ceedeb43bd831d66870c48244b03c"},{"id":"func/Bridge.rememberQuietCards","name":"Bridge.rememberQuietCards","line":155,"end_line":175,"hash":"67645e20e42acdf56a4e9cb2c3f54b3437315edcffc588348c23d1b23305c0a8"}]}
 // mutate4go-manifest-end

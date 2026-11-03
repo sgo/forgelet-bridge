@@ -41,7 +41,7 @@ func register(registry *runtime.Registry) error {
 		{`^the adapter for the forge root (\S+) removes the forge root (\S+)(?: again)?$`, adapterRemovesForge},
 		{`^the adapter for the forge root (\S+) is asked to remove the (.+) forge root$`, adapterAskedToRemoveForge},
 		{`^the removal result reports the status "([^"]+)"(?: with the reason "([^"]+)")?$`, removalResultReports},
-		{`^the removal targeted the (.+) space and its chat, approvals, activity and clarifications rooms, and every recorded project room, exactly once$`, removalTargetedEveryRoom},
+		{`^the removal targeted the (.+) space and its chat, approvals, activity and clarifications rooms, and exactly (\d+) project rooms, each exactly once$`, removalTargetedEveryRoom},
 		{`^the removal cleared the relay facts before leaving each recorded room$`, removalClearedFacts},
 		{`^the removal removed the operator before the bridge left each recorded room$`, removalRemovedOperator},
 		{`^the operator and the bridge are no longer members of the (.+) space or any recorded room$`, removalMembershipsGone},

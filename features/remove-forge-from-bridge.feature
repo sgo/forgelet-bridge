@@ -1,3 +1,8 @@
+# mutation-stamp: sha256=7be0b7c5b0de34dce5768cfd6ca9d853914fcea6baca661d880a4812559ad638
+# acceptance-mutation-manifest-begin
+# {"version":1,"tested_at":"2026-11-03T00:31:23.140080Z","feature_name":"Remove A Forge From The Bridge","feature_path":"features/remove-forge-from-bridge.feature","background_hash":"ea1bff45dfa681f02cfcebb1aed35123bdd8d08adc59e548a592d46f9eb56ce5","implementation_hash":"sha256:5d417f41af5585192f1369bc3ac00ffe20313bddc338c0bfb936bcbd4c74b1f8","scenarios":[{"index":0,"name":"Remove A Forge From The Bridge 1: every recorded forge and project room is cleaned once","scenario_hash":"8ab0ba226cc11f1b7381e086b806a776a263ea7a6e8b8abd631a8852f739f8e1","mutation_count":4,"result":{"Total":4,"Killed":4,"Survived":0,"Errors":0},"tested_at":"2026-11-03T00:30:44.491115Z"},{"index":1,"name":"Remove A Forge From The Bridge 2: a partial Matrix failure can be repaired and retried","scenario_hash":"d39976dfc8a4ab9f0ef3fc93bd39e9f068b4bc5244aa9901d1376f14765b89f7","mutation_count":6,"result":{"Total":6,"Killed":6,"Survived":0,"Errors":0},"tested_at":"2026-11-03T00:23:00.541731Z"},{"index":5,"name":"Remove A Forge From The Bridge 6: unsafe or ambiguous roots are refused before Matrix changes","scenario_hash":"dd5ea21d4a51a219fb2b9f26082bc6126492bf1b66634bda8396945b0a8dd564","mutation_count":10,"result":{"Total":10,"Killed":10,"Survived":0,"Errors":0},"tested_at":"2026-11-03T00:23:00.541731Z"}]}
+# acceptance-mutation-manifest-end
+
 Feature: Remove A Forge From The Bridge
 
   # Removing a forge from configuration alone leaves its space and rooms on the
@@ -21,7 +26,7 @@ Feature: Remove A Forge From The Bridge
     And the forge forge-b holds relay facts in its forge and project rooms
     When the adapter for the forge root forge-a removes the forge root forge-b
     Then the removal result reports the status "removed"
-    And the removal targeted the forge-b space and its chat, approvals, activity and clarifications rooms, and every recorded project room, exactly once
+    And the removal targeted the forge-b space and its chat, approvals, activity and clarifications rooms, and exactly <expected_project_rooms> project rooms, each exactly once
     And the removal cleared the relay facts before leaving each recorded room
     And the removal removed the operator before the bridge left each recorded room
     And the operator and the bridge are no longer members of the forge-b space or any recorded room
@@ -32,9 +37,9 @@ Feature: Remove A Forge From The Bridge
     And the forge-b files outside the bridge state are unchanged byte for byte
 
     Examples:
-      | project_rooms |
-      | 1             |
-      | 3             |
+      | project_rooms | expected_project_rooms |
+      | 1             | 1                      |
+      | 3             | 3                      |
 
   # Remove A Forge From The Bridge 2: a partial Matrix failure can be repaired and retried
   Scenario Outline: Remove A Forge From The Bridge 2: a partial Matrix failure can be repaired and retried

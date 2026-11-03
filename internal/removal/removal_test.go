@@ -26,6 +26,7 @@ func TestInspectRefusesUnsafeUnknownAndAmbiguousRoots(t *testing.T) {
 	}{
 		{name: "blank", root: "", want: refused("unsafe_root")},
 		{name: "relative", root: "one", want: refused("ambiguous_root")},
+		{name: "relative with no basename match", root: "missing", want: refused("unsafe_root")},
 		{name: "parent traversal", root: "/forges/../forges/one", want: refused("unsafe_root")},
 		{name: "unknown absolute", root: "/forges/three", want: refused("unknown_root")},
 	}
@@ -51,12 +52,26 @@ func TestInspectDistinguishesNoRecordFromIncompleteRecord(t *testing.T) {
 		t.Fatalf("missing record = %+v, want nothing_to_remove", got.Result)
 	}
 
-	incomplete := removalState("/forges/one")
-	forge := incomplete.Forges["/forges/one"]
-	forge.ActivityRoomID = ""
-	incomplete.Forges["/forges/one"] = forge
-	if got := Inspect(cfg, incomplete, "/forges/one"); got.Result != refused("incomplete_state") {
-		t.Fatalf("incomplete record = %+v, want incomplete_state", got.Result)
+	incompleteFields := []struct {
+		name   string
+		remove func(*state.Forge)
+	}{
+		{name: "space", remove: func(forge *state.Forge) { forge.SpaceID = "" }},
+		{name: "chat", remove: func(forge *state.Forge) { forge.RoomID = "" }},
+		{name: "approvals", remove: func(forge *state.Forge) { forge.ApprovalsRoomID = "" }},
+		{name: "activity", remove: func(forge *state.Forge) { forge.ActivityRoomID = "" }},
+		{name: "clarifications", remove: func(forge *state.Forge) { forge.ClarificationsRoomID = "" }},
+	}
+	for _, field := range incompleteFields {
+		t.Run("missing "+field.name, func(t *testing.T) {
+			incomplete := removalState("/forges/one")
+			forge := incomplete.Forges["/forges/one"]
+			field.remove(&forge)
+			incomplete.Forges["/forges/one"] = forge
+			if got := Inspect(cfg, incomplete, "/forges/one"); got.Result != refused("incomplete_state") {
+				t.Fatalf("incomplete record = %+v, want incomplete_state", got.Result)
+			}
+		})
 	}
 }
 
@@ -357,6 +372,16 @@ func TestWriteResultUsesOneJSONObject(t *testing.T) {
 	}
 	if output.String() != "{\"status\":\"removed\"}\n" {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestSplitWaitingRequiresAndReturnsAllThreeParts(t *testing.T) {
+	room, eventType, key, ok := splitWaiting("!room:example.org\nevent.type\nkey")
+	if !ok || room != "!room:example.org" || eventType != "event.type" || key != "key" {
+		t.Fatalf("split = room:%q type:%q key:%q ok:%t", room, eventType, key, ok)
+	}
+	if _, _, _, ok := splitWaiting("!room:example.org\nevent.type"); ok {
+		t.Fatal("a waiting key with only two parts was accepted")
 	}
 }
 

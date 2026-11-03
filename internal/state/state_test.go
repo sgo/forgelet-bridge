@@ -81,6 +81,17 @@ func TestProjectRoomRoundTrip(t *testing.T) {
 	}
 }
 
+func TestProjectForRejectsARecordWithoutARoomID(t *testing.T) {
+	saved := &State{}
+	saved.EnsureMaps()
+	saved.RecordForge("/forges/forge-a", Forge{})
+	saved.RecordProject("/forges/forge-a", "agent", Project{})
+
+	if project, ok := saved.ProjectFor("/forges/forge-a", "agent"); ok {
+		t.Fatalf("ProjectFor = %+v, true; want an incomplete project refused", project)
+	}
+}
+
 func TestSaveLeavesNoTemporaryFile(t *testing.T) {
 	path := statePath(t)
 	saved := &State{}

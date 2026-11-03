@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"maunium.net/go/mautrix/event"
@@ -101,10 +102,17 @@ func removalResultReports(_ context.Context, world any, captures []string) error
 	return nil
 }
 
-func removalTargetedEveryRoom(_ context.Context, world any, _ []string) error {
+func removalTargetedEveryRoom(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	if w.removal == nil || !slices.Equal(w.removal.roomsBefore, w.removal.rooms) {
 		return fmt.Errorf("removal room plan changed: before=%v after=%v", w.removalRoomsBefore(), w.removal.rooms)
+	}
+	wantProjects, err := strconv.Atoi(captures[2])
+	if err != nil {
+		return fmt.Errorf("expected project-room count %q: %w", captures[2], err)
+	}
+	if projects := len(w.removal.rooms) - 5; projects != wantProjects {
+		return fmt.Errorf("removal targeted %d project rooms, want exactly %d", projects, wantProjects)
 	}
 	return nil
 }

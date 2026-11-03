@@ -494,6 +494,22 @@ func TestTickRecordsIdleStatus(t *testing.T) {
 	}
 }
 
+func TestCarryOutChatCountsAPairingAsOneUnitOfWork(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+	built.State().Relay.EnsureMaps()
+	built.State().Relay.Threads["req-1"] = "$posted"
+	built.State().Relay.Pending["$event-1"] = "is the build green?"
+
+	done := built.carryOutChat(context.Background(), "/forges/forge-a", store,
+		Room{RoomID: "!room-forge-a"}, roomEvents{messages: map[string][]relay.RoomEvent{}},
+		store.requests)
+	if done != 1 {
+		t.Fatalf("carryOutChat = %d, want the pairing counted once", done)
+	}
+}
+
 func TestTickReportsBusyWhileItWorks(t *testing.T) {
 	store := &fakeStore{requests: []relay.Request{{ID: "req-1", Body: "is the build green?"}}}
 	rooms := &fakeRooms{}

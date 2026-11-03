@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -441,6 +442,59 @@ func TestTickRemembersASingleCardTheForgeArrivedWith(t *testing.T) {
 	}
 	if _, known := reloaded.Relay.Activity["forgelet-bridge/finished-card-0"]; !known {
 		t.Errorf("the one card the forge arrived with was not saved, so a restart would narrate it")
+	}
+}
+
+func TestQuietActivityDoesNotWriteStateWhenThereIsNothingToSeed(t *testing.T) {
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, "/forges/forge-a")
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	built.statePath = filepath.Join(blocked, "bridge-state.json")
+
+	written, err := built.carryOutActivity(context.Background(), "/forges/forge-a", Room{ActivityRoomID: "!activity:example.org"})
+	if err != nil {
+		t.Fatalf("quiet activity tried to persist state: %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("quiet activity wrote %d events, want none", written)
+	}
+	if seeded := built.rememberQuietCards("/forges/forge-a", nil); seeded != 0 {
+		t.Fatalf("rememberQuietCards = %d, want none", seeded)
+	}
+}
+
+func TestOneQuietCardIsPersistedWithoutAnotherFactWrite(t *testing.T) {
+	board := &fakeBoard{}
+	board.set(finishedCards(1)...)
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithStores(t, rooms, map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	boards, err := board.Boards()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact := boardFacts(boards)[0]
+	content, err := factContent(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built.state.Relay.Waiting[waitingKey("!activity-forge-a", relay.BoardFactType, fact.Key)] = content
+
+	if _, err := built.carryOutActivity(context.Background(), "/forges/forge-a", Room{ActivityRoomID: "!activity-forge-a"}); err != nil {
+		t.Fatalf("carryOutActivity: %v", err)
+	}
+	reloaded, err := state.Load(built.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, known := reloaded.Relay.Activity["forgelet-bridge/finished-card-0"]; !known {
+		t.Fatal("the single quiet card was not persisted by its own save")
 	}
 }
 

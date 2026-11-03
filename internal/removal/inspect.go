@@ -111,3 +111,7 @@ func orderedRooms(forge state.Forge) []string {
 	}
 	return rooms
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-11-03T00:51:56+01:00","module_hash":"4789c66dfe08393b25b9c21eedb1412619e3a0be2bfb9c1b516d1128a067ee29","functions":[{"id":"func/Inspect","name":"Inspect","line":14,"end_line":46,"hash":"ca5500a6c4c5a8dbd19c07b96d5f2dfcf8e3bcc804d5f6d622fc3edfcbd4efed"},{"id":"func/matchingRoots","name":"matchingRoots","line":48,"end_line":59,"hash":"ce6e58b50bb605ff73505d12636edec1c478bef3bdf6a9228893ccb7dcb66542"},{"id":"func/hasParentTraversal","name":"hasParentTraversal","line":61,"end_line":70,"hash":"761e062dab7b3a0ddbcc3ef14d641bfe74b070673175f64fec097f3003cb4190"},{"id":"func/completeForge","name":"completeForge","line":72,"end_line":84,"hash":"46fc3935cf87023ef69d09491e7740f6f4c6c7eb9bd74c273a1cab09c4ab886c"},{"id":"func/orderedRooms","name":"orderedRooms","line":86,"end_line":113,"hash":"31c8713cd0ee9ef5e5e579c755ad7ba0369ffb2072990f8701e5d63ecf87e02f"}]}
+// mutate4go-manifest-end

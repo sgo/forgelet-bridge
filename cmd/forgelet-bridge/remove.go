@@ -89,3 +89,7 @@ func writeRemovalResult(output io.Writer, result removal.Result) int {
 	}
 	return 0
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-11-03T00:47:13+01:00","module_hash":"b501d1296dd9be035077e181391b7414bab6c3975329b1f12eae6b843645d5e1","functions":[{"id":"func/remove","name":"remove","line":22,"end_line":47,"hash":"ae58242e284218f9ecf08826f918bcaea139a84fd25642530e3a9347f338d998"},{"id":"func/prepareRemoval","name":"prepareRemoval","line":49,"end_line":70,"hash":"26e0820e71ece7348e2d9c0f3681d65faa3f47f960699f6429f29c840b4700df"},{"id":"func/executeRemoval","name":"executeRemoval","line":72,"end_line":84,"hash":"ce99e95c862ceb51a20136ce6da901876588d02b08779106c588eb4b8e0295c3"},{"id":"func/writeRemovalResult","name":"writeRemovalResult","line":86,"end_line":91,"hash":"ef1e7f2549030fefdf8093c1f0569688b44ec8e8a072976c9db4fb3a9973e022"}]}
+// mutate4go-manifest-end
