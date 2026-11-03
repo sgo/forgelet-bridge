@@ -48,5 +48,5 @@ func VerifyProjectStage(stages, gate, stage, command, log string) error {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-03T12:08:33+01:00","module_hash":"669a451343ff65deaf219573306d59a4807dc82b5d073008b96589965473bb34","functions":[{"id":"func/VerifySingleAgentGoProject","name":"VerifySingleAgentGoProject","line":12,"end_line":23,"hash":"9bb8ec35f6e06487da9a221455d67c0792627baf12ea6c8d596055ac8eddc750"},{"id":"func/VerifyProjectStage","name":"VerifyProjectStage","line":27,"end_line":48,"hash":"3fb8e2a1f839a3939fe0799e6e49d4494ace1e6a1f304ab1383e1939fcd7ba8d"}]}
+// {"version":1,"tested_at":"2026-11-03T12:09:16+01:00","module_hash":"669a451343ff65deaf219573306d59a4807dc82b5d073008b96589965473bb34","functions":[{"id":"func/VerifySingleAgentGoProject","name":"VerifySingleAgentGoProject","line":12,"end_line":23,"hash":"9bb8ec35f6e06487da9a221455d67c0792627baf12ea6c8d596055ac8eddc750"},{"id":"func/VerifyProjectStage","name":"VerifyProjectStage","line":27,"end_line":48,"hash":"3fb8e2a1f839a3939fe0799e6e49d4494ace1e6a1f304ab1383e1939fcd7ba8d"}]}
 // mutate4go-manifest-end

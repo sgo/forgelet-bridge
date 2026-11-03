@@ -28,10 +28,36 @@ if [[ ${#selection[@]} -eq 0 ]]; then
 fi
 
 printf 'mutation: selected %d changed Go source file(s)\n' "${#selection[@]}"
+base="${FORGELET_BASE_REF:-origin/master}"
 for file in "${selection[@]}"; do
   package="./$(dirname "$file")"
+  if git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+    changed_lines="$(
+      git diff --unified=0 "$base" -- "$file" |
+        python3 -c '
+import re
+import sys
+
+lines = []
+for line in sys.stdin:
+    match = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
+    if not match:
+        continue
+    start = int(match.group(1))
+    count = int(match.group(2) or "1")
+    lines.extend(str(number) for number in range(start, start + count))
+print(",".join(dict.fromkeys(lines)))
+'
+    )"
+  else
+    changed_lines="$(seq -s, 1 "$(wc -l < "$file")")"
+  fi
+  if [[ -z "$changed_lines" ]]; then
+    echo "mutation: $file has no changed Go lines" >&2
+    exit 1
+  fi
   output="$(mutate4go "$file" \
-    --since-last-run \
+    --lines "$changed_lines" \
     --test-command "go test -tags goolm -count=1 $package" 2>&1)"
   printf '%s\n' "$output"
   if ! grep -q '^Survived: 0$' <<< "$output"; then
