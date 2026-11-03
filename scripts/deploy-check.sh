@@ -17,7 +17,8 @@ config="${MATRIX_BRIDGE_CONFIG:-$forge_root/.swarmforge/matrix-bridge.json}"
   exit 1
 }
 
-if ! "$binary" --help 2>&1 | grep -q -- '--remove-forge'; then
+help="$("$binary" --help 2>&1)"
+if ! grep -q -- '-remove-forge' <<< "$help"; then
   echo "deploy: the built bridge does not expose remove-forge" >&2
   exit 1
 fi
