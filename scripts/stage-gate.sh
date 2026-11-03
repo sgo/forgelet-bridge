@@ -50,6 +50,7 @@ case "$stage" in
     run scripts/check-documentation.sh
     ;;
   deploy)
+    export MATRIX_BRIDGE_FORGE_ROOT="${MATRIX_BRIDGE_FORGE_ROOT:-$(cd "$project_root/../.." && pwd)}"
     run scripts/build.sh
     run scripts/matrix-bridge.sh status
     run scripts/deploy-check.sh
