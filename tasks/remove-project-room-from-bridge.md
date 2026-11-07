@@ -135,6 +135,26 @@ scope by the card.
 
 ## Implementation record
 
-This record is updated with the final gate evidence before completion. The four
-uncommitted shared `swarmforge/scripts/*.bb` changes present at card start are
-preserved as unrelated work and are not included in card commits.
+- `cmd/forgelet-bridge` exposes plan/apply flags, and the installed adapter
+  plans, stops only a running bridge, applies, and restarts it with a persisted
+  restart-debt marker on restart failure.
+- `internal/removal` validates configured Forgelet roots and managed project
+  markers, resolves the room only from bridge state, persists all three Matrix
+  stages, resumes at the first unfinished stage, and purges only target relay
+  bookkeeping.
+- `internal/state` and `internal/relay` carry project cleanup progress and
+  project owner scope. `internal/matrix` clears the project room, its activity
+  board fact, and only its approval facts.
+- Unit/property coverage includes unsafe roots and names, configured
+  Forgelet-only enforcement, room collisions, exact room selection, all three
+  failure stages, resume, idempotence, sibling preservation and sanitized
+  results.
+- Go mutation hardening killed 96/96 project-state mutants, 11/11 relay-scope
+  mutants and 6/6 persisted-state mutants with zero survivors or uncovered
+  sites. Acceptance mutation killed all 34 example-value mutants.
+- README now documents the adapter command and lifecycle; `docs/manual.md`
+  owns the detailed refusal/result/preservation contract; `ARCHITECTURE.md`
+  records the project cleaner and project-scope boundary;
+  `docs/manual-contract.edn` executes an example for the new manual section.
+- The four pre-existing uncommitted shared `swarmforge/scripts/*.bb` changes
+  remain untouched and are excluded from card commits.
