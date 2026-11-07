@@ -118,16 +118,17 @@ type World struct {
 	forgeNames map[string]string
 	operatorID string
 
-	users      map[string]*fixtures.User
-	dashboards map[string]*dashboard.Store
-	stubs      map[string]*child
-	running    map[string]*fixtures.Dashboard
-	bridge     *child
-	binaryPath string
-	anchors    map[string]string
-	devices    []fixtures.DeviceKey
-	lane       *laneState
-	removal    *removalScenario
+	users          map[string]*fixtures.User
+	dashboards     map[string]*dashboard.Store
+	stubs          map[string]*child
+	running        map[string]*fixtures.Dashboard
+	bridge         *child
+	binaryPath     string
+	anchors        map[string]string
+	devices        []fixtures.DeviceKey
+	lane           *laneState
+	removal        *removalScenario
+	projectRemoval *projectRemovalScenario
 }
 
 // Registry builds the acceptance registry.

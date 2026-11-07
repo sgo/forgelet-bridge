@@ -11,7 +11,10 @@ one relay pass. `internal/config`, `internal/dashboard`, `internal/relay`,
 `internal/removal`, `internal/state` and the other policy packages answer
 questions without depending on Matrix. `internal/matrix` is the only package
 that adapts the `mautrix-go` client, while `internal/removal.Cleaner` is the
-small Matrix boundary that forge removal needs.
+small Matrix boundary that forge removal needs and
+`internal/removal.ProjectCleaner` is the narrower boundary for one project.
+Project identity is resolved through `ProjectCatalog`; Matrix commands never
+accept a project room id from their caller.
 
 Acceptance fixtures and the Gherkin runtime are under `acceptance/`; they drive
 the real bridge binary and public adapter rather than reimplementing bridge
@@ -43,5 +46,12 @@ commands and `build/acceptance/bin` output remain the contract.
 - Every required gate writes evidence under `build/stages/`.
 - Forge removal changes only that forge's Matrix rooms and bridge-owned state;
   the bridge configuration and forge files remain unchanged.
+- Project removal uses the saved room for one exact managed project only. Its
+  room, activity board fact and approval facts are cleared independently of
+  forge-level and sibling project work.
+- Relay entries written for a project carry project scope in addition to forge
+  scope, so project removal cannot erase a sibling project in the same forge.
+- A project with saved removal progress is not relayed while that removal is
+  incomplete.
 
 What must stay true after the refactoring.

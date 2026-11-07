@@ -53,10 +53,12 @@ type Cleaner interface {
 // Service carries out one inspected removal and keeps retry progress in the
 // bridge state between attempts.
 type Service struct {
-	StatePath string
-	Cleaner   Cleaner
-	Operator  string
-	Config    config.Config
+	StatePath      string
+	Cleaner        Cleaner
+	ProjectCleaner ProjectCleaner
+	Projects       ProjectCatalog
+	Operator       string
+	Config         config.Config
 }
 
 // Load reads the bridge state a removal request must validate before stopping

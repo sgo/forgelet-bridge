@@ -25,7 +25,8 @@ type Forge struct {
 // Project is the Matrix room the bridge created for one single-agent project
 // inside its forge's space.
 type Project struct {
-	RoomID string `json:"room_id,omitempty"`
+	RoomID  string       `json:"room_id,omitempty"`
+	Cleanup *RoomCleanup `json:"cleanup,omitempty"`
 }
 
 // Cleanup is the progress of removing one forge's Matrix rooms. It stays with
@@ -115,6 +116,18 @@ func (s *State) RecordProject(root, name string, project Project) {
 	}
 	forge.Projects[name] = project
 	s.Forges[root] = forge
+}
+
+// ProjectRemovalPending reports whether the project has recorded removal
+// progress. The bridge leaves such a project alone until the removal either
+// finishes or is retried to completion.
+func (s State) ProjectRemovalPending(root, name string) bool {
+	forge, ok := s.Forges[root]
+	if !ok {
+		return false
+	}
+	project, ok := forge.Projects[name]
+	return ok && project.Cleanup != nil
 }
 
 // Save writes the state file through a temporary file so a reader never sees a

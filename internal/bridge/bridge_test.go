@@ -502,7 +502,7 @@ func TestCarryOutChatCountsAPairingAsOneUnitOfWork(t *testing.T) {
 	built.State().Relay.Threads["req-1"] = "$posted"
 	built.State().Relay.Pending["$event-1"] = "is the build green?"
 
-	done := built.carryOutChat(context.Background(), "/forges/forge-a", store,
+	done := built.carryOutChat(context.Background(), "/forges/forge-a", "", store,
 		Room{RoomID: "!room-forge-a"}, roomEvents{messages: map[string][]relay.RoomEvent{}},
 		store.requests)
 	if done != 1 {

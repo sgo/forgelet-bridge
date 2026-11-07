@@ -142,6 +142,23 @@ remove the configuration entry. The command prints one JSON object with status
 `removed`, `nothing_to_remove`, `retryable`, or `refused`; a retryable result
 keeps the room ids and completed per-room progress needed for another attempt.
 
+Removing one stopped project from the bridge is:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" \
+  remove-project "<forge root>" "<project name>"
+```
+
+The adapter plans against the configured Forgelet root and managed project
+marker before it stops a running bridge. For the target project only, it clears
+`com.forgelet.*` facts, removes the operator, and leaves and forgets the bridge
+membership. Only after those Matrix operations succeed does it remove the
+project's bridge record and project-scoped relay facts. The Family space, its
+chat/approvals/activity/clarifications rooms, sibling projects and all project
+files are preserved; no room purge or event deletion is requested. The adapter
+restarts the bridge after the apply attempt and reports `retryable` with
+`bridge_restart_failed` if a restart it owes still cannot be completed.
+
 Run it with:
 
 ```sh

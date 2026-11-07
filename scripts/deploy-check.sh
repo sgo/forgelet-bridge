@@ -22,6 +22,10 @@ if ! grep -q -- '-remove-forge' <<< "$help"; then
   echo "deploy: the built bridge does not expose remove-forge" >&2
   exit 1
 fi
+if ! grep -q -- '-remove-project' <<< "$help"; then
+  echo "deploy: the built bridge does not expose remove-project" >&2
+  exit 1
+fi
 
 export MATRIX_BRIDGE_FORGE_ROOT="$forge_root"
 export MATRIX_BRIDGE_BINARY="$binary"
@@ -56,4 +60,4 @@ print("deploy: reached forges: " + (", ".join(reached) or "none"))
 print("deploy: unavailable forges: " + (", ".join(unhappy) or "none"))
 PY
 
-echo "deploy: adapter running and bridge exposes remove-forge"
+echo "deploy: adapter running and bridge exposes remove-forge and remove-project"

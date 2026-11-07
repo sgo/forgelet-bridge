@@ -26,9 +26,26 @@ func main() {
 	validate := flag.Bool("validate", false, "check the configuration and exit, without serving anything")
 	removeForge := flag.String("remove-forge", removalUnset, "remove one configured forge's Matrix rooms and state")
 	planRemoval := flag.String("remove-forge-plan", removalUnset, "validate a forge removal before the adapter stops the bridge")
+	removeProject := flag.String("remove-project", removalUnset, "remove one managed project's Matrix room and state")
+	planProject := flag.String("remove-project-plan", removalUnset, "validate a project removal before the adapter stops the bridge")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if *removeProject != removalUnset || *planProject != removalUnset {
+		root := *removeProject
+		plan := false
+		if *planProject != removalUnset {
+			root = *planProject
+			plan = true
+		}
+		project := ""
+		var extra []string
+		if len(flag.Args()) > 0 {
+			project = flag.Arg(0)
+			extra = flag.Args()[1:]
+		}
+		os.Exit(removeProjectCommand(*configPath, root, project, plan, extra, os.Stdout))
+	}
 	if *removeForge != removalUnset || *planRemoval != removalUnset {
 		root := *removeForge
 		plan := false

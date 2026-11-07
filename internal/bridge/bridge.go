@@ -235,6 +235,9 @@ func (b *Bridge) Tick(ctx context.Context) error {
 			continue
 		}
 		for _, project := range projects {
+			if b.state.ProjectRemovalPending(forge.Root, project.Name) {
+				continue
+			}
 			done, err := b.tickProject(ctx, forge.Root, project, seen)
 			if err != nil {
 				b.refuse(err, project.Root)
@@ -378,7 +381,7 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
 	}
 
-	carriedOut := b.carryOutChat(ctx, root, store, room, seen, requests)
+	carriedOut := b.carryOutChat(ctx, root, "", store, room, seen, requests)
 
 	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
 	if err != nil {
@@ -406,7 +409,7 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 // carryOutChat carries out the chat work one forge owes the room and reports
 // how much of it was carried out. An action the forge refuses is kept and tried
 // again, while the rest of the work still goes ahead.
-func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore, room Room, seen roomEvents, requests []relay.Request) int {
+func (b *Bridge) carryOutChat(ctx context.Context, root, project string, store ForgeStore, room Room, seen roomEvents, requests []relay.Request) int {
 	pending := b.pendingFor(root)
 	for _, action := range relay.Plan(b.cfg.Operator, b.state.Relay, requests, seen.messages[room.RoomID]) {
 		pending.keep(action)
@@ -414,7 +417,7 @@ func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore
 
 	carriedOut := 0
 	for _, action := range pending.list() {
-		if err := b.apply(ctx, root, store, room, action); err != nil {
+		if err := b.apply(ctx, root, project, store, room, action); err != nil {
 			// One action the forge refuses is reported and tried again; the
 			// rest of the tick still goes ahead.
 			b.refuse(err, root)
@@ -424,7 +427,7 @@ func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore
 		carriedOut++
 	}
 
-	paired, err := b.pairPendingRequests(root, store)
+	paired, err := b.pairPendingRequests(root, project, store)
 	if err != nil {
 		b.refuse(err, root)
 		return carriedOut
@@ -432,22 +435,22 @@ func (b *Bridge) carryOutChat(ctx context.Context, root string, store ForgeStore
 	return carriedOut + paired
 }
 
-func (b *Bridge) apply(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
-	if err := b.carryOut(ctx, root, store, room, action); err != nil {
+func (b *Bridge) apply(ctx context.Context, root, project string, store ForgeStore, room Room, action relay.Action) error {
+	if err := b.carryOut(ctx, root, project, store, room, action); err != nil {
 		return err
 	}
 	return b.state.Save(b.statePath)
 }
 
 // carryOut is the one piece of work an action asks for.
-func (b *Bridge) carryOut(ctx context.Context, root string, store ForgeStore, room Room, action relay.Action) error {
+func (b *Bridge) carryOut(ctx context.Context, root, project string, store ForgeStore, room Room, action relay.Action) error {
 	switch action.Kind {
 	case relay.PostRequestMessage:
-		return b.postRequestMessage(ctx, root, room, action)
+		return b.postRequestMessage(ctx, root, project, room, action)
 	case relay.PostRequestReply:
-		return b.postRequestReply(ctx, root, room, action)
+		return b.postRequestReply(ctx, root, project, room, action)
 	case relay.CreateForgeRequest:
-		return b.createForgeRequest(ctx, store, root, action)
+		return b.createForgeRequest(ctx, store, root, project, action)
 	}
 	return fmt.Errorf("unknown relay action %q", action.Kind)
 }

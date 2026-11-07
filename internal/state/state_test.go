@@ -92,6 +92,35 @@ func TestProjectForRejectsARecordWithoutARoomID(t *testing.T) {
 	}
 }
 
+func TestProjectCleanupRoundTripAndPending(t *testing.T) {
+	path := statePath(t)
+	saved := &State{}
+	saved.EnsureMaps()
+	saved.RecordForge("/forges/forge-a", Forge{})
+	saved.RecordProject("/forges/forge-a", "agent", Project{
+		RoomID:  "!project",
+		Cleanup: &RoomCleanup{FactsCleared: true},
+	})
+	if err := saved.Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := loaded.ProjectFor("/forges/forge-a", "agent")
+	if !ok || project.Cleanup == nil || !project.Cleanup.FactsCleared || project.Cleanup.Done() {
+		t.Fatalf("project cleanup = %+v, %v", project, ok)
+	}
+	if !loaded.ProjectRemovalPending("/forges/forge-a", "agent") {
+		t.Fatal("recorded project cleanup was not reported as pending")
+	}
+	if loaded.ProjectRemovalPending("/forges/forge-a", "other") {
+		t.Fatal("a project without cleanup was reported as pending")
+	}
+}
+
 func TestSaveLeavesNoTemporaryFile(t *testing.T) {
 	path := statePath(t)
 	saved := &State{}

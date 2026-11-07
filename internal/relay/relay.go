@@ -60,6 +60,10 @@ type State struct {
 	// that owns them, so removing one forge cannot clear another forge's relay
 	// bookkeeping.
 	Scopes map[string]string `json:"scopes,omitempty"`
+	// ProjectScopes names the project that owns an entry whose key does not
+	// name its room. Removing one project therefore cannot clear a sibling's
+	// relay bookkeeping in the same forge.
+	ProjectScopes map[string]string `json:"project_scopes,omitempty"`
 }
 
 // Scope sections name the relay bookkeeping maps whose entries are keyed by an
@@ -133,6 +137,9 @@ func (s *State) EnsureMaps() {
 	if s.Scopes == nil {
 		s.Scopes = map[string]string{}
 	}
+	if s.ProjectScopes == nil {
+		s.ProjectScopes = map[string]string{}
+	}
 }
 
 // Scope records the forge root that owns one relay-state entry.
@@ -141,11 +148,19 @@ func (s *State) Scope(section, key, forgeRoot string) {
 	s.Scopes[scopeKey(section, key)] = forgeRoot
 }
 
+// ScopeProject records both the forge and the project that own one relay-state
+// entry. Project removal uses the narrower owner when it is available.
+func (s *State) ScopeProject(section, key, forgeRoot, project string) {
+	s.Scope(section, key, forgeRoot)
+	s.ProjectScopes[scopeKey(section, key)] = project
+}
+
 // Unscope forgets the ownership of one relay-state entry after that entry is
 // consumed.
 func (s *State) Unscope(section, key string) {
 	s.EnsureMaps()
 	delete(s.Scopes, scopeKey(section, key))
+	delete(s.ProjectScopes, scopeKey(section, key))
 }
 
 // InScope reports whether one relay-state entry belongs to a forge root.
@@ -157,6 +172,11 @@ func (s State) InScope(section, key, forgeRoot string) bool {
 // result is state written before scopes were recorded.
 func (s State) ScopeOwner(section, key string) string {
 	return s.Scopes[scopeKey(section, key)]
+}
+
+// ProjectScopeOwner names the project that owns one relay-state entry.
+func (s State) ProjectScopeOwner(section, key string) string {
+	return s.ProjectScopes[scopeKey(section, key)]
 }
 
 // ForgetScoped removes the relay entries scoped to one forge root.
@@ -183,6 +203,36 @@ func (s *State) ForgetScoped(forgeRoot string) {
 			delete(s.PendingThreads, key)
 		}
 		delete(s.Scopes, scoped)
+		delete(s.ProjectScopes, scoped)
+	}
+}
+
+// ForgetProjectScoped removes relay entries owned by one project without
+// touching entries owned by its forge or a sibling project.
+func (s *State) ForgetProjectScoped(forgeRoot, project string) {
+	s.EnsureMaps()
+	for scoped, owner := range s.ProjectScopes {
+		if owner != project || s.Scopes[scoped] != forgeRoot {
+			continue
+		}
+		section, key, ok := splitScope(scoped)
+		if !ok {
+			continue
+		}
+		switch section {
+		case ScopeThreads:
+			delete(s.Threads, key)
+		case ScopeReplied:
+			delete(s.Replied, key)
+		case ScopeRelayed:
+			delete(s.Relayed, key)
+		case ScopePending:
+			delete(s.Pending, key)
+		case ScopePendingThreads:
+			delete(s.PendingThreads, key)
+		}
+		delete(s.Scopes, scoped)
+		delete(s.ProjectScopes, scoped)
 	}
 }
 

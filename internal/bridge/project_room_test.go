@@ -8,6 +8,7 @@ import (
 
 	"github.com/unclebob/forgelet-bridge/internal/config"
 	"github.com/unclebob/forgelet-bridge/internal/relay"
+	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
 type fakeProjectSource struct {
@@ -100,6 +101,9 @@ func TestProjectRoomCarriesChatToItsOwnQueue(t *testing.T) {
 		sent[0].body != "is the build green?" {
 		t.Fatalf("sent = %+v, want the project's request in its own room", sent)
 	}
+	if owner := built.State().Relay.ProjectScopeOwner(relay.ScopeThreads, "req-1"); owner != "agent" {
+		t.Fatalf("project relay owner = %q, want agent", owner)
+	}
 
 	rooms.push(relay.RoomEvent{
 		RoomID:  "!project-agent-forge-a",
@@ -170,5 +174,41 @@ func TestProjectSourceErrorNamesTheForgeWithoutStoppingOtherWork(t *testing.T) {
 	}
 	if built.unhappy["/forges/forge-a"] == "" {
 		t.Error("a failed project discovery was not reported against its forge")
+	}
+}
+
+func TestProjectWithRemovalProgressIsNotRelayed(t *testing.T) {
+	cfg := newTestConfig(t, "/forges/forge-a")
+	project := Project{
+		Name:           "agent",
+		Root:           "/forges/forge-a/projects/agent",
+		Store:          &fakeStore{},
+		Clarifications: &fakeClarifications{},
+	}
+	rooms := &fakeRooms{}
+	built := projectBridge(t, cfg, rooms, fakeProjectSource{projects: []Project{project}})
+	built.State().RecordForge("/forges/forge-a", state.Forge{
+		SpaceID:              "!space-forge-a",
+		RoomID:               "!chat-forge-a",
+		ApprovalsRoomID:      "!approvals-forge-a",
+		ActivityRoomID:       "!activity-forge-a",
+		ClarificationsRoomID: "!clarifications-forge-a",
+	})
+	built.State().RecordProject("/forges/forge-a", "agent", state.Project{
+		RoomID:  "!project-agent-forge-a",
+		Cleanup: &state.RoomCleanup{FactsCleared: true},
+	})
+	if err := built.State().Save(built.statePath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if ensured := rooms.ensuredProjectRooms(); len(ensured) != 0 {
+		t.Fatalf("a project with removal progress was relayed: %+v", ensured)
+	}
+	if refreshed := rooms.refreshedProjectRooms(); len(refreshed) != 0 {
+		t.Fatalf("a project with removal progress was refreshed: %+v", refreshed)
 	}
 }

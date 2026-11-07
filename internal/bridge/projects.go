@@ -19,7 +19,7 @@ func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Proj
 	if err != nil {
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", project.Root, err)
 	}
-	carriedOut := b.carryOutChat(ctx, project.Root, project.Store, room, seen, requests)
+	carriedOut := b.carryOutChat(ctx, forgeRoot, project.Name, project.Store, room, seen, requests)
 	clarifications, err := b.carryOutClarifications(
 		ctx, project.Root, project.Clarifications, room,
 		seen.messages[room.ClarificationsRoomID])

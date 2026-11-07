@@ -21,10 +21,51 @@ func removalCleaner(client removal.Cleaner) removal.Cleaner {
 	}
 }
 
+func projectRemovalCleaner(client removal.ProjectCleaner) removal.ProjectCleaner {
+	stage, roomID, _ := strings.Cut(os.Getenv("FORGELET_BRIDGE_REMOVE_TEST_FAILURE"), "=")
+	switch stage {
+	case "relay_cleanup_failed", "operator_removal_failed", "bridge_membership_failed":
+		return failingProjectCleaner{ProjectCleaner: client, stage: stage, roomID: roomID}
+	default:
+		return client
+	}
+}
+
 type failingCleaner struct {
 	removal.Cleaner
 	stage  string
 	roomID string
+}
+
+type failingProjectCleaner struct {
+	removal.ProjectCleaner
+	stage  string
+	roomID string
+}
+
+func (f failingProjectCleaner) ClearProjectFacts(ctx context.Context, projectRoomID, activityRoomID, approvalsRoomID, project string) error {
+	if f.failsAt("relay_cleanup_failed", projectRoomID) {
+		return errors.New("injected project removal failure")
+	}
+	return f.ProjectCleaner.ClearProjectFacts(ctx, projectRoomID, activityRoomID, approvalsRoomID, project)
+}
+
+func (f failingProjectCleaner) RemoveOperator(ctx context.Context, roomID, operator string) error {
+	if f.failsAt("operator_removal_failed", roomID) {
+		return errors.New("injected project removal failure")
+	}
+	return f.ProjectCleaner.RemoveOperator(ctx, roomID, operator)
+}
+
+func (f failingProjectCleaner) LeaveAndForget(ctx context.Context, roomID string) error {
+	if f.failsAt("bridge_membership_failed", roomID) {
+		return errors.New("injected project removal failure")
+	}
+	return f.ProjectCleaner.LeaveAndForget(ctx, roomID)
+}
+
+func (f failingProjectCleaner) failsAt(stage, roomID string) bool {
+	return f.stage == stage && (f.roomID == "" || f.roomID == roomID)
 }
 
 func (f failingCleaner) ClearFacts(ctx context.Context, roomID string) error {

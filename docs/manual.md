@@ -56,6 +56,45 @@ The public result is one sanitized JSON object. Its status is `removed`,
 configuration and the forge files unchanged, and it keeps the bridge stopped
 after a removal so the host can remove the configuration entry.
 
+## Project removal
+
+`swarmforge/scripts/matrix-bridge.sh remove-project <forge-root>
+<project-name>` retires one stopped, managed single-agent project without
+removing its Family space, its forge-level rooms, any sibling project, or the
+project's server-side Matrix history.
+
+`internal/removal.Service.RemoveProject` owns the state transition. The
+`ProjectCatalog` boundary resolves the configured Forgelet root and managed
+project marker before `ProjectCleaner` is allowed to change Matrix.
+
+The root must be the exact absolute root configured for a Forgelet forge, and
+the project name must match the managed
+`projects/<name>/.swarmforge/single-agent` marker. Relative or traversing roots,
+unknown or non-Forgelet roots, unsafe or unknown project names, and incomplete
+or colliding saved project-room state are refused before Matrix changes. A
+caller cannot supply a Matrix room id; the room id comes only from bridge state.
+
+For a ready project, the bridge clears that project's `com.forgelet.*` facts,
+removes the operator, and leaves and forgets the bridge membership. It then
+removes only the project's bridge record and project-scoped relay bookkeeping.
+Each stage is saved as completed so a retry resumes at the first unfinished
+stage. No administrator purge, room deletion, or event deletion is issued.
+
+The result is one sanitized JSON object with `status` set to `removed`,
+`nothing_to_remove`, `retryable`, or `refused`. Stable reasons include
+`unsafe_root`, `unknown_root`, `unsafe_project`, `unknown_project`,
+`incomplete_project_state`, `relay_cleanup_failed`,
+`operator_removal_failed`, `bridge_membership_failed`, `state_unavailable`,
+`matrix_unavailable`, and `bridge_restart_failed`.
+
+The adapter plans before stopping a running bridge and restarts a bridge it
+stopped after every apply attempt, including retryable Matrix failures. It
+records a restart debt when that restart fails, and the next project-removal
+invocation retries it. A second successful removal while the project directory
+is still present returns `nothing_to_remove` and touches no Matrix room. The
+bridge does not move the directory, change the forge's open-project list, or
+edit bridge configuration.
+
 ## Project pipeline
 
 `scripts/stage-gate.sh` is the single entry point for project gates. It selects

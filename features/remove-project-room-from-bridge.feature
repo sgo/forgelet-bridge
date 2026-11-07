@@ -16,7 +16,7 @@ Feature: Remove One Project Without Erasing Matrix History
     And the forge forge-b holds project-scoped relay facts for <project> and sibling relay facts
     When the adapter for the forge root forge-a removes the project <project> from the forge root forge-b
     Then the project removal result reports the status "removed"
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal
     And the removal targeted only the <project> project room exactly once
     And the removal cleared the <project> relay facts before removing the operator before leaving the room
     And the operator and the bridge are no longer members of the <project> project room
@@ -38,7 +38,7 @@ Feature: Remove One Project Without Erasing Matrix History
     And Matrix refuses <failed_operation> in the target project room
     When the adapter for the forge root forge-a removes the project target from the forge root forge-b
     Then the project removal result reports the status "retryable" with the reason "<reason>"
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal
     And the bridge state retains the target project record and its completed cleanup progress
     And the forge-level rooms, sibling room, sibling relay facts and forge-level relay facts are preserved
     And the project removal result carries no Matrix ids, user ids, access tokens, project names or forge paths
@@ -60,7 +60,7 @@ Feature: Remove One Project Without Erasing Matrix History
     When the adapter for the forge root forge-a removes the project target from the forge root forge-b again
     Then the project removal result reports the status "nothing_to_remove"
     And the repeated project removal touched no Matrix room and changed no bridge state
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal
 
   # Remove One Project Without Erasing Matrix History 4: unsafe and unknown roots are refused before Matrix changes
   Scenario Outline: Remove One Project Without Erasing Matrix History 4: unsafe and unknown roots are refused before Matrix changes
@@ -69,7 +69,7 @@ Feature: Remove One Project Without Erasing Matrix History
     Then the project removal result reports the status "refused" with the reason "<reason>"
     And the refused project removal touched no Matrix room
     And the bridge state, bridge configuration and every forge and project file are unchanged
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal
 
     Examples:
       | root_case                | reason       |
@@ -87,7 +87,7 @@ Feature: Remove One Project Without Erasing Matrix History
     Then the project removal result reports the status "refused" with the reason "<reason>"
     And the refused project removal touched no Matrix room
     And the bridge state, bridge configuration and every forge and project file are unchanged
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal
 
     Examples:
       | project_case      | reason          |
@@ -106,4 +106,4 @@ Feature: Remove One Project Without Erasing Matrix History
     Then the project removal result reports the status "refused" with the reason "incomplete_project_state"
     And the refused project removal touched no Matrix room
     And the bridge state, bridge configuration and every forge and project file are unchanged
-    And the adapter restarted the bridge after the project removal
+    And the adapter left the bridge running after the project removal

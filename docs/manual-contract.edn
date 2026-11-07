@@ -66,6 +66,10 @@
    :document "docs/manual.md"
    :heading "## Forge removal"
    :apis ["internal/removal.Service" "remove-forge"]}
+  {:id "manual-project-removal"
+   :document "docs/manual.md"
+   :heading "## Project removal"
+   :apis ["internal/removal.Service" "remove-project"]}
   {:id "manual-pipeline"
    :document "docs/manual.md"
    :heading "## Project pipeline"
@@ -111,7 +115,7 @@
   {:id "manual-bridge-help"
    :section "manual-operation"
    :command ["bash" "-lc" "go run -tags goolm ./cmd/forgelet-bridge --help"]
-   :expect ["-remove-forge string" "-validate"]}
+   :expect ["-remove-forge string" "-remove-project string" "-validate"]}
   {:id "manual-config-api"
    :section "manual-configuration"
    :command ["bash" "-lc" "go doc ./internal/config Config"]
@@ -120,6 +124,10 @@
    :section "manual-removal"
    :command ["bash" "-lc" "go doc ./internal/removal Service"]
    :expect ["type Service struct" "func (s Service) Remove"]}
+  {:id "manual-project-removal-api"
+   :section "manual-project-removal"
+   :command ["bash" "-lc" "go doc ./internal/removal Service"]
+   :expect ["type Service struct" "func (s Service) RemoveProject"]}
   {:id "manual-pipeline-check"
    :section "manual-pipeline"
    :command ["bash" "-lc" "for stage in code clean clean-final architect harden qa docs deploy; do grep -q \"  $stage)\" scripts/stage-gate.sh || exit 1; done; echo native-Go-stages-present"]

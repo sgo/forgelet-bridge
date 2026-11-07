@@ -10,19 +10,19 @@ import (
 
 // postRequestMessage posts a forge chat request into the room and remembers
 // the message its answer belongs under.
-func (b *Bridge) postRequestMessage(ctx context.Context, root string, room Room, action relay.Action) error {
+func (b *Bridge) postRequestMessage(ctx context.Context, root, project string, room Room, action relay.Action) error {
 	eventID, err := b.rooms.SendText(ctx, room.RoomID, action.Body, "")
 	if err != nil {
 		return fmt.Errorf("post chat message for %s: %w", action.RequestID, err)
 	}
 	b.state.Relay.Threads[action.RequestID] = eventID
-	b.state.Relay.Scope(relay.ScopeThreads, action.RequestID, root)
+	b.scope(relay.ScopeThreads, action.RequestID, root, project)
 	return nil
 }
 
 // postRequestReply posts the lieutenant's answer as a reply in the request's
 // thread.
-func (b *Bridge) postRequestReply(ctx context.Context, root string, room Room, action relay.Action) error {
+func (b *Bridge) postRequestReply(ctx context.Context, root, project string, room Room, action relay.Action) error {
 	anchor := action.AnchorEventID
 	if anchor == "" {
 		anchor, _ = b.state.Relay.Anchor(action.RequestID)
@@ -35,30 +35,38 @@ func (b *Bridge) postRequestReply(ctx context.Context, root string, room Room, a
 		return fmt.Errorf("post chat reply for %s: %w", action.RequestID, err)
 	}
 	b.state.Relay.Replied[action.RequestID] = eventID
-	b.state.Relay.Scope(relay.ScopeReplied, action.RequestID, root)
+	b.scope(relay.ScopeReplied, action.RequestID, root, project)
 	return nil
 }
 
 // createForgeRequest hands the operator's message to the forge, which is what
 // wakes the lieutenant. The forge answers that it took the message, not which
 // request it became, so the pairing waits for the queue to show it.
-func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root string, action relay.Action) error {
+func (b *Bridge) createForgeRequest(ctx context.Context, store ForgeStore, root, project string, action relay.Action) error {
 	if _, err := store.CreateRequest(ctx, action.Body); err != nil {
 		return fmt.Errorf("queue chat request for %s: %w", root, err)
 	}
 	b.state.Relay.EnsureMaps()
 	b.state.Relay.Pending[action.SourceEventID] = action.Body
-	b.state.Relay.Scope(relay.ScopePending, action.SourceEventID, root)
+	b.scope(relay.ScopePending, action.SourceEventID, root, project)
 	if action.SourceThread != "" {
 		b.state.Relay.PendingThreads[action.SourceEventID] = action.SourceThread
-		b.state.Relay.Scope(relay.ScopePendingThreads, action.SourceEventID, root)
+		b.scope(relay.ScopePendingThreads, action.SourceEventID, root, project)
 	}
 	return nil
 }
 
+func (b *Bridge) scope(section, key, root, project string) {
+	if project == "" {
+		b.state.Relay.Scope(section, key, root)
+		return
+	}
+	b.state.Relay.ScopeProject(section, key, root, project)
+}
+
 // pairPendingRequests pairs each message the forge has taken with the request
 // it became, so the answer can be threaded under the operator's own message.
-func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error) {
+func (b *Bridge) pairPendingRequests(root, project string, store ForgeStore) (int, error) {
 	b.state.Relay.EnsureMaps()
 	if len(b.state.Relay.Pending) == 0 {
 		return 0, nil
@@ -67,10 +75,10 @@ func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("read the queue back: %w", err)
 	}
-	taken := b.takenRequests(root)
+	taken := b.takenRequests(root, project)
 	paired := 0
 	for _, eventID := range pendingEvents(b.state.Relay.Pending) {
-		if !b.pendingBelongsTo(root, eventID) {
+		if !b.pendingBelongsTo(root, project, eventID) {
 			continue
 		}
 		requestID, ok := takeRequest(requests, b.state.Relay.Pending[eventID], taken)
@@ -78,7 +86,7 @@ func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error)
 			continue
 		}
 		taken[requestID] = true
-		b.recordPair(root, eventID, requestID)
+		b.recordPair(root, project, eventID, requestID)
 		paired++
 	}
 	if paired == 0 {
@@ -87,10 +95,11 @@ func (b *Bridge) pairPendingRequests(root string, store ForgeStore) (int, error)
 	return paired, b.state.Save(b.statePath)
 }
 
-func (b *Bridge) takenRequests(root string) map[string]bool {
+func (b *Bridge) takenRequests(root, project string) map[string]bool {
 	taken := map[string]bool{}
 	for eventID, requestID := range b.state.Relay.Relayed {
-		if b.state.Relay.InScope(relay.ScopeRelayed, eventID, root) ||
+		if b.state.Relay.InScope(relay.ScopeRelayed, eventID, root) &&
+			(project == "" || b.state.Relay.ProjectScopeOwner(relay.ScopeRelayed, eventID) == project) ||
 			b.state.Relay.ScopeOwner(relay.ScopeRelayed, eventID) == "" {
 			taken[requestID] = true
 		}
@@ -98,14 +107,15 @@ func (b *Bridge) takenRequests(root string) map[string]bool {
 	return taken
 }
 
-func (b *Bridge) pendingBelongsTo(root, eventID string) bool {
+func (b *Bridge) pendingBelongsTo(root, project, eventID string) bool {
 	owner := b.state.Relay.ScopeOwner(relay.ScopePending, eventID)
-	return owner == "" || owner == root
+	projectOwner := b.state.Relay.ProjectScopeOwner(relay.ScopePending, eventID)
+	return owner == "" || owner == root && (project == "" || projectOwner == project)
 }
 
-func (b *Bridge) recordPair(root, eventID, requestID string) {
+func (b *Bridge) recordPair(root, project, eventID, requestID string) {
 	b.state.Relay.Relayed[eventID] = requestID
-	b.state.Relay.Scope(relay.ScopeRelayed, eventID, root)
+	b.scope(relay.ScopeRelayed, eventID, root, project)
 	// The answer belongs in the thread the operator wrote in. When their
 	// message was itself a reply, that thread is where it sits, not the
 	// message: a thread cannot start from an event that already carries a
@@ -115,7 +125,7 @@ func (b *Bridge) recordPair(root, eventID, requestID string) {
 	} else {
 		b.state.Relay.Threads[requestID] = eventID
 	}
-	b.state.Relay.Scope(relay.ScopeThreads, requestID, root)
+	b.scope(relay.ScopeThreads, requestID, root, project)
 	delete(b.state.Relay.PendingThreads, eventID)
 	b.state.Relay.Unscope(relay.ScopePendingThreads, eventID)
 	delete(b.state.Relay.Pending, eventID)

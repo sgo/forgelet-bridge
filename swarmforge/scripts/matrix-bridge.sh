@@ -5,6 +5,7 @@
 #   matrix-bridge.sh start | stop | status | logs
 #   matrix-bridge.sh add-forge <forge-root> <name>
 #   matrix-bridge.sh remove-forge <forge-root>
+#   matrix-bridge.sh remove-project <forge-root> <project-name>
 #   matrix-bridge.sh install-rules
 #   matrix-bridge.sh install-kit
 #
@@ -29,6 +30,11 @@
 # the bridge before clearing that forge's Matrix rooms. It leaves the bridge
 # stopped, leaves the configuration and forge files alone, and prints one
 # sanitized JSON result. A retry resumes from saved per-room progress.
+#
+# remove-project validates one configured Forgelet root and one managed
+# single-agent project before stopping a running bridge. It retires exactly that
+# project's room, then restarts a bridge it stopped. A restart that fails is
+# reported and retried by the next remove-project invocation.
 #
 # install-rules installs the prompt rules the bridge's rooms rely on into this
 # forge's own constitution and the packs its projects are scaffolded from. It
@@ -83,6 +89,10 @@ state_dir() {
 
 status_file() {
   print -- "$(state_dir)/status.json"
+}
+
+restart_marker() {
+  print -- "$FORGE_ROOT/.swarmforge/matrix-bridge.restart-needed"
 }
 
 cmd_start() {
@@ -234,6 +244,71 @@ cmd_remove_forge() {
   (cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-forge "$root")
 }
 
+cmd_remove_project() {
+  if (( $# != 2 )); then
+    print -- '{"status":"refused","reason":"unsafe_root"}'
+    return 0
+  fi
+  local root="$1" project="$2"
+  if [[ -z "$root" ]]; then
+    print -- '{"status":"refused","reason":"unsafe_root"}'
+    return 0
+  fi
+  if [[ -z "$project" ]]; then
+    print -- '{"status":"refused","reason":"unsafe_project"}'
+    return 0
+  fi
+  [[ -r "$CONFIG" ]] || {
+    print -- '{"status":"refused","reason":"configuration_unavailable"}'
+    return 0
+  }
+  [[ -x "$BINARY" ]] || {
+    print -- '{"status":"refused","reason":"configuration_unavailable"}'
+    return 0
+  }
+
+  local marker; marker="$(restart_marker)"
+  if [[ -f "$marker" ]]; then
+    if ! cmd_start >/dev/null 2>&1; then
+      print -- '{"status":"retryable","reason":"bridge_restart_failed"}'
+      return 0
+    fi
+    rm -f "$marker"
+  fi
+
+  local planned
+  if ! planned="$(cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-project-plan "$root" "$project")"; then
+    print -- '{"status":"retryable","reason":"state_unavailable"}'
+    return 0
+  fi
+  if [[ "$planned" != "ready" ]]; then
+    print -- "$planned"
+    return 0
+  fi
+
+  local was_running=0
+  if running; then
+    was_running=1
+    cmd_stop >/dev/null
+  fi
+
+  local result apply_status
+  result="$(cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-project "$root" "$project")" && apply_status=0 || apply_status=$?
+  if (( apply_status != 0 )); then
+    result='{"status":"retryable","reason":"state_unavailable"}'
+  fi
+
+  if (( was_running )); then
+    if ! cmd_start >/dev/null 2>&1; then
+      touch "$marker"
+      print -- '{"status":"retryable","reason":"bridge_restart_failed"}'
+      return 0
+    fi
+    rm -f "$marker"
+  fi
+  print -- "$result"
+}
+
 case "${1:-}" in
   start) cmd_start ;;
   stop) cmd_stop ;;
@@ -241,6 +316,7 @@ case "${1:-}" in
   logs) [[ -f "$LOG" ]] && tail -f "$LOG" || die "no log at $LOG" ;;
   add-forge) shift; cmd_add_forge "$@" ;;
   remove-forge) shift; cmd_remove_forge "$@" ;;
+  remove-project) shift; cmd_remove_project "$@" ;;
   install-rules) cmd_install_rules ;;
   install-kit) cmd_install_kit ;;
   ""|-h|--help) usage ;;
