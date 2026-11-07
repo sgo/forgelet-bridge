@@ -56,6 +56,12 @@ print(",".join(dict.fromkeys(lines)))
     echo "mutation: $file has no changed Go lines" >&2
     exit 1
   fi
+  scan="$(mutate4go "$file" --scan 2>&1)"
+  if grep -q '^Changed mutation sites: 0$' <<< "$scan" &&
+     grep -q '^Manifest exists: true$' <<< "$scan"; then
+    echo "mutation: $file is unchanged since its successful manifest"
+    continue
+  fi
   output="$(mutate4go "$file" \
     --lines "$changed_lines" \
     --test-command "go test -tags goolm -count=1 $package" 2>&1)"

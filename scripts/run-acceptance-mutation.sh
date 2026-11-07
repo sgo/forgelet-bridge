@@ -28,7 +28,7 @@ fi
 work=tmp/acceptance-mutation
 mkdir -p "$work"
 find "$work" -mindepth 1 -delete
-mkdir -p "$work/features" target/acceptance-mutation build/acceptance/bin
+mkdir -p "$work/features" target/acceptance-mutation/cache build/acceptance/bin
 
 report=target/acceptance-mutation/mutation.log
 : > "$report"
@@ -66,6 +66,13 @@ for feature in "${features[@]}"; do
     "$ir" "$generated" \
     --feature "$copy" \
     --project-root "$project_root"
+  feature_hash="$(shasum -a 256 "$feature" | awk '{print $1}')"
+  implementation_hash="$(shasum -a 256 "$generated"/*_acceptance_test.go | awk '{print $1}' | paste -sd, -)"
+  cache="target/acceptance-mutation/cache/$stem.passed"
+  if [[ -f "$cache" ]] && [[ "$(cat "$cache")" == "$feature_hash"$'\t'"$implementation_hash" ]]; then
+    echo "mutation: $feature is unchanged since its successful mutation run" | tee -a "$report"
+    continue
+  fi
   echo "mutating $feature" | tee -a "$report"
   if ! gherkin-mutator \
       --feature "$copy" \
@@ -76,6 +83,9 @@ for feature in "${features[@]}"; do
       --runner-worker "$project_root/scripts/acceptance-runner-worker.sh" \
       2>&1 | tee -a "$report"; then
     failed=1
+    rm -f "$cache"
+  else
+    printf '%s\t%s\n' "$feature_hash" "$implementation_hash" > "$cache"
   fi
   ran=1
 done
