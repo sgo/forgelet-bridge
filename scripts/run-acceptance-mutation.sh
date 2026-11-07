@@ -71,6 +71,7 @@ for feature in "${features[@]}"; do
   cache="target/acceptance-mutation/cache/$stem.passed"
   if [[ -f "$cache" ]] && [[ "$(cat "$cache")" == "$feature_hash"$'\t'"$implementation_hash" ]]; then
     echo "mutation: $feature is unchanged since its successful mutation run" | tee -a "$report"
+    ran=1
     continue
   fi
   echo "mutating $feature" | tee -a "$report"
