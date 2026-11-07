@@ -49,6 +49,24 @@ func (r RoomCleanup) Done() bool {
 	return r.FactsCleared && r.OperatorRemoved && r.BridgeLeft
 }
 
+// MarkFactsCleared records the first completed cleanup stage.
+func (r RoomCleanup) MarkFactsCleared() RoomCleanup {
+	r.FactsCleared = true
+	return r
+}
+
+// MarkOperatorRemoved records the second completed cleanup stage.
+func (r RoomCleanup) MarkOperatorRemoved() RoomCleanup {
+	r.OperatorRemoved = true
+	return r
+}
+
+// MarkBridgeLeft records the final completed cleanup stage.
+func (r RoomCleanup) MarkBridgeLeft() RoomCleanup {
+	r.BridgeLeft = true
+	return r
+}
+
 // State is everything the bridge remembers between runs.
 type State struct {
 	Forges map[string]Forge `json:"forges,omitempty"`
@@ -149,5 +167,5 @@ func (s *State) Save(path string) error {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-03T01:13:50+01:00","module_hash":"218357cc6df3643afe7b482d762ce8b278364e9657aa31d1049964142b452f7b","functions":[{"id":"func/RoomCleanup.Done","name":"RoomCleanup.Done","line":47,"end_line":49,"hash":"c3b779fd0a4360a5317a35ea05a0a7e0a97fe8293684710da051fa3dcda0df29"},{"id":"func/Load","name":"Load","line":58,"end_line":75,"hash":"3a51707dde5154917e8a5a53035d24ce3fcac7ffb26af5a85ffe35c0b9c58f46"},{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":78,"end_line":83,"hash":"d9f9c1a00570037d86f9a039b80fa8df6656b5f789e1dad9d3d80e30917321a4"},{"id":"func/State.ForgeFor","name":"State.ForgeFor","line":86,"end_line":91,"hash":"c852f290df6e1655f351b19833365c0e5801f3c2e27a8de78d66a67e7b347f9d"},{"id":"func/State.RecordForge","name":"State.RecordForge","line":94,"end_line":97,"hash":"c9d5772df498ae9d642682e74a6eb07e8831c9fd60eedc9fa115861dfce8c70c"},{"id":"func/State.ProjectFor","name":"State.ProjectFor","line":100,"end_line":107,"hash":"d9873bdb7b0f80346f24befdf2c45eb0c72436f95717c20bfd4505532020a3fc"},{"id":"func/State.RecordProject","name":"State.RecordProject","line":110,"end_line":118,"hash":"440dd2356bd3fc7b2ac47460e4b87b139c025b555d99f9faf9b8810c9c5855d5"},{"id":"func/State.Save","name":"State.Save","line":122,"end_line":136,"hash":"699bd5003c86aa3da98352d99437c38ed3b5a654bc6aa755d90976d728ac240d"}]}
+// {"version":1,"tested_at":"2026-11-07T23:17:17+01:00","module_hash":"6f45fbbf0f99e97cada05fadb6c7c55c67b45adaec7bc65275f4b157437f94ea","functions":[{"id":"func/RoomCleanup.Done","name":"RoomCleanup.Done","line":48,"end_line":50,"hash":"c3b779fd0a4360a5317a35ea05a0a7e0a97fe8293684710da051fa3dcda0df29"},{"id":"func/RoomCleanup.MarkFactsCleared","name":"RoomCleanup.MarkFactsCleared","line":53,"end_line":56,"hash":"18d1de6cc9a4b5708f44fa341ffd6a2c0f1a6093c70d800d67db46738cd55b34"},{"id":"func/RoomCleanup.MarkOperatorRemoved","name":"RoomCleanup.MarkOperatorRemoved","line":59,"end_line":62,"hash":"76fd5e4308fc5998d00a7b58c29230add5c68c4be75f9675545b67b1b47cfa41"},{"id":"func/RoomCleanup.MarkBridgeLeft","name":"RoomCleanup.MarkBridgeLeft","line":65,"end_line":68,"hash":"fb6880668471738ea8d06f8a9bdb0cdb69f68cd8a4f1bf745c97faeefd66f986"},{"id":"func/Load","name":"Load","line":77,"end_line":94,"hash":"3a51707dde5154917e8a5a53035d24ce3fcac7ffb26af5a85ffe35c0b9c58f46"},{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":97,"end_line":102,"hash":"d9f9c1a00570037d86f9a039b80fa8df6656b5f789e1dad9d3d80e30917321a4"},{"id":"func/State.ForgeFor","name":"State.ForgeFor","line":105,"end_line":110,"hash":"c852f290df6e1655f351b19833365c0e5801f3c2e27a8de78d66a67e7b347f9d"},{"id":"func/State.RecordForge","name":"State.RecordForge","line":113,"end_line":116,"hash":"c9d5772df498ae9d642682e74a6eb07e8831c9fd60eedc9fa115861dfce8c70c"},{"id":"func/State.ProjectFor","name":"State.ProjectFor","line":119,"end_line":126,"hash":"d9873bdb7b0f80346f24befdf2c45eb0c72436f95717c20bfd4505532020a3fc"},{"id":"func/State.RecordProject","name":"State.RecordProject","line":129,"end_line":137,"hash":"440dd2356bd3fc7b2ac47460e4b87b139c025b555d99f9faf9b8810c9c5855d5"},{"id":"func/State.ProjectRemovalPending","name":"State.ProjectRemovalPending","line":142,"end_line":149,"hash":"22b82e80b9a2b49656ba3c24499bb911432bcbdea9a538f6fc18d15459d43204"},{"id":"func/State.Save","name":"State.Save","line":153,"end_line":167,"hash":"699bd5003c86aa3da98352d99437c38ed3b5a654bc6aa755d90976d728ac240d"}]}
 // mutate4go-manifest-end

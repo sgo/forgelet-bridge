@@ -172,6 +172,15 @@ func projectAdapterLeftBridgeRunning(_ context.Context, world any, _ []string) e
 	return nil
 }
 
+func projectRemovalKeptExpectedIdentity(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	if w.projectRemoval == nil || w.projectRemoval.targetName != captures[1] {
+		return fmt.Errorf("removal target = %q, want the expected project %s",
+			w.projectRemoval.targetName, captures[1])
+	}
+	return nil
+}
+
 func projectRemovalTargetedOnlyTarget(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	if w.projectRemoval == nil || w.projectRemoval.targetName != captures[1] {

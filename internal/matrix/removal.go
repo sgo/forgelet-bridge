@@ -2,7 +2,6 @@ package matrix
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,36 +20,6 @@ const forgeFactPrefix = "com.forgelet."
 // Reading the room's state means facts written by an earlier process are found
 // as well as those remembered in this process.
 func (c *Client) ClearFacts(ctx context.Context, roomID string) error {
-	return c.clearFactsMatching(ctx, roomID, func(event.Type, string, *event.Event) bool {
-		return true
-	})
-}
-
-// ClearProjectFacts clears one project's facts without touching a sibling
-// project or a forge-level room's own facts. The project room is exclusively
-// the project's, the activity room carries one board fact per project, and the
-// approvals room carries the project name in each approval fact.
-func (c *Client) ClearProjectFacts(ctx context.Context, projectRoomID, activityRoomID, approvalsRoomID, project string) error {
-	if err := c.clearFactsMatching(ctx, projectRoomID, func(event.Type, string, *event.Event) bool {
-		return true
-	}); err != nil {
-		return err
-	}
-	if err := c.clearFactsMatching(ctx, activityRoomID, func(eventType event.Type, stateKey string, _ *event.Event) bool {
-		return eventType.Type == "com.forgelet.board" && stateKey == project
-	}); err != nil {
-		return err
-	}
-	return c.clearFactsMatching(ctx, approvalsRoomID, func(eventType event.Type, _ string, evt *event.Event) bool {
-		return eventType.Type == "com.forgelet.approval" && factProject(evt) == project
-	})
-}
-
-func (c *Client) clearFactsMatching(
-	ctx context.Context,
-	roomID string,
-	match func(event.Type, string, *event.Event) bool,
-) error {
 	state, err := c.cli.State(ctx, id.RoomID(roomID))
 	if err != nil {
 		return fmt.Errorf("read forge facts in %s: %w", roomID, err)
@@ -65,10 +34,7 @@ func (c *Client) clearFactsMatching(
 		if !strings.HasPrefix(eventType.Type, forgeFactPrefix) {
 			continue
 		}
-		for stateKey, evt := range byStateKey {
-			if !match(eventType, stateKey, evt) {
-				continue
-			}
+		for stateKey := range byStateKey {
 			facts = append(facts, fact{eventType: eventType, stateKey: stateKey})
 		}
 	}
@@ -84,23 +50,6 @@ func (c *Client) clearFactsMatching(
 		}
 	}
 	return nil
-}
-
-func factProject(evt *event.Event) string {
-	if evt == nil {
-		return ""
-	}
-	raw, err := json.Marshal(evt.Content.Raw)
-	if err != nil {
-		return ""
-	}
-	var content struct {
-		Project string `json:"project"`
-	}
-	if json.Unmarshal(raw, &content) != nil {
-		return ""
-	}
-	return content.Project
 }
 
 // RemoveOperator removes the operator's current or pending membership from a

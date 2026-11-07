@@ -74,5 +74,20 @@ print(",".join(dict.fromkeys(lines)))
   fi
 done
 
-scripts/run-acceptance-mutation.sh \
-  features/forgelet-bridge-single-agent-conversion.feature
+features=()
+if [[ -n "${FORGELET_GHERKIN_FEATURES:-}" ]]; then
+  read -r -a features <<< "$FORGELET_GHERKIN_FEATURES"
+else
+  while IFS= read -r feature; do
+    features+=("$feature")
+  done < <({
+    git diff --name-only "$base" -- 'features/*.feature'
+    git ls-files --others --exclude-standard -- 'features/*.feature'
+  } | sort -u)
+fi
+
+if [[ ${#features[@]} -eq 0 ]]; then
+  echo "mutation: no changed Gherkin feature to mutate" >&2
+  exit 1
+fi
+scripts/run-acceptance-mutation.sh "${features[@]}"

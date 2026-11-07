@@ -17,6 +17,7 @@ Feature: Remove One Project Without Erasing Matrix History
     When the adapter for the forge root forge-a removes the project <project> from the forge root forge-b
     Then the project removal result reports the status "removed"
     And the adapter left the bridge running after the project removal
+    And the removal kept the expected project identity <expected_project>
     And the removal targeted only the <project> project room exactly once
     And the removal cleared the <project> relay facts before removing the operator before leaving the room
     And the operator and the bridge are no longer members of the <project> project room
@@ -27,9 +28,9 @@ Feature: Remove One Project Without Erasing Matrix History
     And the project removal result carries no Matrix ids, user ids, access tokens, project names or forge paths
 
     Examples:
-      | project |
-      | alpha   |
-      | beta    |
+      | project | expected_project |
+      | alpha   | alpha            |
+      | beta    | beta             |
 
   # Remove One Project Without Erasing Matrix History 2: every matrix failure is retryable and resumable
   Scenario Outline: Remove One Project Without Erasing Matrix History 2: every matrix failure is retryable and resumable

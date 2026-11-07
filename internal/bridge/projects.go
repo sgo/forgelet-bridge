@@ -75,3 +75,7 @@ func projectRoom(spaceID, roomID string) Room {
 		ClarificationsRoomID: roomID,
 	}
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-11-07T22:40:51+01:00","module_hash":"d866dbcbe0fb82f9714fe91ea1cf101b8e308f4f2e888a454157d81cda9dcff3","functions":[{"id":"func/Bridge.tickProject","name":"Bridge.tickProject","line":13,"end_line":30,"hash":"b215d8040dd3b335b1220dfe69bbf2b65bd222fc332c7d878ce2736b4792f2f7"},{"id":"func/Bridge.projectRoomFor","name":"Bridge.projectRoomFor","line":35,"end_line":69,"hash":"c1ea44f744b7d6ce89a0e2424587cdaaebc9fb0aeb942f827f10d7325a3387b5"},{"id":"func/projectRoom","name":"projectRoom","line":71,"end_line":77,"hash":"bee1819d85260f11665850ff25dd2eb2a12906dd4b5cba05845505eb85ca4d5c"}]}
+// mutate4go-manifest-end

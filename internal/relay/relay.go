@@ -107,38 +107,22 @@ type Action struct {
 
 // EnsureMaps makes a state's maps writable.
 func (s *State) EnsureMaps() {
-	if s.Threads == nil {
-		s.Threads = map[string]string{}
-	}
-	if s.Replied == nil {
-		s.Replied = map[string]string{}
-	}
-	if s.Relayed == nil {
-		s.Relayed = map[string]string{}
-	}
-	if s.Pending == nil {
-		s.Pending = map[string]string{}
-	}
-	if s.PendingThreads == nil {
-		s.PendingThreads = map[string]string{}
-	}
-	if s.Approvals == nil {
-		s.Approvals = map[string]ApprovalState{}
-	}
-	if s.Clarifications == nil {
-		s.Clarifications = map[string]ClarificationState{}
-	}
-	if s.Activity == nil {
-		s.Activity = map[string]CardState{}
-	}
-	if s.Waiting == nil {
-		s.Waiting = map[string]string{}
-	}
-	if s.Scopes == nil {
-		s.Scopes = map[string]string{}
-	}
-	if s.ProjectScopes == nil {
-		s.ProjectScopes = map[string]string{}
+	ensureMap(&s.Threads)
+	ensureMap(&s.Replied)
+	ensureMap(&s.Relayed)
+	ensureMap(&s.Pending)
+	ensureMap(&s.PendingThreads)
+	ensureMap(&s.Approvals)
+	ensureMap(&s.Clarifications)
+	ensureMap(&s.Activity)
+	ensureMap(&s.Waiting)
+	ensureMap(&s.Scopes)
+	ensureMap(&s.ProjectScopes)
+}
+
+func ensureMap[V any](value *map[string]V) {
+	if *value == nil {
+		*value = map[string]V{}
 	}
 }
 
@@ -186,24 +170,7 @@ func (s *State) ForgetScoped(forgeRoot string) {
 		if owner != forgeRoot {
 			continue
 		}
-		section, key, ok := splitScope(scoped)
-		if !ok {
-			continue
-		}
-		switch section {
-		case ScopeThreads:
-			delete(s.Threads, key)
-		case ScopeReplied:
-			delete(s.Replied, key)
-		case ScopeRelayed:
-			delete(s.Relayed, key)
-		case ScopePending:
-			delete(s.Pending, key)
-		case ScopePendingThreads:
-			delete(s.PendingThreads, key)
-		}
-		delete(s.Scopes, scoped)
-		delete(s.ProjectScopes, scoped)
+		s.deleteScoped(scoped)
 	}
 }
 
@@ -215,25 +182,27 @@ func (s *State) ForgetProjectScoped(forgeRoot, project string) {
 		if owner != project || s.Scopes[scoped] != forgeRoot {
 			continue
 		}
-		section, key, ok := splitScope(scoped)
-		if !ok {
-			continue
-		}
-		switch section {
-		case ScopeThreads:
-			delete(s.Threads, key)
-		case ScopeReplied:
-			delete(s.Replied, key)
-		case ScopeRelayed:
-			delete(s.Relayed, key)
-		case ScopePending:
-			delete(s.Pending, key)
-		case ScopePendingThreads:
-			delete(s.PendingThreads, key)
-		}
-		delete(s.Scopes, scoped)
-		delete(s.ProjectScopes, scoped)
+		s.deleteScoped(scoped)
 	}
+}
+
+func (s *State) deleteScoped(scoped string) {
+	section, key, ok := splitScope(scoped)
+	if !ok {
+		return
+	}
+	deleters := map[string]func(){
+		ScopeThreads:        func() { delete(s.Threads, key) },
+		ScopeReplied:        func() { delete(s.Replied, key) },
+		ScopeRelayed:        func() { delete(s.Relayed, key) },
+		ScopePending:        func() { delete(s.Pending, key) },
+		ScopePendingThreads: func() { delete(s.PendingThreads, key) },
+	}
+	if remove, known := deleters[section]; known {
+		remove()
+	}
+	delete(s.Scopes, scoped)
+	delete(s.ProjectScopes, scoped)
 }
 
 func scopeKey(section, key string) string {
@@ -288,8 +257,12 @@ func askedInThread(st State, event RoomEvent, events []RoomEvent) string {
 	if event.ReplyTo == "" {
 		return ""
 	}
+	return quotedThread(st, event.ReplyTo, events)
+}
+
+func quotedThread(st State, replyTo string, events []RoomEvent) string {
 	for _, quoted := range events {
-		if quoted.EventID != event.ReplyTo {
+		if quoted.EventID != replyTo {
 			continue
 		}
 		if quoted.ThreadRoot != "" {
@@ -300,8 +273,8 @@ func askedInThread(st State, event RoomEvent, events []RoomEvent) string {
 	// The room only carries what was said since the last drain, so a message
 	// the bridge posted earlier is known from the bookkeeping instead.
 	for _, messageID := range st.Threads {
-		if messageID == event.ReplyTo {
-			return event.ReplyTo
+		if messageID == replyTo {
+			return replyTo
 		}
 	}
 	return ""
@@ -326,33 +299,34 @@ func forgeRequests(st State, requests []Request) []Action {
 	var actions []Action
 	origins := relayedOrigins(st)
 	for _, request := range requests {
-		if strings.TrimSpace(request.Body) == "" {
-			continue
-		}
-		anchor, posted := st.Anchor(request.ID)
-		if !posted {
-			// A request the operator's own message created is already in the
-			// room: that message is what its answer belongs under.
-			anchor, posted = origins[request.ID]
-		}
-		if !posted {
-			actions = append(actions, Action{
-				Kind:      PostRequestMessage,
-				RequestID: request.ID,
-				Body:      request.Body,
-			})
-		}
-		if request.Response == "" || st.Replied[request.ID] != "" {
-			continue
-		}
+		actions = append(actions, requestActions(st, request, origins)...)
+	}
+	return actions
+}
+
+func requestActions(st State, request Request, origins map[string]string) []Action {
+	if strings.TrimSpace(request.Body) == "" {
+		return nil
+	}
+	anchor, posted := requestAnchor(st, request.ID, origins)
+	var actions []Action
+	if !posted {
+		actions = append(actions, Action{Kind: PostRequestMessage, RequestID: request.ID, Body: request.Body})
+	}
+	if request.Response != "" && st.Replied[request.ID] == "" {
 		actions = append(actions, Action{
-			Kind:          PostRequestReply,
-			RequestID:     request.ID,
-			Body:          request.Response,
-			AnchorEventID: anchor,
+			Kind: PostRequestReply, RequestID: request.ID, Body: request.Response, AnchorEventID: anchor,
 		})
 	}
 	return actions
+}
+
+func requestAnchor(st State, requestID string, origins map[string]string) (string, bool) {
+	if anchor, posted := st.Anchor(requestID); posted {
+		return anchor, true
+	}
+	anchor, posted := origins[requestID]
+	return anchor, posted
 }
 
 // relayedOrigins inverts the operator-message bookkeeping: request id to the
@@ -366,5 +340,5 @@ func relayedOrigins(st State) map[string]string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-03T01:10:14+01:00","module_hash":"30f676ce3643f6e6d2cbc7be086b0eb8aa2ca1972c8ba84f471343f5400ac8fe","functions":[{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":105,"end_line":136,"hash":"2ee53038f604a208b8d89f66e94a67657d7303123326cdfcc1e53a415e7592b5"},{"id":"func/State.Scope","name":"State.Scope","line":139,"end_line":142,"hash":"cb3e032cbd5357eb5f04905526ce9643233d9fabe459407027dfc38c9022a7c8"},{"id":"func/State.Unscope","name":"State.Unscope","line":146,"end_line":149,"hash":"354a2e5e295c5010bae57c97bbaef77f38b6fd18c0b261b63b5923d1dd275b0a"},{"id":"func/State.InScope","name":"State.InScope","line":152,"end_line":154,"hash":"07e1e701f85205ef5511687b2055e6b290a202e712e3e70cbae4d5b84aa8856b"},{"id":"func/State.ScopeOwner","name":"State.ScopeOwner","line":158,"end_line":160,"hash":"96eb0f815c9f6b2b99412cf37611bbd9450abf371d2ad54d3f105125ba040aa3"},{"id":"func/State.ForgetScoped","name":"State.ForgetScoped","line":163,"end_line":187,"hash":"31687b2a988ae0d4d2a22d9c29195837d2705ec0397737a2b09987a8933c55ce"},{"id":"func/scopeKey","name":"scopeKey","line":189,"end_line":191,"hash":"7e453148ff535cdda1042cd0474417267d12eed2c9a2626b53b052f84da377b8"},{"id":"func/splitScope","name":"splitScope","line":193,"end_line":196,"hash":"00c9a7897c3cf4290e296ce726e8eae1835dfdb056ed38df0282de26383f3b69"},{"id":"func/State.Anchor","name":"State.Anchor","line":199,"end_line":202,"hash":"abf97d6be5138314460256860c7bdf0359f0ecd87e8387fd92f8ca81367796ee"},{"id":"func/Plan","name":"Plan","line":206,"end_line":209,"hash":"e8e1aa7566af7251d7b0b643670813af18620a1c90fec9d9e577c2236675b68c"},{"id":"func/operatorRequests","name":"operatorRequests","line":214,"end_line":228,"hash":"18373dd942f49714d460f67728ae9ccac9cc2593998a4c7037ae8fa5a9f2a164"},{"id":"func/askedInThread","name":"askedInThread","line":234,"end_line":258,"hash":"fdb0bff1b4ac1fccbb8b861b21b2a84ef258429ebaee1c394bfab1754fc8048e"},{"id":"func/operatorAsked","name":"operatorAsked","line":262,"end_line":271,"hash":"cd911834c75727b082d685cadf37ce7d90ea75687e72ce42004c9f39b848b7f3"},{"id":"func/forgeRequests","name":"forgeRequests","line":275,"end_line":306,"hash":"e398aed1cf014ef832770002d1a7009f0429769ff6c49454832b2485f3948d2b"},{"id":"func/relayedOrigins","name":"relayedOrigins","line":310,"end_line":316,"hash":"69ffcaa8aacd4a23072cfed3d3a0f2d1464007173f7e1a6d1bcc644bd9c38fb4"}]}
+// {"version":1,"tested_at":"2026-11-07T23:15:05+01:00","module_hash":"96257533d6e0f2d1be54e872e4b56b80c7b33ce04463aa923a56bc1b7569133e","functions":[{"id":"func/State.EnsureMaps","name":"State.EnsureMaps","line":109,"end_line":121,"hash":"dbfb3691c68bd7883a63b74e862815c60254e186a0852f5019829649abce384c"},{"id":"func/ensureMap","name":"ensureMap","line":123,"end_line":127,"hash":"014008beb4dbd40d9d9efd28e03d7ceefa9693fcfc89935335de6f4453756a2d"},{"id":"func/State.Scope","name":"State.Scope","line":130,"end_line":133,"hash":"cb3e032cbd5357eb5f04905526ce9643233d9fabe459407027dfc38c9022a7c8"},{"id":"func/State.ScopeProject","name":"State.ScopeProject","line":137,"end_line":140,"hash":"bfff10a3d32e00445487b9ed4532abdb15235acda05c5b3ed9f6ed8077a9f262"},{"id":"func/State.Unscope","name":"State.Unscope","line":144,"end_line":148,"hash":"2cebdd996dd7238adee36d76eaec06c18bd492a3e0e80cd79ff696c58c7fc627"},{"id":"func/State.InScope","name":"State.InScope","line":151,"end_line":153,"hash":"07e1e701f85205ef5511687b2055e6b290a202e712e3e70cbae4d5b84aa8856b"},{"id":"func/State.ScopeOwner","name":"State.ScopeOwner","line":157,"end_line":159,"hash":"96eb0f815c9f6b2b99412cf37611bbd9450abf371d2ad54d3f105125ba040aa3"},{"id":"func/State.ProjectScopeOwner","name":"State.ProjectScopeOwner","line":162,"end_line":164,"hash":"dc3b7dfcee84800b4251f8244d89f274e85810c0c0dee567ff5046d0df3f1daf"},{"id":"func/State.ForgetScoped","name":"State.ForgetScoped","line":167,"end_line":175,"hash":"7d6fa14f9f834f939841c68ab7fb37ff69e482d1fdcbc3a6b435958b1f4d5316"},{"id":"func/State.ForgetProjectScoped","name":"State.ForgetProjectScoped","line":179,"end_line":187,"hash":"dcf4b7efd87b8962efe4927ee2b9c414ef03b070570e8bc6e4ce2253c09d8437"},{"id":"func/State.deleteScoped","name":"State.deleteScoped","line":189,"end_line":206,"hash":"41daa578f5cef42266899603ca4ca32d64522101f1af97d4bc6d5a0b53449631"},{"id":"func/scopeKey","name":"scopeKey","line":208,"end_line":210,"hash":"7e453148ff535cdda1042cd0474417267d12eed2c9a2626b53b052f84da377b8"},{"id":"func/splitScope","name":"splitScope","line":212,"end_line":215,"hash":"00c9a7897c3cf4290e296ce726e8eae1835dfdb056ed38df0282de26383f3b69"},{"id":"func/State.Anchor","name":"State.Anchor","line":218,"end_line":221,"hash":"abf97d6be5138314460256860c7bdf0359f0ecd87e8387fd92f8ca81367796ee"},{"id":"func/Plan","name":"Plan","line":225,"end_line":228,"hash":"e8e1aa7566af7251d7b0b643670813af18620a1c90fec9d9e577c2236675b68c"},{"id":"func/operatorRequests","name":"operatorRequests","line":233,"end_line":247,"hash":"18373dd942f49714d460f67728ae9ccac9cc2593998a4c7037ae8fa5a9f2a164"},{"id":"func/askedInThread","name":"askedInThread","line":253,"end_line":261,"hash":"aa22bd0d1bc559e0ef48ddb9df9dede144c32e4b2842b6589f0db99564a5675a"},{"id":"func/quotedThread","name":"quotedThread","line":263,"end_line":281,"hash":"0120757acfb0bb7e3c361453f8e5102ecfa291661ce707567a51c918fe57f933"},{"id":"func/operatorAsked","name":"operatorAsked","line":285,"end_line":294,"hash":"cd911834c75727b082d685cadf37ce7d90ea75687e72ce42004c9f39b848b7f3"},{"id":"func/forgeRequests","name":"forgeRequests","line":298,"end_line":305,"hash":"185dee07734e8508194a9c5c9cdf9689012df3d3f60ee7554baf86a05e986175"},{"id":"func/requestActions","name":"requestActions","line":307,"end_line":322,"hash":"b3baad68d27995d90f60f3a5575fdd1bc7d559c84f1641cf4d912851adeaa34a"},{"id":"func/requestAnchor","name":"requestAnchor","line":324,"end_line":330,"hash":"2f665320db8fcf0d2bf78a2b04599316a450475e042be0495f6e923b0ea1e77a"},{"id":"func/relayedOrigins","name":"relayedOrigins","line":334,"end_line":340,"hash":"69ffcaa8aacd4a23072cfed3d3a0f2d1464007173f7e1a6d1bcc644bd9c38fb4"}]}
 // mutate4go-manifest-end

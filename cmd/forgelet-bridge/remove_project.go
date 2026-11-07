@@ -18,26 +18,30 @@ import (
 // and saved room ids before a running bridge may be stopped.
 func removeProjectCommand(configPath, root, project string, plan bool, extra []string, output io.Writer) int {
 	if len(extra) != 0 {
-		return writeRemovalResult(output, removal.Result{
-			Status: removal.Refused,
-			Reason: "unsafe_root",
-		})
+		return writeProjectRefusal(output, "unsafe_root")
 	}
 	service, inspection := prepareProjectRemoval(configPath, root, project)
 	if plan {
-		if inspection.Result.Status == removal.Ready {
-			_, err := fmt.Fprintln(output, "ready")
-			if err != nil {
-				return 1
-			}
-			return 0
-		}
-		return writeRemovalResult(output, inspection.Result)
+		return writeProjectPlan(output, inspection.Result)
 	}
 	if inspection.Result.Status != removal.Ready {
 		return writeRemovalResult(output, inspection.Result)
 	}
 	return writeRemovalResult(output, executeProjectRemoval(service, inspection))
+}
+
+func writeProjectPlan(output io.Writer, result removal.Result) int {
+	if result.Status != removal.Ready {
+		return writeRemovalResult(output, result)
+	}
+	if _, err := fmt.Fprintln(output, "ready"); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func writeProjectRefusal(output io.Writer, reason string) int {
+	return writeRemovalResult(output, removal.Result{Status: removal.Refused, Reason: reason})
 }
 
 func prepareProjectRemoval(configPath, root, project string) (removal.Service, removal.ProjectInspection) {

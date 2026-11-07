@@ -33,8 +33,11 @@ func TestInspectProjectRefusesUnsafeAndUnknownIdentity(t *testing.T) {
 		{name: "parent project", root: "/forges/one", project: "../target", catalog: catalog, want: refused("unsafe_project")},
 		{name: "absolute project", root: "/forges/one", project: "/target", catalog: catalog, want: refused("unsafe_project")},
 		{name: "matrix room id", root: "/forges/one", project: "!room:example.org", catalog: catalog, want: refused("unsafe_project")},
+		{name: "backslash", root: "/forges/one", project: "target\\child", catalog: catalog, want: refused("unsafe_project")},
 		{name: "unknown project", root: "/forges/one", project: "missing", catalog: fakeProjectCatalog{forgeExists: true}, want: refused("unknown_project")},
 		{name: "no catalog", root: "/forges/one", project: "target", catalog: nil, want: refused("state_unavailable")},
+		{name: "forge lookup failure", root: "/forges/one", project: "target", catalog: fakeProjectCatalog{forgeErr: errors.New("read failed")}, want: refused("state_unavailable")},
+		{name: "project lookup failure", root: "/forges/one", project: "target", catalog: fakeProjectCatalog{forgeExists: true, managedErr: errors.New("read failed")}, want: refused("state_unavailable")},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -187,6 +190,12 @@ func TestRemoveProjectCleansOneRoomAndPreservesEverySiblingFact(t *testing.T) {
 	if _, ok := final.Relay.Clarifications["target/clarification"]; ok {
 		t.Error("target clarification bookkeeping remains")
 	}
+	if _, ok := final.Relay.Clarifications["orphan-in-target-room"]; ok {
+		t.Error("a clarification in the target room was not removed")
+	}
+	if _, ok := final.Relay.Clarifications["target/orphan-in-sibling-room"]; ok {
+		t.Error("a target-prefixed clarification was not removed")
+	}
 	if _, ok := final.Relay.Activity["target/card"]; ok {
 		t.Error("target activity bookkeeping remains")
 	}
@@ -328,18 +337,145 @@ func TestRemoveProjectIsIdempotentAndNeverTouchesMatrixAgain(t *testing.T) {
 	}
 }
 
+func TestRemoveProjectReportsUnavailablePrerequisites(t *testing.T) {
+	cfg := projectConfig("/forges/one")
+	ready := ProjectInspection{
+		Result: Result{Status: Ready}, Root: "/forges/one", ProjectName: "target", RoomID: "!target:example.org",
+	}
+	if got := (Service{Config: cfg}).RemoveProject(context.Background(), ready); got != refusedRetryable("matrix_unavailable") {
+		t.Fatalf("missing cleaner = %+v", got)
+	}
+	service := Service{
+		StatePath:      t.TempDir(),
+		ProjectCleaner: &fakeProjectCleaner{},
+		Projects:       fakeProjectCatalog{forgeExists: true, managed: true},
+		Config:         cfg,
+	}
+	if got := service.RemoveProject(context.Background(), ready); got != refusedRetryable("state_unavailable") {
+		t.Fatalf("unreadable state = %+v", got)
+	}
+	if _, result := service.projectProgress(ready); result != refusedRetryable("state_unavailable") {
+		t.Fatalf("project progress = %+v", result)
+	}
+	if result := service.saveProjectProgress(ready, state.RoomCleanup{}); result != refusedRetryable("state_unavailable") {
+		t.Fatalf("save progress = %+v", result)
+	}
+	if result := service.finalizeProject(ready.Root, ready.ProjectName, ready.RoomID); result != refusedRetryable("state_unavailable") {
+		t.Fatalf("finalize = %+v", result)
+	}
+}
+
+func TestSaveProjectProgressRejectsAChangedRecord(t *testing.T) {
+	loaded := projectState("/forges/one")
+	path := writeRemovalState(t, loaded)
+	cfg := projectConfig("/forges/one")
+	service := Service{StatePath: path, Config: cfg}
+	inspection := ProjectInspection{
+		Root: "/forges/one", ProjectName: "target", RoomID: "!sibling:example.org",
+	}
+	if got := service.saveProjectProgress(inspection, state.RoomCleanup{}); got != refusedRetryable("state_unavailable") {
+		t.Fatalf("changed record = %+v", got)
+	}
+}
+
+func TestProjectStagesStopWhenProgressCannotBeRead(t *testing.T) {
+	service := Service{StatePath: t.TempDir()}
+	inspection := ProjectInspection{Root: "/forges/one", ProjectName: "target", RoomID: "!target:example.org"}
+	stages := map[string]func() Result{
+		"facts":    func() Result { return service.cleanProjectFacts(context.Background(), inspection) },
+		"operator": func() Result { return service.removeProjectOperator(context.Background(), inspection) },
+		"leave":    func() Result { return service.leaveProject(context.Background(), inspection) },
+	}
+	for name, stage := range stages {
+		t.Run(name, func(t *testing.T) {
+			if got := stage(); got != refusedRetryable("state_unavailable") {
+				t.Fatalf("stage = %+v", got)
+			}
+		})
+	}
+}
+
+func TestReloadProjectDoesNotDeclareUnreadableStateReady(t *testing.T) {
+	service := Service{
+		StatePath: t.TempDir(), ProjectCleaner: &fakeProjectCleaner{},
+		Projects: fakeProjectCatalog{forgeExists: true, managed: true},
+		Config:   projectConfig("/forges/one"),
+	}
+	if _, result, ready := service.reloadProject("/forges/one", "target"); ready ||
+		result != refusedRetryable("state_unavailable") {
+		t.Fatalf("unreadable reload = %+v, ready=%t", result, ready)
+	}
+	service.ProjectCleaner = nil
+	if _, result, ready := service.reloadProject("/forges/one", "target"); ready ||
+		result != refusedRetryable("matrix_unavailable") {
+		t.Fatalf("missing cleaner reload = %+v, ready=%t", result, ready)
+	}
+}
+
+func TestCurrentProjectRequiresTheRecordedRoom(t *testing.T) {
+	loaded := projectState("/forges/one")
+	inspection := ProjectInspection{Root: "/forges/one", ProjectName: "target", RoomID: "!target:example.org"}
+	if _, ok := currentProject(loaded, inspection); !ok {
+		t.Fatal("currentProject rejected the recorded room")
+	}
+	inspection.RoomID = "!sibling:example.org"
+	if _, ok := currentProject(loaded, inspection); ok {
+		t.Fatal("currentProject accepted a sibling room")
+	}
+	inspection.Root = "/forges/missing"
+	if _, ok := currentProject(loaded, inspection); ok {
+		t.Fatal("currentProject accepted a missing forge")
+	}
+}
+
+func TestProjectProgressWritersRejectAnotherProjectRoom(t *testing.T) {
+	loaded := projectState("/forges/one")
+	inspection := ProjectInspection{
+		Root: "/forges/one", ProjectName: "target", RoomID: "!sibling:example.org",
+	}
+	if recordProjectProgress(loaded, inspection, state.RoomCleanup{}) {
+		t.Fatal("recordProjectProgress accepted a sibling room")
+	}
+	inspection.ProjectName = "missing"
+	inspection.RoomID = "!target:example.org"
+	if recordProjectProgress(loaded, inspection, state.RoomCleanup{}) {
+		t.Fatal("recordProjectProgress accepted a missing project")
+	}
+	inspection.Root = "/forges/missing"
+	if recordProjectProgress(loaded, inspection, state.RoomCleanup{}) {
+		t.Fatal("recordProjectProgress accepted a missing forge")
+	}
+}
+
+func TestRemoveProjectRecordRejectsAnotherProjectRoom(t *testing.T) {
+	loaded := projectState("/forges/one")
+	if result, done := removeProjectRecord(loaded, "/forges/one", "target", "!sibling:example.org"); !done ||
+		result != (Result{Status: NothingToRemove}) {
+		t.Fatalf("wrong target room = %+v, done=%t", result, done)
+	}
+	if result, done := removeProjectRecord(loaded, "/forges/one", "missing", "!target:example.org"); !done ||
+		result != (Result{Status: NothingToRemove}) {
+		t.Fatalf("missing project = %+v, done=%t", result, done)
+	}
+	if result, done := removeProjectRecord(loaded, "/forges/missing", "target", "!target:example.org"); !done ||
+		result != (Result{Status: NothingToRemove}) {
+		t.Fatalf("missing forge = %+v, done=%t", result, done)
+	}
+}
+
 type fakeProjectCatalog struct {
 	forgeExists bool
 	managed     bool
-	err         error
+	forgeErr    error
+	managedErr  error
 }
 
 func (f fakeProjectCatalog) ForgeExists(string) (bool, error) {
-	return f.forgeExists, f.err
+	return f.forgeExists, f.forgeErr
 }
 
 func (f fakeProjectCatalog) ManagedProject(string, string) (bool, error) {
-	return f.managed, f.err
+	return f.managed, f.managedErr
 }
 
 type fakeProjectCleaner struct {
@@ -422,6 +558,12 @@ func projectState(root string) *state.State {
 	}
 	loaded.Relay.Clarifications["forge/clarification"] = relay.ClarificationState{
 		ForgeRoot: root, RoomID: "!clarifications:example.org", MessageID: "$forge-clarification",
+	}
+	loaded.Relay.Clarifications["orphan-in-target-room"] = relay.ClarificationState{
+		ForgeRoot: "/forges/other", RoomID: "!target:example.org", MessageID: "$orphan-room",
+	}
+	loaded.Relay.Clarifications["target/orphan-in-sibling-room"] = relay.ClarificationState{
+		ForgeRoot: root, RoomID: "!sibling:example.org", MessageID: "$orphan-key",
 	}
 	loaded.Relay.Activity["target/card"] = relay.CardState{ForgeRoot: root, Project: "target"}
 	loaded.Relay.Activity["sibling/card"] = relay.CardState{ForgeRoot: root, Project: "sibling"}

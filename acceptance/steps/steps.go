@@ -69,6 +69,7 @@ func register(registry *runtime.Registry) error {
 		{`^the adapter for the forge root (\S+) is asked to remove the forge-b root and the (.+) project$`, adapterAskedToRemoveProjectByCase},
 		{`^the project removal result reports the status "([^"]+)"(?: with the reason "([^"]+)")?$`, projectRemovalResultReports},
 		{`^the adapter left the bridge running after the project removal$`, projectAdapterLeftBridgeRunning},
+		{`^the removal kept the expected project identity (\S+)$`, projectRemovalKeptExpectedIdentity},
 		{`^the removal targeted only the (\S+) project room exactly once$`, projectRemovalTargetedOnlyTarget},
 		{`^the removal cleared the (\S+) relay facts before removing the operator before leaving the room$`, projectRemovalClearedFactsBeforeMembership},
 		{`^the operator and the bridge are no longer members of the (\S+) project room$`, projectRemovalMembershipsGone},

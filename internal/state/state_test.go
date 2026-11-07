@@ -119,6 +119,33 @@ func TestProjectCleanupRoundTripAndPending(t *testing.T) {
 	if loaded.ProjectRemovalPending("/forges/forge-a", "other") {
 		t.Fatal("a project without cleanup was reported as pending")
 	}
+	forge := loaded.Forges["/forges/forge-a"]
+	forge.Projects["not-started"] = Project{RoomID: "!not-started"}
+	loaded.Forges["/forges/forge-a"] = forge
+	if loaded.ProjectRemovalPending("/forges/forge-a", "not-started") {
+		t.Fatal("a project with no cleanup progress was reported as pending")
+	}
+	if loaded.ProjectRemovalPending("/forges/missing", "agent") {
+		t.Fatal("a missing forge was reported as having pending removal")
+	}
+	if _, ok := loaded.ProjectFor("/forges/missing", "agent"); ok {
+		t.Fatal("ProjectFor reported a project under a missing forge")
+	}
+}
+
+func TestRoomCleanupMarksEachStage(t *testing.T) {
+	progress := RoomCleanup{}.MarkFactsCleared()
+	if !progress.FactsCleared || progress.OperatorRemoved || progress.BridgeLeft {
+		t.Fatalf("fact progress = %+v", progress)
+	}
+	progress = progress.MarkOperatorRemoved()
+	if !progress.FactsCleared || !progress.OperatorRemoved || progress.BridgeLeft {
+		t.Fatalf("operator progress = %+v", progress)
+	}
+	progress = progress.MarkBridgeLeft()
+	if !progress.Done() {
+		t.Fatalf("completed progress = %+v", progress)
+	}
 }
 
 func TestSaveLeavesNoTemporaryFile(t *testing.T) {
@@ -130,6 +157,19 @@ func TestSaveLeavesNoTemporaryFile(t *testing.T) {
 	}
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Errorf("temporary state file still present: %v", err)
+	}
+}
+
+func TestLoadReportsReadAndParseErrors(t *testing.T) {
+	if _, err := Load(t.TempDir()); err == nil {
+		t.Fatal("Load accepted a directory")
+	}
+	path := filepath.Join(t.TempDir(), "bridge-state.json")
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load accepted malformed JSON")
 	}
 }
 
