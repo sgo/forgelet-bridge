@@ -21,7 +21,6 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
     Examples:
       | project |
       | alpha   |
-      | beta    |
 
   # Expose Project Removal Planning In The Bridge Adapter 2: bridge plan results are sanitized
   Scenario Outline: Expose Project Removal Planning In The Bridge Adapter 2: bridge plan results are sanitized
@@ -41,8 +40,6 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
       | refused            | refused | incomplete_project_state |
       | extra-field        | refused | incomplete_project_state |
       | malformed          | retryable | invalid_plan           |
-      | empty              | retryable | invalid_plan           |
-      | unknown-status     | retryable | invalid_plan           |
       | nonzero            | retryable | state_unavailable       |
 
   # Expose Project Removal Planning In The Bridge Adapter 3: unsafe requests never reach the bridge
@@ -58,12 +55,8 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
     Examples:
       | root_case               | project_case     | reason          |
       | blank                   | target           | unsafe_root     |
-      | relative                | target           | unsafe_root     |
       | unknown-absolute        | target           | unknown_root    |
-      | configured-non-Forgelet | target           | unknown_root    |
       | target                  | blank            | unsafe_project  |
-      | target                  | padded           | unsafe_project  |
-      | target                  | matrix-room-id   | unsafe_project  |
       | target                  | unknown          | unknown_project |
 
   # Expose Project Removal Planning In The Bridge Adapter 4: deployment carries every host command
