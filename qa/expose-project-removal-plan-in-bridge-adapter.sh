@@ -40,21 +40,22 @@ trap 'rm -rf "$work"; rm -f "$project_dir/$marker_name"' EXIT
 meta="$work/meta.json"
 
 host_config="$forge_root/.swarmforge/forgelet-host.json"
-python3 - "$host_config" "$work/bridge-config" <<'PY'
+python3 - "$host_config" "$work/bridge-config" "$work/adapter-path" <<'PY'
 import json
 import pathlib
 import sys
 
 host = json.loads(pathlib.Path(sys.argv[1]).read_text())
 pathlib.Path(sys.argv[2]).write_text(str(host["bridge_config"]))
+pathlib.Path(sys.argv[3]).write_text(str(host["bridge_adapter"]))
 PY
 bridge_config="$(cat "$work/bridge-config")"
+installed_adapter="$(cat "$work/adapter-path")"
 [[ -r "$bridge_config" ]]
 
 "$project_root/scripts/build.sh" >/dev/null
 install -m 0755 "$project_root/scripts/matrix-bridge.sh" \
-  "$family/swarmforge/scripts/matrix-bridge.sh"
-installed_adapter="$family/swarmforge/scripts/matrix-bridge.sh"
+  "$installed_adapter"
 "$project_root/scripts/check-adapter-conformance.sh" "$installed_adapter"
 
 plan="$(
