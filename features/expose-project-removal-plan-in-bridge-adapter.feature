@@ -15,12 +15,13 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
     When the adapter for the forge root forge-a plans removal of the project <project> from the forge root forge-b
     Then the project removal plan reports the status "ready"
     And the project removal plan left the bridge running
+    And the removal kept the expected project identity <expected_project>
     And the project removal plan changed no bridge state, configuration, files or room membership
     And the project removal result carries no Matrix ids, user ids, access tokens, project names or forge paths
 
     Examples:
-      | project |
-      | alpha   |
+      | project | expected_project |
+      | alpha   | alpha            |
 
   # Expose Project Removal Planning In The Bridge Adapter 2: bridge plan results are sanitized
   Scenario Outline: Expose Project Removal Planning In The Bridge Adapter 2: bridge plan results are sanitized
