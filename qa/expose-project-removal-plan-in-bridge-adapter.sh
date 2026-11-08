@@ -27,17 +27,22 @@ sibling="${FORGELET_E2E_SIBLING_PROJECT}"
 project_dir="$family/projects/$project"
 marker_name=".swarmforge/project-removal-e2e-marker"
 marker_value="$(basename "$family")/$project"
+recovering=0
+if [[ ! -d "$project_dir" ]]; then
+  recovering=1
+fi
 
 [[ "$(uname -s)" == "Darwin" ]]
 [[ -x /usr/bin/trash ]]
 [[ -d "$family/.swarmforge" ]]
-[[ -f "$project_dir/.swarmforge/single-agent" ]]
+[[ "$recovering" == "1" || -f "$project_dir/.swarmforge/single-agent" ]]
 [[ -f "$family/projects/$sibling/.swarmforge/single-agent" ]]
 [[ -r "$token_file" ]]
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/forgelet-bridge-project-removal.XXXXXX")"
 trap 'rm -rf "$work"; rm -f "$project_dir/$marker_name"' EXIT
 meta="$work/meta.json"
+evidence_file="$project_root/target/e2e/project-removal-evidence.json"
 
 host_config="$forge_root/.swarmforge/forgelet-host.json"
 python3 - "$host_config" "$work/bridge-config" "$work/adapter-path" <<'PY'
@@ -58,24 +63,25 @@ install -m 0755 "$project_root/scripts/matrix-bridge.sh" \
   "$installed_adapter"
 "$project_root/scripts/check-adapter-conformance.sh" "$installed_adapter"
 
-plan="$(
-  MATRIX_BRIDGE_FORGE_ROOT="$forge_root" \
+if [[ "$recovering" == "0" ]]; then
+  plan="$(
+    MATRIX_BRIDGE_FORGE_ROOT="$forge_root" \
+    MATRIX_BRIDGE_CONFIG="$bridge_config" \
+    MATRIX_BRIDGE_BINARY="$project_root/build/acceptance/bin/forgelet-bridge" \
+    "$installed_adapter" remove-project-plan "$family" "$project"
+  )"
+  [[ "$plan" == "ready" ]]
+  echo "project-removal-e2e: installed adapter planned removal"
+
+  mkdir -p "$project_dir/.swarmforge"
+  printf '%s\n' "$marker_value" > "$project_dir/$marker_name"
+
   MATRIX_BRIDGE_CONFIG="$bridge_config" \
-  MATRIX_BRIDGE_BINARY="$project_root/build/acceptance/bin/forgelet-bridge" \
-  "$installed_adapter" remove-project-plan "$family" "$project"
-)"
-[[ "$plan" == "ready" ]]
-echo "project-removal-e2e: installed adapter planned removal"
-
-mkdir -p "$project_dir/.swarmforge"
-printf '%s\n' "$marker_value" > "$project_dir/$marker_name"
-
-MATRIX_BRIDGE_CONFIG="$bridge_config" \
-FORGELET_E2E_FAMILY_ROOT="$family" \
-FORGELET_E2E_PROJECT="$project" \
-FORGELET_E2E_HOST_URL="$host_url" \
-FORGELET_E2E_HOST_TOKEN_FILE="$token_file" \
-python3 - "$meta" <<'PY'
+  FORGELET_E2E_FAMILY_ROOT="$family" \
+  FORGELET_E2E_PROJECT="$project" \
+  FORGELET_E2E_HOST_URL="$host_url" \
+  FORGELET_E2E_HOST_TOKEN_FILE="$token_file" \
+  python3 - "$meta" <<'PY'
 import json
 import pathlib
 import sys
@@ -162,12 +168,61 @@ meta_path.write_text(json.dumps({
 }))
 meta_path.chmod(0o600)
 PY
+  mkdir -p "$(dirname "$evidence_file")"
+  python3 - "$meta" "$evidence_file" <<'PY'
+import json
+import pathlib
+import sys
+
+meta = json.loads(pathlib.Path(sys.argv[1]).read_text())
+meta.pop("matrix_token", None)
+path = pathlib.Path(sys.argv[2])
+path.write_text(json.dumps(meta))
+path.chmod(0o600)
+PY
+else
+  echo "project-removal-e2e: project is already gone; verifying completed evidence"
+  MATRIX_BRIDGE_CONFIG="$bridge_config" \
+  FORGELET_E2E_EVIDENCE="$evidence_file" \
+  python3 - "$meta" <<'PY'
+import json
+import os
+import pathlib
+import sys
+import urllib.request
+
+config = json.loads(pathlib.Path(os.environ["MATRIX_BRIDGE_CONFIG"]).read_text())
+evidence = json.loads(pathlib.Path(os.environ["FORGELET_E2E_EVIDENCE"]).read_text())
+base = config["homeserver_url"].rstrip("/")
+if config.get("access_token"):
+    token = config["access_token"]
+else:
+    body = json.dumps({
+        "type": "m.login.password",
+        "identifier": {"type": "m.id.user", "user": config["user_id"]},
+        "password": config["password"],
+        "initial_device_display_name": "forgelet bridge project-removal e2e verification",
+    }).encode()
+    request = urllib.request.Request(
+        base + "/_matrix/client/v3/login",
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        token = json.load(response)["access_token"]
+evidence["matrix_token"] = token
+meta = pathlib.Path(sys.argv[1])
+meta.write_text(json.dumps(evidence))
+meta.chmod(0o600)
+PY
+fi
 
 if [[ "${FORGELET_E2E_DRY_RUN:-}" == "1" ]]; then
   echo "project-removal-e2e: preflight, runtime, room and history evidence collected"
   exit 0
 fi
 
+if [[ "$recovering" == "0" ]]; then
 FORGELET_E2E_HOST_URL="$host_url" \
 FORGELET_E2E_HOST_TOKEN_FILE="$token_file" \
 FORGELET_E2E_FAMILY_ROOT="$family" \
@@ -249,6 +304,7 @@ output.write_text(json.dumps({"operation": operation, "stages": seen}))
 print("project-removal-e2e: host operation completed")
 print("project-removal-e2e: stages seen: " + ", ".join(seen))
 PY
+fi
 
 MATRIX_BRIDGE_CONFIG="$bridge_config" \
 FORGELET_E2E_FAMILY_ROOT="$family" \
@@ -280,18 +336,13 @@ open_projects = family / ".swarmforge" / "open-projects"
 if open_projects.exists() and project in open_projects.read_text().splitlines():
     raise SystemExit("project-removal-e2e: the project is still in open-projects")
 
-found = None
 trash = pathlib.Path.home() / ".Trash"
-if trash.is_dir():
-    for candidate in trash.iterdir():
-        if not candidate.is_dir() or not candidate.name.startswith(project):
-            continue
-        marker = candidate / marker_name
-        if marker.is_file() and marker.read_text().strip() == marker_value:
-            found = candidate
-            break
-if found is None:
+candidate = trash / project
+marker = candidate / marker_name
+if not candidate.is_dir() or not marker.is_file():
     raise SystemExit("project-removal-e2e: the project was not found in macOS Trash")
+if marker.read_text().strip() != marker_value:
+    raise SystemExit("project-removal-e2e: the Trash item is not the project under test")
 
 runtime = urllib.parse.urlparse(meta["dashboard_url"])
 if runtime.scheme not in {"http", "https"} or runtime.hostname is None:
