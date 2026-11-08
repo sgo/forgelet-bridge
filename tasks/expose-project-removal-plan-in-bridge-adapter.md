@@ -99,12 +99,13 @@ named, read only at run time and redacted from captured output:
 `FORGELET_E2E_HOST_URL`, `FORGELET_E2E_HOST_TOKEN_FILE`, and
 `FORGELET_E2E_SIBLING_PROJECT`.
 
-The procedure installs the completed adapter at the Family root, captures the
-project's bridge room and history, and submits the same authenticated project
-removal request the app uses. It then verifies the host progresses past
-preflight, the runtime stops, the directory is recoverable from macOS Trash,
-the project disappears only after the Family refresh, and its Matrix room is
-inactive while server-side history remains.
+The procedure installs the completed adapter at the host's configured
+`bridge_adapter` path in the Forgelet forge root, captures the project's bridge
+room and history, and submits the same authenticated project removal request
+the app uses. It then verifies the host progresses past preflight, the runtime
+stops, the directory is recoverable from macOS Trash, the project disappears
+only after the Family refresh, and its Matrix room is inactive while
+server-side history remains.
 
 ## Documentation
 
