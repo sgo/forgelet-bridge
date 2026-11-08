@@ -12,19 +12,16 @@ violations="$(
   go list -tags goolm -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./internal/... |
     while IFS=$'\t' read -r package imports; do
       short="${package#github.com/unclebob/forgelet-bridge/}"
-      case "$imports" in
-        *github.com/unclebob/forgelet-bridge/internal/bridge*|\
-        *github.com/unclebob/forgelet-bridge/internal/matrix*)
-          if [[ "$short" != "internal/matrix" ]]; then
-            printf '%s may not import bridge or matrix: %s\n' "$short" "$imports"
-          fi
-          ;;
-        *maunium.net/go/mautrix*)
-          if [[ "$short" != "internal/matrix" ]]; then
-            printf '%s may not import the Matrix client: %s\n' "$short" "$imports"
-          fi
-          ;;
-      esac
+      if [[ "$imports" == *github.com/unclebob/forgelet-bridge/internal/bridge* ||
+            "$imports" == *github.com/unclebob/forgelet-bridge/internal/matrix* ]]; then
+        if [[ "$short" != "internal/matrix" ]]; then
+          printf '%s may not import bridge or matrix: %s\n' "$short" "$imports"
+        fi
+      elif [[ "$imports" == *maunium.net/go/mautrix* ]]; then
+        if [[ "$short" != "internal/matrix" ]]; then
+          printf '%s may not import the Matrix client: %s\n' "$short" "$imports"
+        fi
+      fi
     done
 )"
 
