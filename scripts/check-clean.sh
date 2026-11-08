@@ -26,20 +26,18 @@ else
 fi
 
 if [[ ${#sources[@]} -eq 0 ]]; then
-  echo "clean: no changed Go production source files to measure" >&2
-  exit 1
-fi
+  echo "clean: no changed Go production source files need CRAP measurement"
+else
+  printf 'clean: measuring %d changed Go source file(s)\n' "${#sources[@]}"
+  for file in "${sources[@]}"; do
+    package="./$(dirname "$file")"
+    crap4go \
+      --max-workers 4 \
+      --test-command "go test -tags goolm -count=1 $package" \
+      "$file" 2>&1 | tee -a "$report"
+  done
 
-printf 'clean: measuring %d changed Go source file(s)\n' "${#sources[@]}"
-for file in "${sources[@]}"; do
-  package="./$(dirname "$file")"
-  crap4go \
-    --max-workers 4 \
-    --test-command "go test -tags goolm -count=1 $package" \
-    "$file" 2>&1 | tee -a "$report"
-done
-
-python3 - "$report" <<'PY'
+  python3 - "$report" <<'PY'
 import re
 import sys
 
@@ -68,6 +66,7 @@ if over:
     raise SystemExit(1)
 print(f"clean: highest CRAP {highest:.1f} (ceiling 6)")
 PY
+fi
 
 dry4go --threshold 0.82 --min-lines 4 --min-nodes 20 --format text cmd internal acceptance
 echo "clean: dry4go passed"
