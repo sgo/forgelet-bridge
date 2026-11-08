@@ -36,7 +36,7 @@ marker_value="$(basename "$family")/$project"
 [[ -r "$token_file" ]]
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/forgelet-bridge-project-removal.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work"; rm -f "$project_dir/$marker_name"' EXIT
 meta="$work/meta.json"
 
 host_config="$forge_root/.swarmforge/forgelet-host.json"
@@ -140,7 +140,7 @@ if not event:
     event = sent["event_id"]
 
 host_state_req = urllib.request.Request(
-    f"{host}/forges/{family.name}/api/state",
+    f"{host}/forges/{family.name.removesuffix('-forge')}/api/state",
     headers={"Authorization": "Bearer " + host_token},
 )
 with urllib.request.urlopen(host_state_req, timeout=30) as response:
@@ -162,6 +162,11 @@ meta_path.write_text(json.dumps({
 meta_path.chmod(0o600)
 PY
 
+if [[ "${FORGELET_E2E_DRY_RUN:-}" == "1" ]]; then
+  echo "project-removal-e2e: preflight, runtime, room and history evidence collected"
+  exit 0
+fi
+
 FORGELET_E2E_HOST_URL="$host_url" \
 FORGELET_E2E_HOST_TOKEN_FILE="$token_file" \
 FORGELET_E2E_FAMILY_ROOT="$family" \
@@ -176,7 +181,8 @@ import urllib.request
 
 host = os.environ["FORGELET_E2E_HOST_URL"].rstrip("/")
 token = pathlib.Path(os.environ["FORGELET_E2E_HOST_TOKEN_FILE"]).read_text().strip()
-slug = pathlib.Path(os.environ["FORGELET_E2E_FAMILY_ROOT"]).name
+slug = pathlib.Path(
+    os.environ["FORGELET_E2E_FAMILY_ROOT"]).name.removesuffix("-forge")
 project = urllib.parse.quote(os.environ["FORGELET_E2E_PROJECT"], safe="")
 req = urllib.request.Request(
     f"{host}/api/forges/{slug}/projects/{project}",
@@ -313,7 +319,7 @@ if sibling not in projects or not projects[sibling].get("room_id"):
 host = os.environ["FORGELET_E2E_HOST_URL"].rstrip("/")
 host_token = pathlib.Path(
     os.environ["FORGELET_E2E_HOST_TOKEN_FILE"]).read_text().strip()
-slug = family.name
+slug = family.name.removesuffix("-forge")
 req = urllib.request.Request(
     f"{host}/forges/{slug}/api/state",
     headers={"Authorization": "Bearer " + host_token},
