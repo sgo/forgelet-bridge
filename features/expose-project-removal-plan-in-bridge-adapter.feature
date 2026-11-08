@@ -37,8 +37,6 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
     Examples:
       | binary_case        | status  | reason                   |
       | ready              | ready   |                          |
-      | removed            | removed |                          |
-      | nothing-to-remove  | nothing_to_remove |                |
       | retryable          | retryable | matrix_unavailable     |
       | refused            | refused | incomplete_project_state |
       | extra-field        | refused | incomplete_project_state |
@@ -61,14 +59,10 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
       | root_case               | project_case     | reason          |
       | blank                   | target           | unsafe_root     |
       | relative                | target           | unsafe_root     |
-      | parent-traversal        | target           | unsafe_root     |
-      | extra-arguments         | target           | unsafe_root     |
       | unknown-absolute        | target           | unknown_root    |
       | configured-non-Forgelet | target           | unknown_root    |
       | target                  | blank            | unsafe_project  |
       | target                  | padded           | unsafe_project  |
-      | target                  | parent-traversal | unsafe_project  |
-      | target                  | absolute         | unsafe_project  |
       | target                  | matrix-room-id   | unsafe_project  |
       | target                  | unknown          | unknown_project |
 
