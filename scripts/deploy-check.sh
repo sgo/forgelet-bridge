@@ -26,6 +26,7 @@ if ! grep -q -- '-remove-project' <<< "$help"; then
   echo "deploy: the built bridge does not expose remove-project" >&2
   exit 1
 fi
+"$project_root/scripts/check-adapter-conformance.sh" "$adapter"
 
 export MATRIX_BRIDGE_FORGE_ROOT="$forge_root"
 export MATRIX_BRIDGE_BINARY="$binary"
@@ -60,4 +61,4 @@ print("deploy: reached forges: " + (", ".join(reached) or "none"))
 print("deploy: unavailable forges: " + (", ".join(unhappy) or "none"))
 PY
 
-echo "deploy: adapter running and bridge exposes remove-forge and remove-project"
+echo "deploy: adapter running; host project-removal commands dispatch; bridge exposes removal operations"

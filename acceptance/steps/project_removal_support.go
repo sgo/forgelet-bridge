@@ -33,6 +33,11 @@ type projectRemovalScenario struct {
 	configBefore  []byte
 	targetBefore  map[string]string
 	operationDone bool
+	planStatus    string
+	planReason    string
+	planRawOutput string
+	planBridgeLog string
+	planDone      bool
 }
 
 func recordManagedProjects(_ context.Context, world any, captures []string) error {

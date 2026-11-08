@@ -1,1 +1,9 @@
-{:cards {}}
+{:cards
+ {"expose-project-removal-plan-in-bridge-adapter"
+  {:procedure "qa/expose-project-removal-plan-in-bridge-adapter.md"
+   :script "qa/expose-project-removal-plan-in-bridge-adapter.sh"
+   :required-inputs ["FORGELET_E2E_FAMILY_ROOT"
+                     "FORGELET_E2E_PROJECT"
+                     "FORGELET_E2E_HOST_URL"
+                     "FORGELET_E2E_HOST_TOKEN_FILE"
+                     "FORGELET_E2E_SIBLING_PROJECT"]}}}

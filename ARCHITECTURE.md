@@ -16,6 +16,14 @@ small Matrix boundary that forge removal needs and
 Project identity is resolved through `ProjectCatalog`; Matrix commands never
 accept a project room id from their caller.
 
+The installed `scripts/matrix-bridge.sh` adapter is the process boundary for
+host project removal. Its `remove-project-plan` operation validates configured
+identity before crossing into the bridge binary and reduces the binary's result
+to the host's bounded status/result contract. The combined `remove-project`
+operation keeps its stop, apply and restart-debt lifecycle around that planning
+step. `scripts/check-adapter-conformance.sh` checks both host-facing commands.
+Planning does not call the stop/start lifecycle or the Matrix boundary.
+
 Acceptance fixtures and the Gherkin runtime are under `acceptance/`; they drive
 the real bridge binary and public adapter rather than reimplementing bridge
 policy.
@@ -53,5 +61,9 @@ commands and `build/acceptance/bin` output remain the contract.
   scope, so project removal cannot erase a sibling project in the same forge.
 - A project with saved removal progress is not relayed while that removal is
   incomplete.
+- Project-plan validation happens in the adapter before binary execution, and
+  planning never changes adapter lifecycle, bridge state or Matrix membership.
+- Malformed or nonconforming bridge plan output is sanitized at the adapter
+  boundary rather than exposed to the host.
 
 What must stay true after the refactoring.

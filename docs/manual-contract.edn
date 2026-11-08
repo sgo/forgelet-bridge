@@ -69,7 +69,7 @@
   {:id "manual-project-removal"
    :document "docs/manual.md"
    :heading "## Project removal"
-   :apis ["internal/removal.Service" "remove-project"]}
+   :apis ["internal/removal.Service" "remove-project-plan" "remove-project"]}
   {:id "manual-pipeline"
    :document "docs/manual.md"
    :heading "## Project pipeline"
@@ -128,6 +128,10 @@
    :section "manual-project-removal"
    :command ["bash" "-lc" "go doc ./internal/removal Service"]
    :expect ["type Service struct" "func (s Service) RemoveProject"]}
+  {:id "manual-project-removal-plan"
+   :section "manual-project-removal"
+   :command ["bash" "-lc" "scripts/check-adapter-conformance.sh"]
+   :expect ["remove-project-plan and remove-project dispatch"]}
   {:id "manual-pipeline-check"
    :section "manual-pipeline"
    :command ["bash" "-lc" "for stage in code clean clean-final architect harden qa docs deploy; do grep -q \"  $stage)\" scripts/stage-gate.sh || exit 1; done; echo native-Go-stages-present"]

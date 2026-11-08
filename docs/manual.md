@@ -58,6 +58,30 @@ after a removal so the host can remove the configuration entry.
 
 ## Project removal
 
+The project-removal host calls two public adapter operations. Planning is:
+
+```sh
+swarmforge/scripts/matrix-bridge.sh remove-project-plan <forge-root>
+<project-name>
+```
+
+The adapter validates arity, the exact absolute configured root, the root's
+`.swarmforge` directory, the safe project name and its
+`projects/<name>/.swarmforge/single-agent` marker before invoking
+`cmd/forgelet-bridge --remove-project-plan`. Unsafe or extra arguments return
+`unsafe_root`; other unconfigured or non-Forgelet roots return `unknown_root`;
+unsafe and unmarked projects return `unsafe_project` and `unknown_project`.
+These refusals invoke neither the bridge binary nor Matrix.
+
+For a valid argument, a `ready` plan is printed unchanged. The adapter also
+accepts the bridge's `removed`, `nothing_to_remove`, `retryable` and `refused`
+objects after reducing them to `status` and an optional lowercase stable
+`reason`. Malformed, empty, multi-object or unknown-status output becomes
+`{"status":"retryable","reason":"invalid_plan"}`; a nonzero binary exit becomes
+`{"status":"retryable","reason":"state_unavailable"}`. Planning never stops or
+restarts the bridge, connects to Matrix, or changes bridge state, configuration,
+project files, logs or restart markers.
+
 `swarmforge/scripts/matrix-bridge.sh remove-project <forge-root>
 <project-name>` retires one stopped, managed single-agent project without
 removing its Family space, its forge-level rooms, any sibling project, or the
@@ -87,13 +111,17 @@ The result is one sanitized JSON object with `status` set to `removed`,
 `operator_removal_failed`, `bridge_membership_failed`, `state_unavailable`,
 `matrix_unavailable`, and `bridge_restart_failed`.
 
-The adapter plans before stopping a running bridge and restarts a bridge it
-stopped after every apply attempt, including retryable Matrix failures. It
-records a restart debt when that restart fails, and the next project-removal
-invocation retries it. A second successful removal while the project directory
-is still present returns `nothing_to_remove` and touches no Matrix room. The
-bridge does not move the directory, change the forge's open-project list, or
-edit bridge configuration.
+The combined `remove-project` operation performs its own planning before
+stopping a running bridge and restarts a bridge it stopped after every apply
+attempt, including retryable Matrix failures. It records a restart debt when
+that restart fails, and the next project-removal invocation retries it. A
+second successful removal while the project directory is still present returns
+`nothing_to_remove` and touches no Matrix room. The bridge does not move the
+directory, change the forge's open-project list, or edit bridge configuration.
+
+`scripts/check-adapter-conformance.sh` verifies both host-facing commands in an
+installed adapter's usage and dispatcher. The deploy gate runs it before
+restarting the live bridge.
 
 ## Project pipeline
 
@@ -111,8 +139,8 @@ the project's native scripts:
 - `qa` runs `scripts/property.sh` and `scripts/acceptance.sh`.
 - `docs` runs `scripts/check-documentation.sh`.
 - `deploy` runs `scripts/build.sh`, restarts `scripts/matrix-bridge.sh`, and
-  checks that the live process accounts for every configured forge and exposes
-  `remove-forge`.
+  checks that the live process accounts for every configured forge, exposes the
+  removal operations, and dispatches both host project-removal commands.
 
 Every case writes `build/stages/<stage>.log`. No Maven reactor or second Java
 acceptance harness participates in this project.

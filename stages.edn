@@ -23,7 +23,8 @@
    :stamp [:features :sources "acceptance"
            "scripts/acceptance.sh"
            "scripts/run-acceptance-mutation.sh"
-           "scripts/check-mutation.sh"]}
+           "scripts/check-mutation.sh"
+           "scripts/check-adapter-conformance.sh"]}
   {:name "clean-final"
    :runs [["scripts/stage-gate.sh" "clean-final"]]
    :evidence ["build/stages/clean-final.log"]
@@ -32,7 +33,8 @@
    :runs [["scripts/stage-gate.sh" "qa"]]
    :evidence ["build/stages/qa.log"]
    :stamp [:features :sources "acceptance" "scripts/acceptance.sh"
-           "scripts/property.sh"]}
+           "scripts/property.sh"
+           "scripts/check-adapter-conformance.sh"]}
   {:name "e2e"
    :runs [["scripts/stage-gate.sh" "e2e"]]
    :evidence ["build/stages/e2e.log" "target/e2e/check.log"]
@@ -48,4 +50,5 @@
    :runs [["scripts/stage-gate.sh" "deploy"]]
    :evidence ["build/stages/deploy.log"]
    :stamp [:sources "scripts/stage-gate.sh" "scripts/build.sh"
-           "scripts/deploy-check.sh" "scripts/matrix-bridge.sh"]}]}
+           "scripts/deploy-check.sh" "scripts/matrix-bridge.sh"
+           "scripts/check-adapter-conformance.sh"]}]}

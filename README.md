@@ -149,6 +149,21 @@ MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" \
   remove-project "<forge root>" "<project name>"
 ```
 
+The host performs its read-only preflight through the same adapter:
+
+```sh
+MATRIX_BRIDGE_FORGE_ROOT="$root" "$adapter" \
+  remove-project-plan "<forge root>" "<project name>"
+```
+
+`remove-project-plan` validates the exact configured Forgelet root and managed
+project marker before it calls the bridge's existing planning operation. It
+returns `ready` or one sanitized status object, never stops or restarts the
+bridge, and changes no Matrix or bridge state. Malformed bridge output becomes
+`retryable` with `invalid_plan`; a failed bridge invocation becomes `retryable`
+with `state_unavailable`. The deployment check verifies that the installed
+adapter still dispatches both host-facing removal commands.
+
 The adapter plans against the configured Forgelet root and managed project
 marker before it stops a running bridge. For the target project only, it clears
 `com.forgelet.*` facts, removes the operator, and leaves and forgets the bridge
