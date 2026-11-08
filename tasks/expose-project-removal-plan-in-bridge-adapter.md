@@ -85,7 +85,9 @@ executable contract. Value-driven outlines cover:
   membership, with the bridge left running.
 
 A plain scenario asserts deployment conformance for the two host-facing adapter
-commands; it is boolean and has no independently mutable example value.
+commands; it is boolean and has no independently mutable example value. The
+fixed `refused` bridge result is also a plain scenario because its one value is
+the setup itself, leaving no independently mutable assertion cell.
 
 ## E2E procedure
 

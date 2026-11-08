@@ -37,10 +37,20 @@ Feature: Expose Project Removal Planning In The Bridge Adapter
       | binary_case        | status  | reason                   |
       | ready              | ready   |                          |
       | retryable          | retryable | matrix_unavailable     |
-      | refused            | refused | incomplete_project_state |
       | extra-field        | refused | incomplete_project_state |
       | malformed          | retryable | invalid_plan           |
       | nonzero            | retryable | state_unavailable       |
+
+  # Expose Project Removal Planning In The Bridge Adapter 2b: a refused result passes through
+  Scenario: Expose Project Removal Planning In The Bridge Adapter 2b: a refused result passes through
+    Given the bridge has recorded managed projects target and sibling for the forge forge-b
+    And the bridge will answer the next project removal plan with refused
+    When the adapter for the forge root forge-a plans removal of the project target from the forge root forge-b
+    Then the project removal plan reports the status "refused" with the reason "incomplete_project_state"
+    And the project removal plan invoked the bridge's --remove-project-plan operation for the target project
+    And the project removal plan left the bridge running
+    And the project removal plan changed no bridge state, configuration, files or room membership
+    And the project removal result carries no Matrix ids, user ids, access tokens, project names or forge paths
 
   # Expose Project Removal Planning In The Bridge Adapter 3: unsafe requests never reach the bridge
   Scenario Outline: Expose Project Removal Planning In The Bridge Adapter 3: unsafe requests never reach the bridge
