@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "recorded_at": "20261109T152610Z",
+  "recorded_at": "20261109T162023Z",
   "feature": "features/waiting-facts-as-state.feature",
   "policy": "acceptance/matrix-backends.json",
   "backends": {
     "fresh": {
       "pass": true,
-      "wall_s": 39.75,
+      "wall_s": 36.79,
       "mutation": {
         "total": 0,
         "killed": 0,
@@ -16,7 +16,7 @@
     },
     "memory": {
       "pass": true,
-      "wall_s": 22.14,
+      "wall_s": 20.56,
       "mutation": {
         "total": 0,
         "killed": 0,
@@ -37,10 +37,11 @@
     "full_harden_s": 567.0
   },
   "after": {
-    "selected_fresh_s": 39.75,
-    "selected_memory_s": 22.14,
-    "full_qa_s": 0.0,
-    "full_harden_s": 0.0
+    "selected_fresh_s": 36.79,
+    "selected_memory_s": 20.56,
+    "full_qa_s": 833.931,
+    "full_harden_s": 14.6
   },
-  "selected_speedup": 1.811201445347787
+  "harden_scope": "changed-feature differential gate",
+  "selected_speedup": 1.950389105058366
 }

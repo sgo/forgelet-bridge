@@ -161,6 +161,7 @@ result = {
         "full_qa_s": after_qa,
         "full_harden_s": after_harden,
     },
+    "harden_scope": "changed-feature differential gate",
     "selected_speedup": before_selected / memory["wall_s"],
 }
 evidence_json.write_text(json.dumps(result, indent=2) + "\n")
@@ -200,6 +201,10 @@ lines += [
     f"| Full harden | {timing(result['before']['full_harden_s'])} | {timing(after_harden)} |",
     "",
     f"The selected-feature before/after ratio is {result['selected_speedup']:.2f}x.",
+    "The after harden time is this card's changed-feature differential gate.",
+    "The before figure is the broader migration reference recorded by the card,",
+    "so only the selected-feature comparison is like-for-like.",
+    "",
     "The operator's original selected-feature baseline was 32.9s; the current-tree",
     "fresh measurement is retained separately so both comparisons are visible.",
     "",
