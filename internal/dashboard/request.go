@@ -34,30 +34,38 @@ func (r Request) Done() bool {
 // render writes a request in the dashboard's on-disk format.
 func render(r Request) string {
 	var b strings.Builder
-	b.WriteString("id: " + r.ID + "\n")
-	b.WriteString("status: " + r.Status + "\n")
-	if strings.TrimSpace(r.Role) != "" {
-		b.WriteString("role: " + r.Role + "\n")
+	header(&b, "id", r.ID)
+	header(&b, "status", r.Status)
+	optionalHeader(&b, "role", r.Role)
+	optionalHeader(&b, "source", r.Source)
+	header(&b, "created_at", r.CreatedAt)
+	optionalHeader(&b, "updated_at", r.UpdatedAt)
+	optionalHeader(&b, "response", strings.ReplaceAll(r.Response, "\n", `\n`))
+	body(&b, r.Body)
+	return b.String()
+}
+
+// header writes one request header line.
+func header(b *strings.Builder, name, value string) {
+	b.WriteString(name + ": " + value + "\n")
+}
+
+// optionalHeader writes a request header only when it carries a value.
+func optionalHeader(b *strings.Builder, name, value string) {
+	if strings.TrimSpace(value) != "" {
+		header(b, name, value)
 	}
-	if strings.TrimSpace(r.Source) != "" {
-		b.WriteString("source: " + r.Source + "\n")
+}
+
+// body writes the blank separator and the request body.
+func body(b *strings.Builder, text string) {
+	if text == "" {
+		text = bodyFallback
 	}
-	b.WriteString("created_at: " + r.CreatedAt + "\n")
-	if r.UpdatedAt != "" {
-		b.WriteString("updated_at: " + r.UpdatedAt + "\n")
-	}
-	if r.Response != "" {
-		b.WriteString("response: " + strings.ReplaceAll(r.Response, "\n", `\n`) + "\n")
-	}
-	body := r.Body
-	if body == "" {
-		body = bodyFallback
-	}
-	b.WriteString("\n" + body)
-	if !strings.HasSuffix(body, "\n") {
+	b.WriteString("\n" + text)
+	if !strings.HasSuffix(text, "\n") {
 		b.WriteString("\n")
 	}
-	return b.String()
 }
 
 // Parse reads a request file: header lines, a blank line, then the body. It is
