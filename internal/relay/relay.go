@@ -4,9 +4,19 @@ package relay
 
 import "strings"
 
+const (
+	// AppCompletedCardReportSource marks a completed-card report created in
+	// the Forgelet app rather than written by the operator in Matrix.
+	AppCompletedCardReportSource = "app.completed-card-report"
+	// AppReportPrefix makes an app-created report visibly relayed without
+	// pretending that the bridge account is the operator.
+	AppReportPrefix = "From the Forgelet app:\n\n"
+)
+
 // Request is one chat request as the forge's dashboard holds it.
 type Request struct {
 	ID       string
+	Source   string
 	Body     string
 	Response string
 }
@@ -311,7 +321,7 @@ func requestActions(st State, request Request, origins map[string]string) []Acti
 	anchor, posted := requestAnchor(st, request.ID, origins)
 	var actions []Action
 	if !posted {
-		actions = append(actions, Action{Kind: PostRequestMessage, RequestID: request.ID, Body: request.Body})
+		actions = append(actions, Action{Kind: PostRequestMessage, RequestID: request.ID, Body: presentedRequest(request)})
 	}
 	if request.Response != "" && st.Replied[request.ID] == "" {
 		actions = append(actions, Action{
@@ -319,6 +329,15 @@ func requestActions(st State, request Request, origins map[string]string) []Acti
 		})
 	}
 	return actions
+}
+
+// presentedRequest keeps the dashboard report unchanged while making an item
+// whose explicit source is the Forgelet app visibly relayed.
+func presentedRequest(request Request) string {
+	if request.Source == AppCompletedCardReportSource {
+		return AppReportPrefix + request.Body
+	}
+	return request.Body
 }
 
 func requestAnchor(st State, requestID string, origins map[string]string) (string, bool) {

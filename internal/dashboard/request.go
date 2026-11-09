@@ -19,6 +19,7 @@ type Request struct {
 	ID        string
 	Status    string
 	Role      string
+	Source    string
 	Body      string
 	Response  string
 	CreatedAt string
@@ -37,6 +38,9 @@ func render(r Request) string {
 	b.WriteString("status: " + r.Status + "\n")
 	if strings.TrimSpace(r.Role) != "" {
 		b.WriteString("role: " + r.Role + "\n")
+	}
+	if strings.TrimSpace(r.Source) != "" {
+		b.WriteString("source: " + r.Source + "\n")
 	}
 	b.WriteString("created_at: " + r.CreatedAt + "\n")
 	if r.UpdatedAt != "" {
@@ -71,6 +75,7 @@ func Parse(text string) Request {
 		"id":         &request.ID,
 		"status":     &request.Status,
 		"role":       &request.Role,
+		"source":     &request.Source,
 		"created_at": &request.CreatedAt,
 		"updated_at": &request.UpdatedAt,
 		"response":   &request.Response,

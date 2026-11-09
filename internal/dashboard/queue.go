@@ -27,6 +27,7 @@ func (q Queue) Requests() ([]relay.Request, error) {
 	for _, request := range requests {
 		relayed = append(relayed, relay.Request{
 			ID:       request.ID,
+			Source:   request.Source,
 			Body:     request.Body,
 			Response: request.Response,
 		})

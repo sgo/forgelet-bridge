@@ -10,6 +10,9 @@ import (
 
 func TestQueuePresentsRequestsInRelayForm(t *testing.T) {
 	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir,
+		"req-app",
+		"id: req-app\nstatus: pending\nsource: app.completed-card-report\ncreated_at: 2026-11-09T10:00:00Z\n\nis the build green?\n")
 	id, err := store.CreateRequest("is the build green?")
 	if err != nil {
 		t.Fatalf("CreateRequest: %v", err)
@@ -22,11 +25,15 @@ func TestQueuePresentsRequestsInRelayForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Requests: %v", err)
 	}
-	if len(requests) != 1 {
-		t.Fatalf("requests = %+v, want the one request", requests)
+	if len(requests) != 2 {
+		t.Fatalf("requests = %+v, want the sourced and ordinary requests", requests)
 	}
-	if requests[0].ID != id || requests[0].Body != "is the build green?" || requests[0].Response != "yes, the build is green" {
+	if requests[0].ID != "req-app" || requests[0].Source != "app.completed-card-report" ||
+		requests[0].Body != "is the build green?" || requests[0].Response != "" {
 		t.Errorf("request = %+v, want the request text and its answer", requests[0])
+	}
+	if requests[1].ID != id || requests[1].Body != "is the build green?" || requests[1].Response != "yes, the build is green" {
+		t.Errorf("request = %+v, want the request text and its answer", requests[1])
 	}
 }
 

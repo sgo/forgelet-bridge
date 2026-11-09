@@ -51,6 +51,7 @@ func randomRequest(rnd *rand.Rand) Request {
 		ID:        randomHeaderValue(rnd),
 		Status:    randomHeaderValue(rnd),
 		Role:      randomHeaderValue(rnd),
+		Source:    randomHeaderValue(rnd),
 		Body:      randomBody(rnd),
 		CreatedAt: randomHeaderValue(rnd),
 		UpdatedAt: randomHeaderValue(rnd),

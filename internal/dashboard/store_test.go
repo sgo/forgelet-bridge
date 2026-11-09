@@ -118,6 +118,24 @@ func TestAnswerMovesRequestToDone(t *testing.T) {
 	}
 }
 
+func TestAnswerPreservesTheRequestSource(t *testing.T) {
+	store := fixedStore(t)
+	writeRequest(t, store.root, pendingDir, "req-app",
+		"id: req-app\nstatus: pending\nsource: app.completed-card-report\ncreated_at: 2026-11-09T10:00:00Z\n\nreport\n")
+
+	if err := store.Answer("req-app", "verified"); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(store.dir(doneDir), "req-app.request"))
+	if err != nil {
+		t.Fatalf("read answered request: %v", err)
+	}
+	if !strings.Contains(string(data), "source: app.completed-card-report\n") {
+		t.Errorf("answered request lost its source:\n%s", data)
+	}
+}
+
 func TestRequestsMissingQueueIsEmpty(t *testing.T) {
 	store := New(t.TempDir())
 	requests, err := store.Requests()
@@ -197,6 +215,7 @@ func TestRenderAndParseKeepEveryField(t *testing.T) {
 		ID:        "req-1",
 		Status:    StatusPending,
 		Role:      "lieutenant",
+		Source:    "app.completed-card-report",
 		Body:      "is the build green?",
 		Response:  "yes, the build is green",
 		CreatedAt: "2026-09-21T20:04:32.588996Z",

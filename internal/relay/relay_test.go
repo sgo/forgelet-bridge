@@ -16,6 +16,28 @@ func TestPlanPostsUnansweredForgeRequest(t *testing.T) {
 	}
 }
 
+func TestPlanLabelsAnAppCompletedCardReportWithoutChangingItsBody(t *testing.T) {
+	report := "Completed card report: bridge release is ready"
+	actions := Plan(operator, State{}, []Request{{
+		ID: "req-app", Source: AppCompletedCardReportSource, Body: report,
+	}}, nil)
+
+	want := []Action{{Kind: PostRequestMessage, RequestID: "req-app", Body: AppReportPrefix + report}}
+	if !reflect.DeepEqual(actions, want) {
+		t.Errorf("actions = %+v, want the explicit app-relay presentation %+v", actions, want)
+	}
+}
+
+func TestPlanLeavesRequestsWithoutTheAppSourceInTheirOwnWords(t *testing.T) {
+	for _, source := range []string{"", "operator.matrix-message", "app.other-report"} {
+		actions := Plan(operator, State{}, []Request{{ID: "req-1", Source: source, Body: "is the build green?"}}, nil)
+		want := []Action{{Kind: PostRequestMessage, RequestID: "req-1", Body: "is the build green?"}}
+		if !reflect.DeepEqual(actions, want) {
+			t.Errorf("source %q: actions = %+v, want %+v", source, actions, want)
+		}
+	}
+}
+
 func TestPlanPostsMessageThenReplyForAlreadyAnsweredRequest(t *testing.T) {
 	requests := []Request{{ID: "req-1", Body: "is the build green?", Response: "yes, the build is green"}}
 

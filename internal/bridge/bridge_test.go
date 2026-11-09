@@ -387,6 +387,104 @@ func TestTickThreadsTheLieutenantsAnswer(t *testing.T) {
 	}
 }
 
+func TestTickLabelsAnAppReportAndThreadsItsAnswer(t *testing.T) {
+	report := "Completed card report: bridge release is ready"
+	answer := "All reported cards were verified."
+	store := &fakeStore{requests: []relay.Request{{
+		ID:       "req-app",
+		Source:   relay.AppCompletedCardReportSource,
+		Body:     report,
+		Response: answer,
+	}}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	sent := rooms.sentMessages()
+	if len(sent) != 2 {
+		t.Fatalf("sent = %+v, want an app-relayed report and its answer", sent)
+	}
+	relayed := relay.AppReportPrefix + report
+	if sent[0].body != relayed || sent[0].anchor != "" {
+		t.Errorf("report = %+v, want the unthreaded app-relay presentation", sent[0])
+	}
+	if sent[1].body != answer || sent[1].anchor != "$event-"+relayed {
+		t.Errorf("answer = %+v, want it threaded under the app-relayed report", sent[1])
+	}
+}
+
+func TestTickKeepsAnAppReportThreadWhenTheBridgeAlreadyHasState(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{
+		{ID: "req-prior", Body: "is the forge idle?", Response: "Yes."},
+		{ID: "req-app", Source: relay.AppCompletedCardReportSource, Body: "Completed card report: audit finished."},
+	}}
+	rooms := &fakeRooms{}
+	built, _ := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+	store.mu.Lock()
+	store.requests[1].Response = "The audit follow-up is queued."
+	store.mu.Unlock()
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	sent := rooms.sentMessages()
+	if len(sent) != 4 {
+		t.Fatalf("sent = %+v, want two messages and two answers", sent)
+	}
+	relayed := relay.AppReportPrefix + "Completed card report: audit finished."
+	var appMessage sentMessage
+	var appReply sentMessage
+	for _, message := range sent {
+		switch message.body {
+		case relayed:
+			appMessage = message
+		case "The audit follow-up is queued.":
+			appReply = message
+		}
+	}
+	if appMessage.body != relayed || appMessage.anchor != "" ||
+		appReply.anchor != "$event-"+relayed {
+		t.Errorf("app report and answer = %+v / %+v, want its own state thread", appMessage, appReply)
+	}
+}
+
+func TestTickDoesNotReplayAnAppReportAfterRestart(t *testing.T) {
+	store := &fakeStore{requests: []relay.Request{{
+		ID:       "req-app",
+		Source:   relay.AppCompletedCardReportSource,
+		Body:     "Completed card report: docs work.",
+		Response: "Documentation was verified.",
+	}}}
+	rooms := &fakeRooms{}
+	built, cfg := newTestBridge(t, rooms, map[string]ForgeStore{"/forges/forge-a": store}, "/forges/forge-a")
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+
+	restartedRooms := &fakeRooms{}
+	restarted, err := New(cfg, restartedRooms,
+		map[string]ForgeStore{"/forges/forge-a": store},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]ClarificationStore{"/forges/forge-a": &fakeClarifications{}},
+		map[string]BoardStore{"/forges/forge-a": &fakeBoard{}}, nil)
+	if err != nil {
+		t.Fatalf("New after restart: %v", err)
+	}
+	if err := restarted.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick after restart: %v", err)
+	}
+	if sent := restartedRooms.sentMessages(); len(sent) != 0 {
+		t.Errorf("sent after restart = %+v, want nothing replayed", sent)
+	}
+}
+
 func TestTickQueuesOperatorMessageAsChatRequest(t *testing.T) {
 	store := &fakeStore{}
 	rooms := &fakeRooms{}

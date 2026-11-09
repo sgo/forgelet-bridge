@@ -301,6 +301,7 @@ func register(registry *runtime.Registry) error {
 		{`^the matrix client (\S+) has joined the clarifications room$`, userJoinedClarificationsRoom},
 
 		{`^the forge's dashboard already holds the chat request "(.+)"$`, dashboardHoldsRequest},
+		{`^the forge's dashboard already holds the app report "(.+)" from source app\.completed-card-report$`, dashboardHoldsAppReport},
 		{`^the forge (\S+)'s dashboard already holds the chat request "(.+)"$`, namedDashboardHoldsRequest},
 		{`^the forge's dashboard takes the chat request "(.+)" the way its clients give it$`, dashboardTakesRequestStep},
 		{`^the forge's dashboard typed the chat request reading "(.+)" into the lieutenant's pane$`, dashboardWoke},
@@ -390,6 +391,9 @@ func register(registry *runtime.Registry) error {
 		{`^a quiet stretch passes with nothing changing$`, quietStretch},
 		{`^the lieutenant answers the chat request "(.+)" with "(.+)"$`, lieutenantAnswers},
 		{`^the operator decrypts the chat message "(.+)"$`, operatorDecryptsChatMessage},
+		{`^the operator decrypts an app-relayed report reading "(.+)"$`, operatorDecryptsAppRelayedReport},
+		{`^the bridge sent the app-relayed report "(.+)" encrypted$`, bridgeSentAppRelayedReportEncrypted},
+		{`^the operator decrypts the thread reply "(.+)" to the app-relayed report "(.+)"$`, operatorDecryptsAppReportReply},
 		{`^the operator decrypts the chat message "(.+)" in the forge (.+)'s chat room sent under the name (.+)$`, forgeSentChatMessage},
 		{`^the bridge sent the chat message "(.+)" encrypted$`, bridgeSentEncrypted},
 		{`^the operator decrypts the thread reply "(.+)" to the chat message "(.+)"$`, operatorDecryptsThreadReply},
@@ -409,6 +413,7 @@ func register(registry *runtime.Registry) error {
 		{`^the lieutenant is woken with the chat request reading "(.+)"$`, lieutenantWoken},
 		{`^chat room (.+?) holds exactly one chat message reading "(.+)"$`, roomHoldsOneChatMessage},
 		{`^chat room (.+?) holds exactly one thread reply reading "(.+)"$`, roomHoldsOneThreadReply},
+		{`^chat room (.+?) holds exactly one app-relayed report reading "(.+)"$`, roomHoldsOneAppRelayedReport},
 	}
 
 	for _, step := range steps {
