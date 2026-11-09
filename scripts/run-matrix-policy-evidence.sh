@@ -11,8 +11,13 @@ unlisted_feature="features/operator-allowlist.feature"
 policy_feature="features/adopt-memory-matrix-for-waiting-facts.feature"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 work="target/acceptance-matrix-policy/$stamp"
-evidence_json="docs/evidence/waiting-facts-memory-policy.json"
-evidence_md="docs/evidence/waiting-facts-memory-policy.md"
+if [[ "${FORGELET_POLICY_EVIDENCE_WRITE:-1}" == "1" ]]; then
+  evidence_json="docs/evidence/waiting-facts-memory-policy.json"
+  evidence_md="docs/evidence/waiting-facts-memory-policy.md"
+else
+  evidence_json="$work/evidence.json"
+  evidence_md="$work/evidence.md"
+fi
 mkdir -p "$work" "$(dirname "$evidence_json")"
 
 run_acceptance() {
