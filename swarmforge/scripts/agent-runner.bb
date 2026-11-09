@@ -106,14 +106,24 @@
     (when (fs/regular-file? file)
       (not-empty (str/trim (slurp (str file)))))))
 
+(defn runner-process? [root pid]
+  (and (zero? (:exit (sh/sh {:continue true} "kill" "-0" pid)))
+       (let [command (:out (sh/sh {:continue true}
+                                  "ps" "-p" pid "-o" "command="))]
+         (and (str/includes? command "agent-runner")
+              (str/includes? command (str "--root " root))))))
+
 (declare stop-agent!)
 
 (defn stop! [root]
   (when-let [pid (running-pid root)]
-    (let [result (sh/sh "kill" pid)]
-      (if (zero? (:exit result))
-        (println (str "Stopped agent runner " pid))
-        (println (str "Agent runner " pid " is not running")))))
+    (if (runner-process? root pid)
+      (let [result (sh/sh {:continue true} "kill" pid)]
+        (if (zero? (:exit result))
+          (println (str "Stopped agent runner " pid))
+          (println (str "Agent runner " pid " is not running"))))
+      (println (str "Ignored stale agent runner PID " pid)))
+    (fs/delete-if-exists (pid-file root)))
   (stop-agent! root))
 
 (defn dashboard-url [root]
@@ -123,10 +133,12 @@
 
 (defn dashboard-up? [url]
   (try
-    (let [connection (.openConnection (java.net.URL. (str url "/api/state")))]
-      (.setConnectTimeout connection 1000)
-      (.setReadTimeout connection 1000)
-      (with-open [_ (.getInputStream connection)] true))
+    ;; This predicate runs inside Babashka's SCI, which does not permit the
+    ;; HttpURLConnection response/timeout methods. Reading the project page is
+    ;; the same liveness boundary the bridge uses, and a dead local address
+    ;; fails without waiting.
+    (slurp (str url "/"))
+    true
     (catch Exception _ false)))
 
 (defn start-dashboard! [root]
@@ -177,11 +189,14 @@
      :status (get entries "status")
      :body (or body "")}))
 
-(defn pending-request [root]
+(defn pending-requests [root]
   (->> (request-files root)
        (map parse-request)
        (filter #(= "pending" (:status %)))
-       first))
+       vec))
+
+(defn pending-request [root]
+  (first (pending-requests root)))
 
 (def session-name "swarmforge-agent")
 (def ready-marker "<<AGENT READY>>")
@@ -236,8 +251,33 @@
                   (request-in-composer? root request-id)))))))
 
 (defn default-agent-command [root]
-  (str "codex -C " (sq (str root))
-       " --no-alt-screen --dangerously-bypass-approvals-and-sandbox"))
+  (let [roles-file (fs/path root ".swarmforge" "roles.tsv")
+        agents-file (or (some #(when (fs/regular-file? %)
+                                 (fs/path % "agents.conf"))
+                              [(fs/path (fs/parent *file*))])
+                        (fs/path root "swarmforge" "scripts" "agents.conf"))
+        supported (when (fs/regular-file? agents-file)
+                    (->> (str/split-lines (slurp (str agents-file)))
+                         (remove str/blank?)
+                         set))
+        row (when (fs/regular-file? roles-file)
+              (some->> (str/split-lines (slurp (str roles-file)))
+                       (remove str/blank?)
+                       first
+                       (#(str/split % #"\t"))))
+        agent (nth row 5 nil)]
+    (when-not row
+      (exit! 1 (str "Single-agent project has no agent role: " root)))
+    (when-not (contains? supported agent)
+      (exit! 1 (str "Unsupported or missing agent '" agent "' in " roles-file)))
+    (case agent
+      "codex" (str "codex -C " (sq (str root))
+                   " --no-alt-screen --dangerously-bypass-approvals-and-sandbox")
+      "claude" "env CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 claude --permission-mode bypassPermissions -n 'SwarmForge Agent'"
+      "copilot" (str "copilot -C " (sq (str root))
+                     " --no-alt-screen --name 'SwarmForge Agent' --yolo")
+      "grok" (str "grok --cwd " (sq (str root))
+                  " --permission-mode bypassPermissions --minimal"))))
 
 (defn name-agent-window! [root]
   (let [window (str session-name ":0")
@@ -258,17 +298,31 @@
                (not (fs/regular-file? (socket-file root))))
       (delete-socket-file! root))
     (spit (str (socket-file root)) (str (agent-socket root) "\n"))
-    (let [result (tmux root "new-session" "-d" "-s" session-name
+    (let [env-loader (fs/path (fs/parent *file*)
+                              "load-project-runtime-env.sh")
+          _ (when-not (fs/regular-file? env-loader)
+              (exit! 1 (str "Project runtime environment loader not found: "
+                            env-loader)))
+          validation (process/sh {:continue true} "bash" (str env-loader) "--check")
+          _ (when-not (zero? (:exit validation))
+              (exit! 1 "Project runtime environment failed:"
+                      (str/trim (str (:err validation) (:out validation)))))
+          result (tmux root "new-session" "-d" "-s" session-name
                        "-c" (str root)
                        (str "export PATH=" (sq (str (fs/path root ".swarmforge" "bin")
                                                     ":"
                                                     (fs/path root "swarmforge" "scripts")
                                                     ":"
                                                     (or (System/getenv "PATH") "")))
-                            "; exec " command))]
+                            "; exec bash " (sq (str env-loader)) " "
+                            (sq command)))]
       (when-not (zero? (:exit result))
         (exit! 1 "Could not start the agent session: " (:err result))))
-    (settle-agent-session! root))
+    (when-not (settle-agent-session! root)
+      (let [message (str/trim (or (visible-pane root) ""))]
+        (stop-agent! root)
+        (exit! 1 "Agent session did not become ready:"
+                (when-not (str/blank? message) message)))))
   ;; Also correct a session that predates the project-name behavior. The
   ;; persistent session survives a relay restart, so naming only a new session
   ;; would leave an upgraded project showing "codex" until it was killed.
@@ -278,8 +332,10 @@
   (loop [waited 0]
     (let [text (or (visible-pane root) "")]
       (cond
-        (or (str/includes? text ready-marker)
-            (str/includes? text "Ask Codex to do anything")) true
+        (ready? root (some-> (pending-request root) :id)) true
+
+        (str/includes? text "load-project-runtime-env:")
+        false
 
         (str/includes? text "Trust this folder?")
         (do
@@ -347,8 +403,19 @@
       (str/join "\n" (subvec lines prompt-index))
       "")))
 
+(def collapsed-paste-pattern #"\[Pasted Content \d+ chars?\]")
+
+(defn collapsed-paste? [text]
+  (boolean (re-find collapsed-paste-pattern (or text ""))))
+
+(defn sole-pending-request? [root id]
+  (= [id] (mapv :id (pending-requests root))))
+
 (defn request-in-composer? [root id]
-  (str/includes? (composer-tail root) (str "[phone " id "]")))
+  (let [tail (composer-tail root)]
+    (or (str/includes? tail (str "[phone " id "]"))
+        (and (collapsed-paste? tail)
+             (sole-pending-request? root id)))))
 
 (defn delivery-state-dir [root]
   (fs/path root ".swarmforge" "agent-runner" "requests"))

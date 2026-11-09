@@ -207,6 +207,23 @@
                     (Long/parseLong audit-count)
                     0)}))
 
+(declare tasks)
+
+(defn active-single-agent-card [root]
+  (when (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
+    (let [stages-file (fs/path root "stages.edn")
+          project-name (when (fs/regular-file? stages-file)
+                         (:task (edn/read-string (slurp (str stages-file)))))]
+      (first
+       (remove (fn [task]
+                 (or (= (:name task) project-name)
+                     (#{"done" "queued"} (:lane task))))
+               (tasks root))))))
+
+(defn project-idle? [root]
+  (and (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
+       (nil? (active-single-agent-card root))))
+
 (defn last-n-lines [text n]
   (vec (take-last n (str/split-lines (or text "")))))
 
@@ -746,6 +763,13 @@
          vec)
     []))
 
+(def chat-thread-id-re #"[A-Za-z0-9][A-Za-z0-9._~:-]{0,150}")
+
+(defn chat-thread-id [headers]
+  (let [value (some-> (get headers "thread_id") str/trim not-empty)]
+    (when (and value (re-matches chat-thread-id-re value))
+      value)))
+
 (defn parse-chat [path]
   (let [raw (slurp (str path))
         [header body] (str/split raw #"\n\n" 2)
@@ -753,12 +777,16 @@
                       (for [line (str/split-lines header)
                             :let [[k v] (str/split line #": " 2)]
                             :when (and k v)]
-                        [k v]))]
-    {:id (get headers "id")
-     :status (get headers "status")
-     :body (or body "")
-     :response (str/replace (get headers "response" "") #"\\n" "\n")
-     :created_at (get headers "created_at")}))
+                        [k v]))
+        proposal-id (not-empty (get headers "proposal_id"))
+        thread-id (chat-thread-id headers)]
+    (cond-> {:id (get headers "id")
+             :status (get headers "status")
+             :body (or body "")
+             :response (str/replace (get headers "response" "") #"\\n" "\n")
+             :created_at (get headers "created_at")}
+      proposal-id (assoc :proposal_id proposal-id)
+      thread-id (assoc :thread_id thread-id))))
 
 (defn list-chat [root]
   (vec (concat (map parse-chat (chat-files (chat-pending-dir root)))
@@ -854,6 +882,8 @@
      :master_display (display-name-for-role master)
      :lanes (lanes root)
      :tasks (tasks root)
+     :active_card (active-single-agent-card root)
+     :idle (project-idle? root)
      :approvals (approvals root)
      :resolved_approvals (resolved-approvals root)
      :work_in_flight (work-in-flight root)
@@ -874,24 +904,118 @@
     (when (fs/regular-file? file)
       (not-empty (str/trim (slurp (str file)))))))
 
+(defn activation-file [root task-id]
+  (fs/path root ".swarmforge" "card-activations"
+           (str (str/replace (str task-id) #"[^0-9A-Za-z._-]" "_") ".edn")))
+
+(defn activation-record [root task-id]
+  (let [file (activation-file root task-id)]
+    (when (fs/regular-file? file)
+      (try
+        (let [record (edn/read-string (slurp (str file)))]
+          {:present true
+           :activated-at (or (:activated_at record)
+                             (:activated-at record)
+                             (get record "activated_at")
+                             (get record "activated-at"))})
+        (catch Exception _
+          {:present true :activated-at nil})))))
+
+(defn parse-instant [value]
+  (when (string? value)
+    (try
+      (java.time.Instant/parse value)
+      (catch Exception _ nil))))
+
+(defn duration-seconds [start end]
+  (let [start (parse-instant start)
+        end (parse-instant end)]
+    (when (and start end (not (.isBefore end start)))
+      (.getSeconds (java.time.Duration/between start end)))))
+
+(defn project-task-name [root]
+  (let [file (fs/path root "stages.edn")]
+    (when (fs/regular-file? file)
+      (try
+        (:task (edn/read-string (slurp (str file))))
+        (catch Exception _ nil)))))
+
+(defn completed-duration [root project-name line]
+  (let [[name lane created updated task-id] (str/split line #"\t" -1)
+        task-id (or (not-empty task-id) name)]
+    (when (and (not (str/blank? name))
+               (not= name project-name)
+               (= lane "done"))
+      (let [activation (activation-record root task-id)
+            start (if (:present activation)
+                    (:activated-at activation)
+                    created)]
+        (duration-seconds start updated)))))
+
+(defn completion-durations [root]
+  (let [file (fs/path root ".swarmforge" "board" "tasks.tsv")
+        project-name (project-task-name root)]
+    (if (fs/regular-file? file)
+      (->> (str/split-lines (slurp (str file)))
+           (remove str/blank?)
+           (keep #(completed-duration root project-name %))
+           vec)
+      [])))
+
+(defn rounded-mean [values]
+  (Math/round (double (/ (reduce + 0 values) (count values)))))
+
+(defn median-seconds [values]
+  (let [sorted (vec (sort values))
+        count (count sorted)
+        middle (quot count 2)]
+    (if (odd? count)
+      (nth sorted middle)
+      (Math/round (double (/ (+ (nth sorted (dec middle))
+                               (nth sorted middle))
+                            2.0))))))
+
+(defn completion-stats [root]
+  (let [durations (try
+                    (completion-durations root)
+                    (catch Exception _ []))]
+    (if (seq durations)
+      {:completed_cards (count durations)
+       :median_seconds (long (median-seconds durations))
+       :mean_seconds (long (rounded-mean durations))
+       :min_seconds (long (reduce min durations))
+       :max_seconds (long (reduce max durations))}
+      {:completed_cards 0
+       :median_seconds nil
+       :mean_seconds nil
+       :min_seconds nil
+       :max_seconds nil})))
+
 (defn project-slice [forge name]
-  (let [root (open-project-root forge name)]
+  (let [root (open-project-root forge name)
+        stats (completion-stats root)]
     (try
       {:name name
        :open true
        :single_agent (single-agent-project? root)
+       :active_card (active-single-agent-card root)
+       :idle (project-idle? root)
        :dashboard_url (project-dashboard-url root)
        :lanes (lanes root)
        :tasks (tagged name (tasks root))
-       :work_in_flight (tagged name (work-in-flight root))}
+       :work_in_flight (tagged name (work-in-flight root))
+       :completion_stats stats}
       (catch Exception _
         {:name name
          :open true
          :single_agent (single-agent-project? root)
+         :active_card nil
+         :idle (project-idle? root)
          :dashboard_url (project-dashboard-url root)
          :lanes []
          :tasks []
-         :work_in_flight []}))))
+         :work_in_flight []
+         :completion_stats stats}))))
 
 (defn forge-dashboard-state [root]
   (let [open (forge/read-open-projects root)
@@ -1101,21 +1225,21 @@
     (throw (ex-info "Missing task name" {:http-status 400})))
   (let [single-agent? (single-agent-project? root)
         task-id (new-task-id name)
-        lane (if single-agent? "spec" (master-role root))]
-  (pack-board root "create"
-              "--name" name
-              "--lane" lane
-              "--task-id" task-id
-              "--text" (or text ""))
+        created
+        (if single-agent?
+          (pack-board root "route"
+                      "--name" name
+                      "--task-id" task-id
+                      "--text" (or text ""))
+          (pack-board root "create"
+                      "--name" name
+                      "--lane" (master-role root)
+                      "--task-id" task-id
+                      "--text" (or text "")))]
     (if single-agent?
+      created
       (do
-        (write-chat-request!
-         root
-         (str "New routed card: " name "\n"
-              "Task ID: " task-id "\n\n"
-              (or text "")))
-        :dashboard)
-      (do
+        created
         (queue-new-task-note! root task-id name (or text ""))
         :handoff))))
 

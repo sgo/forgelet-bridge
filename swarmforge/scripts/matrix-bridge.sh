@@ -5,6 +5,7 @@
 #   matrix-bridge.sh start | stop | status | logs
 #   matrix-bridge.sh add-forge <forge-root> <name>
 #   matrix-bridge.sh remove-forge <forge-root>
+#   matrix-bridge.sh remove-project-plan <forge-root> <project-name>
 #   matrix-bridge.sh remove-project <forge-root> <project-name>
 #   matrix-bridge.sh install-rules
 #   matrix-bridge.sh install-kit
@@ -35,6 +36,10 @@
 # single-agent project before stopping a running bridge. It retires exactly that
 # project's room, then restarts a bridge it stopped. A restart that fails is
 # reported and retried by the next remove-project invocation.
+#
+# remove-project-plan performs the same root and project validation without
+# stopping or restarting the bridge, then prints the bridge's read-only plan.
+# It never connects to Matrix or changes bridge state, configuration or files.
 #
 # install-rules installs the prompt rules the bridge's rooms rely on into this
 # forge's own constitution and the packs its projects are scaffolded from. It
@@ -140,6 +145,129 @@ cmd_status() {
   fi
   [[ -f "$status_path" ]] && print -- "status: $(cat "$status_path")"
   [[ -f "$LOG" ]] && print -- "last log: $(tail -1 "$LOG")"
+}
+
+project_plan_validation_reason() {
+  python3 - "$CONFIG" "$1" "$2" <<'PY'
+import json
+import os
+import pathlib
+import re
+import sys
+
+config_path, root, project = sys.argv[1:]
+try:
+    with open(config_path, encoding="utf-8") as handle:
+        config = json.load(handle)
+except (OSError, ValueError):
+    print("configuration_unavailable")
+    raise SystemExit
+
+if (not root.strip() or not os.path.isabs(root)
+        or any(part == ".." for part in re.split(r"[\\/]+", root))):
+    print("unsafe_root")
+    raise SystemExit
+
+forges = config.get("forges")
+if not isinstance(forges, list):
+    print("configuration_unavailable")
+    raise SystemExit
+if not any(isinstance(forge, dict) and forge.get("root") == root
+           for forge in forges):
+    print("unknown_root")
+    raise SystemExit
+if not pathlib.Path(root, ".swarmforge").is_dir():
+    print("unknown_root")
+    raise SystemExit
+
+if (project == "" or project != project.strip() or project in {".", ".."}
+        or os.path.isabs(project) or project.startswith("!")
+        or any(char in project for char in ("/", "\\", "\0"))
+        or os.path.basename(project) != project):
+    print("unsafe_project")
+    raise SystemExit
+
+marker = pathlib.Path(root, "projects", project,
+                      ".swarmforge", "single-agent")
+if not marker.is_file():
+    print("unknown_project")
+PY
+}
+
+print_refusal() {
+  print -- "{\"status\":\"refused\",\"reason\":\"$1\"}"
+}
+
+print_retryable() {
+  print -- "{\"status\":\"retryable\",\"reason\":\"$1\"}"
+}
+
+cmd_remove_project_plan() {
+  if (( $# != 2 )); then
+    print_refusal unsafe_root
+    return 0
+  fi
+  local root="$1" project="$2"
+  [[ -r "$CONFIG" ]] || {
+    print_refusal configuration_unavailable
+    return 0
+  }
+  [[ -x "$BINARY" ]] || {
+    print_refusal configuration_unavailable
+    return 0
+  }
+
+  local invalid
+  if ! invalid="$(project_plan_validation_reason "$root" "$project" 2>/dev/null)"; then
+    print_refusal configuration_unavailable
+    return 0
+  fi
+  if [[ -n "$invalid" ]]; then
+    print_refusal "$invalid"
+    return 0
+  fi
+
+  local planned
+  if ! planned="$(cd "$FORGE_ROOT" && "$BINARY" --config "$CONFIG" --remove-project-plan "$root" "$project")"; then
+    print_retryable state_unavailable
+    return 0
+  fi
+  if [[ "$planned" == "ready" ]]; then
+    print -- ready
+    return 0
+  fi
+
+  local sanitized
+  if ! sanitized="$(print -r -- "$planned" | python3 -c '
+import json
+import re
+import sys
+
+text = sys.stdin.read().strip()
+if not text:
+    raise SystemExit(1)
+try:
+    value, end = json.JSONDecoder().raw_decode(text)
+except ValueError:
+    raise SystemExit(1)
+if text[end:].strip() or not isinstance(value, dict):
+    raise SystemExit(1)
+status = value.get("status")
+if status not in {"ready", "removed", "nothing_to_remove", "retryable", "refused"}:
+    raise SystemExit(1)
+reason = value.get("reason", "")
+if reason and (not isinstance(reason, str)
+               or not re.fullmatch(r"[a-z0-9_]+", reason)):
+    raise SystemExit(1)
+result = {"status": status}
+if reason:
+    result["reason"] = reason
+print(json.dumps(result, separators=(",", ":")))
+')"; then
+    print_retryable invalid_plan
+    return 0
+  fi
+  print -- "$sanitized"
 }
 
 # add_entry writes the configuration with one more forge in it.
@@ -316,6 +444,7 @@ case "${1:-}" in
   logs) [[ -f "$LOG" ]] && tail -f "$LOG" || die "no log at $LOG" ;;
   add-forge) shift; cmd_add_forge "$@" ;;
   remove-forge) shift; cmd_remove_forge "$@" ;;
+  remove-project-plan) shift; cmd_remove_project_plan "$@" ;;
   remove-project) shift; cmd_remove_project "$@" ;;
   install-rules) cmd_install_rules ;;
   install-kit) cmd_install_kit ;;

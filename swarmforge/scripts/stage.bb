@@ -257,7 +257,7 @@
 
 (defn select-card [root config state files]
   (let [active (->> (board-rows root)
-                    (remove #(= "done" (:lane %)))
+                    (remove #(contains? #{"done" "queued"} (:lane %)))
                     vec)
         project-name (:task config)
         routed (remove #(= project-name (:name %)) active)
@@ -456,23 +456,16 @@
       (->> (re-seq #"<module>\s*([^<]+?)\s*</module>" (slurp (str pom)))
            (mapv second)))))
 
-(defn project-language [root]
-  (let [file (fs/path root "swarmforge" "language.conf")]
-    (when (fs/regular-file? file)
-      (not-empty (str/trim (slurp (str file)))))))
-
 (defn source-inputs [root]
-  (case (project-language root)
-    "Go" ["go.mod" "go.sum" "cmd" "internal" "acceptance"]
-    (let [modules (maven-modules root)]
-      (if (seq modules)
-        (vec (cons "pom.xml"
-                   (mapcat (fn [module]
-                             [(str module "/pom.xml")
-                              (str module "/src/main")
-                              (str module "/src/test")])
-                           modules)))
-        ["pom.xml" "src/main" "src/test"]))))
+  (let [modules (maven-modules root)]
+    (if (seq modules)
+      (vec (cons "pom.xml"
+                 (mapcat (fn [module]
+                           [(str module "/pom.xml")
+                            (str module "/src/main")
+                            (str module "/src/test")])
+                         modules)))
+      ["pom.xml" "src/main" "src/test"])))
 
 (defn resolve-inputs [root stage]
   (mapcat
@@ -596,11 +589,7 @@
                       (throw (ex-info (str "Evidence missing: "
                                            (str/join ", " missing))
                                       {:exit 1})))
-                    ;; A mutation tool records its successful differential
-                    ;; baseline in the source manifest. The gate belongs to the
-                    ;; tree that remains after its command, not the one it read
-                    ;; before mutating.
-                    (record-stage state name (worktree-tree root)
+                    (record-stage state name tree
                                   (collect-evidence root patterns)
                                   (resolve-inputs root stage)))))]
           (finish-stage! root config state name))
@@ -615,6 +604,34 @@
        (filter (fn [[_ proposal]] (= :pending (:status proposal))))
        (sort-by key)))
 
+(defn active-card-board-lane! [root card]
+  (let [name (:name card)
+        id (:id card)]
+    (when (or (str/blank? name) (str/blank? id))
+      (exit! 1 (str "Cannot advance spec approval: malformed active card "
+                    (pr-str card))))
+    (let [matches (->> (board-rows root)
+                       (filter #(and (= name (:name %))
+                                     (= id (:id %))))
+                       vec)]
+      (when (empty? matches)
+        (exit! 1 (str "Cannot advance spec approval: active card " name
+                      " (" id ") is not on the board")))
+      (when (> (count matches) 1)
+        (exit! 1 (str "Cannot advance spec approval: more than one board row "
+                      "matches " name " (" id ")")))
+      (:lane (first matches)))))
+
+(defn advance-approved-card! [root config card]
+  (when (single-agent? root)
+    (let [lane (active-card-board-lane! root card)]
+      (cond
+        (= lane "spec") (update-board! root config card "code")
+        (#{"queued" "done"} lane)
+        (exit! 1 (str "Cannot advance spec approval: active card " (:name card)
+                      " (" (:id card) ") is in lane " lane))
+        :else nil))))
+
 (defn propose! [root config state patterns replace?]
   (let [files (spec-files root patterns)]
     (when (empty? files)
@@ -622,6 +639,8 @@
     (let [id (str "spec-" (System/currentTimeMillis))
           pending (pending-proposals state)
           card (select-card root config state files)
+          _ (when (single-agent? root)
+              (active-card-board-lane! root card))
           automatic-spec? (= :automatic (spec-approval-mode root))
           correction-auto? (and (not automatic-spec?)
                                 (not replace?)
@@ -675,13 +694,14 @@
                     state)]
         (save-state root (:task config) state)
         (remove-stage-approvals! root)
-        (update-board! root config card "spec")
         (when auto-approve?
+          (advance-approved-card! root config card)
           (record-resolution! root config card id
                               (if automatic-spec?
                                 "automatic_spec_approval"
                                 "auto_approved")))
         (when-not auto-approve?
+          (update-board! root config card "spec")
           (write-stage-approval! root config (assoc proposal :body body)))
         (println (str (if correction-auto? "spec correction " "spec proposal ") id))
         (println (str "files: " (str/join ", " files)))
@@ -725,7 +745,7 @@
         (save-state root (:task config) state)
         (record-resolution! root config (:card proposal) id "approved")
         (remove-stage-approvals! root)
-        (update-board! root config (:card proposal) "spec")
+        (advance-approved-card! root config (:card proposal))
         (println (str "approved " id " at tree " tree))))))
 
 (defn reject! [root config state id words]
@@ -795,6 +815,8 @@
                        (:name stage)
                        (stage-status config state stage tree)
                        (stage-command root stage)))
+      (when (seq (:evidence stage))
+        (println (str "           evidence: " (str/join ", " (:evidence stage)))))
       (let [inputs (resolve-inputs root stage)]
         (when (seq inputs)
           (println (str "           inputs: " (str/join ", " inputs))))))))
@@ -858,9 +880,27 @@
       (save-state root (:task config)
                   (assoc state :complete {:tree tree :at (now)
                                           :card (:card state)}))
-      (update-board! root config
-                     (or (:card state) (fallback-card root config []))
-                     "done")
+      (let [card (or (:card state) (fallback-card root config []))
+            pack-board-sh (fs/path root "swarmforge" "scripts" "pack_board.sh")
+            pack-board-bb (let [project-script (fs/path root "swarmforge" "scripts"
+                                                         "pack_board.bb")]
+                            (if (fs/regular-file? project-script)
+                              project-script
+                              (fs/path (fs/parent *file*) "pack_board.bb")))
+            result (when (and (single-agent? root)
+                              (some #(= (:name card) (:name %)) (board-rows root)))
+                     (if (fs/executable? pack-board-sh)
+                       (sh/sh (str pack-board-sh) "complete-promote"
+                              "--name" (:name card) "--root" (str root))
+                       (sh/sh "bb" (str pack-board-bb) "complete-promote"
+                              "--name" (:name card) "--root" (str root))))]
+        (if result
+          (do
+            (when-not (zero? (:exit result))
+              (exit! (or (:exit result) 1)
+                     (str/trim (str (:err result) (:out result)))))
+            (print (:out result)))
+          (update-board! root config card "done")))
       (println (str "complete: " (:task config) " at tree " tree)))))
 
 (defn parse-args [args]

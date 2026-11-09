@@ -3,16 +3,41 @@
 (ns forge
   (:require [babashka.fs :as fs]
             [babashka.process :as process]
+            [clojure.edn :as edn]
             [clojure.string :as str]))
 
 (def pack-names ["two-pack" "four-pack" "six-pack"])
 (def shared-articles ["engineering.prompt" "workflow.prompt" "handoffs.prompt" "privacy.prompt"])
+(def runtime-commit-message "Sync SwarmForge runtime")
+(def runtime-commit-marker "SWARMFORGE_MANAGED_RUNTIME_SYNC")
+(def runtime-git-name "SwarmForge Runtime")
+(def runtime-git-email "swarmforge-runtime@localhost")
 
 (defn sh [& args]
   (apply process/sh args))
 
 (defn shell-quote [value]
   (str "'" (str/replace (str value) "'" "'\"'\"'") "'"))
+
+(defn single-agent? [project]
+  (fs/regular-file? (fs/path project ".swarmforge" "single-agent")))
+
+(defn stage-task-name [project]
+  (let [file (fs/path project "stages.edn")]
+    (when (fs/regular-file? file)
+      (try
+        (:task (edn/read-string (slurp (str file))))
+        (catch Exception _ nil)))))
+
+(defn source-layer-project? [project]
+  (let [name (str (fs/file-name project))
+        mission (fs/path project "mission.md")
+        mission-text (when (fs/regular-file? mission) (slurp (str mission)))]
+    (or (= "forgelet-swarmforge" name)
+        (= "forgelet-swarmforge" (stage-task-name project))
+        (fs/regular-file? (fs/path project ".swarmforge" "source-layer"))
+        (and mission-text
+             (str/includes? mission-text "shared Forgelet layer")))))
 
 (defn forge? [root]
   (fs/directory? (fs/path root "projects")))
@@ -67,11 +92,17 @@
     (when (fs/regular-file? file)
       (slurp (str file)))))
 
+(defn managed-project-root? [project]
+  (boolean
+   (some #(fs/regular-file? (fs/path project ".swarmforge" %))
+         ["single-agent" "pack" "roles.tsv"])))
+
 (defn list-project-names [root]
   (let [dir (projects-dir root)]
     (if (fs/directory? dir)
       (->> (fs/list-dir dir)
            (filter fs/directory?)
+           (filter managed-project-root?)
            (map fs/file-name)
            (remove #(str/starts-with? % "."))
            sort
@@ -116,9 +147,6 @@
   (let [file (pack-name-file project)]
     (fs/create-dirs (fs/parent file))
     (spit (str file) (str pack "\n"))))
-
-(defn single-agent? [project]
-  (fs/regular-file? (fs/path project ".swarmforge" "single-agent")))
 
 (defn copy-tree-replace! [src dest]
   (when (fs/exists? dest)
@@ -264,24 +292,191 @@
       (init-git-if-needed! dest))
     {:name dir-name :path (str dest)}))
 
+(defn ensure-single-agent-role! [project]
+  (let [file (fs/path project ".swarmforge" "roles.tsv")
+        rows (when (fs/regular-file? file)
+               (->> (str/split-lines (slurp (str file)))
+                    (remove str/blank?)
+                    vec))]
+    (cond
+      (= 1 (count rows)) true
+      (seq rows)
+      (throw (ex-info (str "Single-agent project must name exactly one role: " project)
+                      {:http-status 500 :error "invalid-single-agent-role"}))
+      :else
+      (throw (ex-info (str "Single-agent project has no agent role: " project)
+                      {:http-status 500 :error "missing-single-agent-role"})))))
+
+(defn runtime-managed-path? [path]
+  (let [path (str path)]
+    (or (str/starts-with? path "swarmforge/scripts/")
+        (str/starts-with? path "swarmforge/roles/")
+        (str/starts-with? path "swarmforge/constitution/articles/")
+        (= path "swarmforge/swarmforge.conf")
+        (= path "swarmforge/constitution.prompt"))))
+
+(defn managed-runtime-paths [project]
+  (if (source-layer-project? project)
+    []
+    (->> ["swarmforge/scripts"
+          "swarmforge/constitution/articles"
+          "swarmforge/roles"
+          "swarmforge/swarmforge.conf"
+          "swarmforge/constitution.prompt"]
+         (filter #(fs/exists? (fs/path project %)))
+         vec)))
+
+(defn git-result [project env & args]
+  (apply process/sh
+         {:continue true
+          :env (merge (into {} (System/getenv)) env)}
+         "git" "-C" (str project) args))
+
+(defn git-output [project & args]
+  (str/trim (:out (apply git-result project {} args))))
+
+(defn git-path [project path]
+  (let [value (git-output project "rev-parse" "--git-path" path)]
+    (if (fs/absolute? value)
+      (fs/path value)
+      (fs/path project value))))
+
+(defn git-state-problem [project]
+  (let [inside (git-result project {} "rev-parse" "--is-inside-work-tree")
+        toplevel (git-result project {} "rev-parse" "--show-toplevel")]
+    (cond
+      (not (zero? (:exit inside)))
+      "project is not a Git worktree"
+
+      (not= (str (fs/canonicalize project))
+            (str (fs/canonicalize (str/trim (:out toplevel)))))
+      "project root is not the Git worktree root"
+
+      (not (zero? (:exit (git-result project {} "symbolic-ref" "-q" "HEAD"))))
+      "HEAD is detached"
+
+      (not (zero? (:exit (git-result project {} "rev-parse" "--verify"
+                                              "HEAD"))))
+      "HEAD has no commit"
+
+      (some #(fs/exists? (git-path project %))
+            ["MERGE_HEAD" "CHERRY_PICK_HEAD" "REVERT_HEAD"
+             "rebase-merge" "rebase-apply" "BISECT_LOG"])
+      "another Git operation is in progress"
+
+      :else nil)))
+
+(defn staged-names [project env]
+  (->> (git-result project env "diff" "--cached" "--name-only"
+                   "--diff-filter=ACMRTUXB")
+       :out
+       str/split-lines
+       (remove str/blank?)
+       vec))
+
+(defn commit-managed-runtime-sync!
+  "Commit only refreshed runtime-owned paths without changing unrelated staged
+  paths. The candidate commit is built in a temporary index; the real index is
+  adjusted only after the commit succeeds."
+  [project paths]
+  (let [paths (vec (distinct paths))]
+    (when-let [problem (git-state-problem project)]
+      (throw (ex-info (str "Managed runtime sync failed: " problem
+                           " in " project)
+                      {:kind :runtime-sync-refused
+                       :name (str (fs/file-name project))
+                       :reason problem})))
+    (if (empty? paths)
+      {:committed false :reason :source-layer}
+      (let [dir (fs/create-temp-dir {:prefix "swarmforge-runtime-index."})
+            index (fs/path dir "index")
+            git-env {"GIT_INDEX_FILE" (str index)}]
+        (try
+          (let [read (git-result project git-env "read-tree" "HEAD")]
+            (when-not (zero? (:exit read))
+              (throw (ex-info
+                      (str "Managed runtime sync failed: could not prepare Git index: "
+                           (str/trim (str (:err read) (:out read))))
+                      {:kind :runtime-sync-failed}))))
+          (let [add (apply git-result project git-env
+                           (concat ["add" "-A" "--"] paths))]
+            (when-not (zero? (:exit add))
+              (throw (ex-info
+                      (str "Managed runtime sync failed: could not stage managed paths: "
+                           (str/trim (str (:err add) (:out add))))
+                      {:kind :runtime-sync-failed}))))
+          (let [changed (staged-names project git-env)
+                refused (remove runtime-managed-path? changed)]
+            (when (seq refused)
+              (throw (ex-info
+                      (str "Managed runtime sync failed: staged path is outside "
+                           "the runtime-owned allowlist: "
+                           (str/join ", " refused))
+                      {:kind :runtime-sync-refused
+                       :paths refused})))
+            (if (empty? changed)
+              {:committed false :reason :unchanged}
+              (let [commit-env (assoc git-env runtime-commit-marker "1")
+                    commit-args ["-c" (str "user.name=" runtime-git-name)
+                                 "-c" (str "user.email=" runtime-git-email)
+                                 "-c" "commit.gpgsign=false"
+                                 "commit" "-q" "-m" runtime-commit-message]
+                    result (apply git-result project commit-env commit-args)]
+                (when-not (zero? (:exit result))
+                  (throw (ex-info
+                          (str "Managed runtime sync failed while committing: "
+                               (str/trim (str (:err result) (:out result))))
+                          {:kind :runtime-sync-failed
+                           :paths changed})))
+                (let [reset (apply git-result
+                                   project {}
+                                   (concat ["reset" "-q" "HEAD" "--"] paths))]
+                  (when-not (zero? (:exit reset))
+                    (throw (ex-info
+                            (str "Managed runtime sync committed, but could not "
+                                 "update the project index: "
+                                 (str/trim (str (:err reset) (:out reset))))
+                            {:kind :runtime-sync-index-failed
+                             :paths changed}))))
+                {:committed true
+                 :commit (git-output project "rev-parse" "HEAD")
+                 :paths changed})))
+          (finally
+            (fs/delete-tree dir)))))))
+
 (defn refresh! [forge name]
   (let [dest (project-dir forge name)
-        pack (stored-pack dest)]
+        pack (stored-pack dest)
+        source-layer? (source-layer-project? dest)]
     (when-not (fs/directory? dest)
       (throw (ex-info (str "Unknown project: " name) {:http-status 404})))
     (if (single-agent? dest)
       (do
-        (copy-shared-scripts! forge dest)
-        (copy-shared-articles! forge dest)
+        (when-not source-layer?
+          (copy-shared-scripts! forge dest)
+          (copy-shared-articles! forge dest))
+        (ensure-single-agent-role! dest)
         (let [installer (fs/path dest "swarmforge" "scripts" "install-agent-hooks.sh")]
           (when (fs/regular-file? installer)
-            (process/sh {:continue true} "bash" (str installer) (str dest))))
-        {:name name :single-agent true})
+            (let [installed (process/sh {:continue true}
+                                        "bash" (str installer) (str dest))]
+              (when-not (zero? (:exit installed))
+                (throw (ex-info
+                        (str "Agent hook installation failed: "
+                             (str/trim (str (:err installed) (:out installed))))
+                        {:kind :hook-install-failed
+                         :name name}))))))
+        {:name name
+         :single-agent true
+         :managed-paths (managed-runtime-paths dest)})
       (do
         (when (str/blank? pack)
           (throw (ex-info (str "No pack recorded for " name) {:http-status 400})))
-        (overlay-pack! forge dest pack true)
-        {:name name :pack pack}))))
+        (when-not source-layer?
+          (overlay-pack! forge dest pack true))
+        {:name name
+         :pack pack
+         :managed-paths (managed-runtime-paths dest)}))))
 
 (defn skip-start? []
   (= "1" (System/getenv "SWARMFORGE_SKIP_START")))
@@ -289,30 +484,253 @@
 (defn swarmforge-bb [forge]
   (str (fs/path forge "swarmforge" "scripts" "swarmforge.bb")))
 
+(def runtime-session "swarmforge-runtime")
+
+(defn runtime-socket [project]
+  (fs/path project ".swarmforge" "runtime-tmux.sock"))
+
+(defn runtime-metadata-file [project]
+  (fs/path project ".swarmforge" "runtime.edn"))
+
+(defn runtime-log-file [project]
+  (fs/path project ".swarmforge" "start.log"))
+
+(defn tmux-session?
+  [socket session]
+  (and (fs/exists? socket)
+       (zero? (:exit (process/sh {:continue true}
+                                 "tmux" "-S" (str socket)
+                                 "has-session" "-t" (str "=" session))))))
+
+(defn runtime-running? [project]
+  (tmux-session? (runtime-socket project) runtime-session))
+
+(defn runtime-timeout-ms []
+  (try
+    (Long/parseLong (or (System/getenv "SWARMFORGE_RUNTIME_READY_TIMEOUT_MS") "45000"))
+    (catch Exception _
+      45000)))
+
+(defn dashboard-ready? [project]
+  (let [file (fs/path project ".swarmforge" "dashboard-url")
+        url (when (fs/regular-file? file)
+              (not-empty (str/trim (slurp (str file)))))]
+    (when url
+      (try
+        ;; Babashka's SCI does not expose HttpURLConnection's response-code
+        ;; methods. Reading the local dashboard page tests the same boundary:
+        ;; it succeeds only when the HTTP server answers.
+        (slurp (str url "/"))
+        true
+        (catch Exception _
+          false)))))
+
+(defn agent-session-ready? [project]
+  (tmux-session? (fs/path project ".swarmforge" "agent-tmux.sock")
+                 "swarmforge-agent"))
+
+(defn project-tmux-socket [project]
+  (let [file (fs/path project ".swarmforge" "tmux-socket")]
+    (when (fs/regular-file? file)
+      (not-empty (str/trim (slurp (str file)))))))
+
+(defn pack-sessions-ready? [project]
+  (let [file (fs/path project ".swarmforge" "sessions.tsv")
+        socket (project-tmux-socket project)
+        sessions (when (fs/regular-file? file)
+                   (->> (str/split-lines (slurp (str file)))
+                        (remove str/blank?)
+                        (map #(nth (str/split % #"\t" -1) 2 nil))
+                        (remove str/blank?)
+                        vec))]
+    (boolean
+     (and socket
+          (seq sessions)
+          (every? #(tmux-session? socket %) sessions)))))
+
+(defn runtime-status [project]
+  (let [single? (single-agent? project)]
+    {:kind (if single? :single-agent :pack)
+     :session runtime-session
+     :socket (str (runtime-socket project))
+     :relay (runtime-running? project)
+     :dashboard (if single? (dashboard-ready? project) nil)
+     :agent (if single? (agent-session-ready? project) (pack-sessions-ready? project))}))
+
+(defn runtime-ready? [project]
+  (let [{:keys [relay dashboard agent]} (runtime-status project)]
+    (boolean
+     (and relay
+          (if (single-agent? project) (and dashboard agent) agent)))))
+
+(defn wait-for-runtime-ready! [project timeout-ms]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop []
+      (cond
+        (runtime-ready? project) true
+        (or (not (runtime-running? project))
+            (> (System/currentTimeMillis) deadline)) false
+        :else (do (Thread/sleep 100) (recur))))))
+
+(defn sleep-inhibitor-prefix []
+  (when-not (= "0" (System/getenv "SWARMFORGE_PREVENT_SLEEP"))
+    (case (str/trim (:out (process/sh {:continue true} "uname" "-s")))
+      "Darwin" (when (fs/which "caffeinate")
+                 ["caffeinate" "-dims"])
+      "Linux" (when (and (fs/which "systemd-inhibit")
+                         (fs/which "systemctl"))
+                ["systemd-inhibit"
+                 "--what=sleep:idle"
+                 "--who=SwarmForge"
+                 "--why=SwarmForge project is active"])
+      nil)))
+
+(defn runtime-log-tail [project]
+  (let [log (runtime-log-file project)]
+    (when (fs/regular-file? log)
+      (->> (str/split-lines (slurp (str log)))
+           (take-last 20)
+           (str/join "\n")))))
+
+(defn process-alive? [pid]
+  (zero? (:exit (process/sh {:continue true} "kill" "-0" pid))))
+
+(defn wait-for-exit [pid timeout-ms]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop []
+      (cond
+        (not (process-alive? pid)) true
+        (> (System/currentTimeMillis) deadline) false
+        :else (do (Thread/sleep 100) (recur))))))
+
+(defn project-dashboard-pid [project]
+  (let [file (fs/path project ".swarmforge" "pack_web.pid")]
+    (when (fs/regular-file? file)
+      (not-empty (str/trim (slurp (str file)))))))
+
+(defn project-dashboard-process?
+  "The project's PID file may remain after the relay dies. Only signal it when
+  the command still names this project's dashboard, so a reused PID cannot make
+  Close kill an unrelated process."
+  [project pid]
+  (and (process-alive? pid)
+       (let [command (:out (process/sh {:continue true}
+                                      "ps" "-p" pid "-o" "command="))]
+         (and (str/includes? command "pack_web")
+              (str/includes? command
+                             (str "--serve " project))))))
+
+(defn stop-project-dashboard! [project]
+  (when-let [pid (project-dashboard-pid project)]
+    (when (project-dashboard-process? project pid)
+      (process/sh {:continue true} "kill" "-TERM" pid)
+      (when-not (wait-for-exit pid 5000)
+        (when (project-dashboard-process? project pid)
+          (process/sh {:continue true} "kill" "-KILL" pid)
+          (wait-for-exit pid 1000)))))
+  (fs/delete-if-exists (fs/path project ".swarmforge" "pack_web.pid"))
+  (fs/delete-if-exists (fs/path project ".swarmforge" "dashboard-url")))
+
+(defn write-runtime-metadata! [project]
+  (let [file (runtime-metadata-file project)]
+    (fs/create-dirs (fs/parent file))
+    (spit (str file)
+          (pr-str {:kind (if (single-agent? project) :single-agent :pack)
+                   :session runtime-session
+                   :socket (str (runtime-socket project))
+                   :log (str (runtime-log-file project))
+                   :started-at (str (java.time.Instant/now))}))))
+
+(defn stop-runtime-relay! [project]
+  (let [socket (runtime-socket project)]
+    (when (runtime-running? project)
+      (process/sh {:continue true}
+                  "tmux" "-S" (str socket)
+                  "kill-session" "-t" (str "=" runtime-session)))
+    (let [deadline (+ (System/currentTimeMillis) 5000)]
+      (loop []
+        (cond
+          (not (runtime-running? project)) true
+          (> (System/currentTimeMillis) deadline)
+          (throw (ex-info (str "Runtime relay did not stop for " project)
+                          {:kind :runtime-stop-failed
+                           :socket (str socket)
+                           :session runtime-session}))
+          :else (do (Thread/sleep 100) (recur)))))))
+
+(declare stop-project-runtime!)
+
 (defn start-project-runtime! [forge name]
   (let [dest (project-dir forge name)
-        script (if (single-agent? dest)
-                 (str (fs/path dest "swarmforge" "scripts" "agent-runner.bb"))
-                 (str (swarmforge-bb forge)))
-        log (fs/path dest ".swarmforge" "start.log")
-        agent-command (or (not-empty (System/getenv "SWARMFORGE_AGENT_COMMAND"))
-                          (str "codex -C " (shell-quote (str dest))
-                               " --no-alt-screen"
-                               " --dangerously-bypass-approvals-and-sandbox"))
-        arguments (if (single-agent? dest)
-                    (str " --root " (shell-quote (str dest))
-                         " --agent-command " (shell-quote agent-command))
-                    (str " --start-project " (shell-quote (str dest))))]
-    (fs/create-dirs (fs/parent log))
-    ;; Through a shell that backgrounds it and goes away, so the runtime outlives
-    ;; whoever asked for it. Spawned directly it is the caller's child, and a caller
-    ;; that exits takes the project down with it: a lieutenant running
-    ;; `--open-project` from its own command line marked the forge and left nothing
-    ;; running, because the bb process that asked was gone a moment later.
-    (process/sh {:continue true}
-                "zsh" "-c"
-                (str "nohup bb " (shell-quote (str script)) arguments
-                     " > " (shell-quote (str log)) " 2>&1 &!"))))
+        project (fs/path dest)
+        socket (runtime-socket project)
+        log (runtime-log-file project)]
+    (if (and (runtime-running? project)
+             (runtime-ready? project))
+      {:name name :started false :reused true :status (runtime-status project)}
+      (do
+        (when (runtime-running? project)
+          ;; A relay without the runtime it promises is a failed start, not a
+          ;; project that can be marked open. Remove it before trying once more.
+          (stop-project-runtime! forge name))
+        (let [single? (single-agent? project)
+              script (if single?
+                       (str (fs/path project "swarmforge" "scripts" "agent-runner.bb"))
+                       (str (swarmforge-bb forge)))
+              runtime-agent-command (not-empty
+                                     (System/getenv "SWARMFORGE_AGENT_COMMAND"))
+              single-agent-args
+              (cond-> ["bb" script "--root" dest]
+                runtime-agent-command
+                (conj "--agent-command" runtime-agent-command))
+              start-command (str/join
+                             " "
+                             (map shell-quote
+                                  (if single?
+                                    single-agent-args
+                                    ["bb" script "--start-project" dest])))
+              tail (if single?
+                     start-command
+                     (str start-command "; status=$?; "
+                          "if [ $status -ne 0 ]; then exit $status; fi; "
+                          "while tmux -S " (shell-quote (str socket))
+                          " has-session 2>/dev/null; do sleep 2; done"))
+              command (str/join " "
+                                (map shell-quote
+                                     (into (or (sleep-inhibitor-prefix) [])
+                                           ["sh" "-c" tail])))
+              inner (str "cd " (shell-quote dest)
+                         " && exec " command
+                         " >> " (shell-quote (str log)) " 2>&1")]
+          (fs/create-dirs (fs/parent log))
+          (write-runtime-metadata! project)
+          (let [started (process/sh {:continue true}
+                                    "tmux" "-S" (str socket)
+                                    "new-session" "-d" "-s" runtime-session
+                                    "-c" dest inner)]
+            (when-not (zero? (:exit started))
+              (fs/delete-if-exists (runtime-metadata-file project))
+              (throw (ex-info (str "Could not start project runtime: "
+                                   (str/trim (str (:err started) (:out started))))
+                              {:kind :runtime-start-failed
+                               :name name
+                               :log (str log)})))
+          (when-not (wait-for-runtime-ready! project (runtime-timeout-ms))
+            (let [status (runtime-status project)
+                  tail (runtime-log-tail project)]
+              (try
+                (stop-project-runtime! forge name)
+                (catch Exception _))
+              (throw (ex-info (str "Project runtime did not become ready: " name
+                                   "\nstatus: " (pr-str status)
+                                   (when-not (str/blank? tail)
+                                     (str "\n" tail)))
+                              {:kind :runtime-not-ready
+                               :name name
+                               :status status
+                               :log (str log)}))))
+          {:name name :started true :reused false
+           :status (runtime-status project)}))))))
 
 (defn stop-project-runtime! [forge name]
   (let [dest (str (project-dir forge name))
@@ -323,19 +741,47 @@
         (process/sh {:continue true} "bb" runner "--root" dest "--stop")
         (process/sh {:continue true} "bb" runner "--root" dest "--stop-agent"))
       (let [script (swarmforge-bb forge)]
-        (process/sh {:continue true} "bb" script "--stop-project" dest)))))
+        (process/sh {:continue true} "bb" script "--stop-project" dest)))
+    (stop-runtime-relay! project)
+    (stop-project-dashboard! project)
+    (fs/delete-if-exists (runtime-metadata-file project))
+    {:name name :running false}))
 
 (defn open-project! [forge name]
-  (when-not (fs/directory? (project-dir forge name))
-    (throw (ex-info (str "Unknown project: " name) {:http-status 404})))
-  (when (project-open? forge name)
-    (throw (ex-info (str "Project already open: " name)
-                    {:http-status 409 :error "already-open"})))
-  (refresh! forge name)
-  (when-not (skip-start?)
-    (start-project-runtime! forge name))
-  (mark-open! forge name)
-  {:name name :open true})
+  (let [project (project-dir forge name)]
+    (when-not (fs/directory? project)
+      (throw (ex-info (str "Unknown project: " name) {:http-status 404})))
+    (when-let [problem (git-state-problem project)]
+      (throw (ex-info (str "Managed runtime sync failed: " problem
+                           " in " project)
+                      {:kind :runtime-sync-refused
+                       :name name
+                       :reason problem})))
+    (when (and (project-open? forge name)
+               (or (skip-start?) (runtime-ready? project)))
+      (throw (ex-info (str "Project already open: " name)
+                      {:http-status 409 :error "already-open"})))
+    ;; An open marker with no ready runtime is a crash to reconcile, not a
+    ;; reason to leave the project permanently open and unreachable.
+    (when (project-open? forge name)
+      (stop-project-runtime! forge name))
+    (let [refreshed
+          (try
+            (refresh! forge name)
+            (catch Exception error
+              (if (:kind (ex-data error))
+                (throw error)
+                (throw (ex-info
+                        (str "Managed runtime sync failed while refreshing "
+                             name ": " (or (ex-message error) (str error)))
+                        {:kind :runtime-sync-failed
+                         :name name}
+                        error)))))]
+      (commit-managed-runtime-sync! (str project) (:managed-paths refreshed)))
+    (when-not (skip-start?)
+      (start-project-runtime! forge name))
+    (mark-open! forge name)
+    {:name name :open true}))
 
 (defn close-project! [forge name]
   (when-not (skip-start?)
