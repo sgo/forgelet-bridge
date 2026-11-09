@@ -77,6 +77,8 @@ func (w *World) startDashboard(name string) error {
 	if _, ok := w.running[name]; ok {
 		return nil
 	}
+	started := time.Now()
+	defer func() { w.setupTime += time.Since(started) }()
 	store, err := w.forge(context.Background(), name)
 	if err != nil {
 		return err
@@ -132,7 +134,11 @@ func (w *World) startBridge(ctx context.Context) error {
 	if err := w.waitForBridgeStart(ctx, running, started); err != nil {
 		return err
 	}
-	return w.waitForOperator(ctx)
+	if err := w.waitForOperator(ctx); err != nil {
+		return err
+	}
+	w.bridgeTime += time.Since(started)
+	return nil
 }
 
 func (w *World) stopBridge() {

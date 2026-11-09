@@ -63,7 +63,7 @@ func configureAdapterForges(_ context.Context, world any, captures []string) err
 	}
 
 	cfg := map[string]any{
-		"homeserver_url": w.synapse.URL,
+		"homeserver_url": w.matrixServer.BaseURL(),
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,
@@ -157,7 +157,7 @@ func (w *World) removalActors(ctx context.Context) (removalActors, error) {
 	if err != nil {
 		return removalActors{}, err
 	}
-	bridgeClient, err := mautrix.NewClient(synapse.URL, id.UserID(w.bridgeUserID), w.bridgeToken)
+	bridgeClient, err := mautrix.NewClient(synapse.BaseURL(), id.UserID(w.bridgeUserID), w.bridgeToken)
 	if err != nil {
 		return removalActors{}, err
 	}
@@ -260,7 +260,7 @@ func forgeHoldsRemovalRelayFacts(_ context.Context, world any, captures []string
 	if err != nil {
 		return err
 	}
-	bridgeClient, err := mautrix.NewClient(synapse.URL, id.UserID(w.bridgeUserID), w.bridgeToken)
+	bridgeClient, err := mautrix.NewClient(synapse.BaseURL(), id.UserID(w.bridgeUserID), w.bridgeToken)
 	if err != nil {
 		return err
 	}

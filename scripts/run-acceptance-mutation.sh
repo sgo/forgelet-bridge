@@ -68,8 +68,14 @@ for feature in "${features[@]}"; do
     --project-root "$project_root"
   feature_hash="$(shasum -a 256 "$feature" | awk '{print $1}')"
   implementation_hash="$(shasum -a 256 "$generated"/*_acceptance_test.go | awk '{print $1}' | paste -sd, -)"
-  cache="target/acceptance-mutation/cache/$stem.passed"
-  if [[ -f "$cache" ]] && [[ "$(cat "$cache")" == "$feature_hash"$'\t'"$implementation_hash" ]]; then
+  cache_stem="$stem"
+  if [[ -n "${FORGELET_MATRIX_BACKEND:-}" ]]; then
+    cache_stem="$stem-$FORGELET_MATRIX_BACKEND"
+  fi
+  cache="target/acceptance-mutation/cache/$cache_stem.passed"
+  if [[ "${FORGELET_MUTATION_NO_CACHE:-}" != "1" ]] &&
+     [[ -f "$cache" ]] &&
+     [[ "$(cat "$cache")" == "$feature_hash"$'\t'"$implementation_hash" ]]; then
     echo "mutation: $feature is unchanged since its successful mutation run" | tee -a "$report"
     ran=1
     continue

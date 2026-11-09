@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "recorded_at": "20261109T133748Z",
+  "feature": "features/forge-display-names.feature",
+  "runs_per_backend": 3,
+  "backends": {
+    "fresh": {
+      "runs": [
+        {
+          "backend": "fresh",
+          "run": 1,
+          "pass": true,
+          "exit": 0,
+          "real_s": 22.26,
+          "user_s": 12.83,
+          "sys_s": 6.97,
+          "max_rss_bytes": 232980480,
+          "log_bytes": 4788
+        },
+        {
+          "backend": "fresh",
+          "run": 2,
+          "pass": true,
+          "exit": 0,
+          "real_s": 22.73,
+          "user_s": 12.93,
+          "sys_s": 7.32,
+          "max_rss_bytes": 237142016,
+          "log_bytes": 4787
+        },
+        {
+          "backend": "fresh",
+          "run": 3,
+          "pass": true,
+          "exit": 0,
+          "real_s": 23.9,
+          "user_s": 13.13,
+          "sys_s": 7.7,
+          "max_rss_bytes": 229048320,
+          "log_bytes": 4790
+        }
+      ],
+      "pass": true,
+      "median_wall_s": 22.73,
+      "median_max_rss_bytes": 232980480,
+      "phases": {
+        "total_ms": {
+          "median": 5201.5,
+          "total": 64235,
+          "samples": 12
+        },
+        "setup_ms": {
+          "median": 1331.5,
+          "total": 16371,
+          "samples": 12
+        },
+        "bridge_start_ms": {
+          "median": 2541.0,
+          "total": 30384,
+          "samples": 12
+        },
+        "scenario_ms": {
+          "median": 1312.0,
+          "total": 17214,
+          "samples": 12
+        },
+        "teardown_ms": {
+          "median": 19.5,
+          "total": 247,
+          "samples": 12
+        }
+      },
+      "mutation": {
+        "backend": "fresh",
+        "pass": true,
+        "elapsed_s": 170.146,
+        "total": 8,
+        "killed": 8,
+        "survived": 0,
+        "errors": 0
+      }
+    },
+    "shared": {
+      "runs": [
+        {
+          "backend": "shared",
+          "run": 1,
+          "pass": true,
+          "exit": 0,
+          "real_s": 18.57,
+          "user_s": 8.95,
+          "sys_s": 6.56,
+          "max_rss_bytes": 241270784,
+          "log_bytes": 3957
+        },
+        {
+          "backend": "shared",
+          "run": 2,
+          "pass": true,
+          "exit": 0,
+          "real_s": 16.0,
+          "user_s": 7.79,
+          "sys_s": 5.81,
+          "max_rss_bytes": 234160128,
+          "log_bytes": 14598
+        },
+        {
+          "backend": "shared",
+          "run": 3,
+          "pass": true,
+          "exit": 0,
+          "real_s": 16.25,
+          "user_s": 7.92,
+          "sys_s": 6.14,
+          "max_rss_bytes": 245039104,
+          "log_bytes": 25238
+        }
+      ],
+      "pass": true,
+      "median_wall_s": 16.25,
+      "median_max_rss_bytes": 241270784,
+      "phases": {
+        "total_ms": {
+          "median": 4121.0,
+          "total": 45884,
+          "samples": 12
+        },
+        "setup_ms": {
+          "median": 528.5,
+          "total": 8509,
+          "samples": 12
+        },
+        "bridge_start_ms": {
+          "median": 1627.0,
+          "total": 20348,
+          "samples": 12
+        },
+        "scenario_ms": {
+          "median": 1311.5,
+          "total": 16914,
+          "samples": 12
+        },
+        "teardown_ms": {
+          "median": 7.0,
+          "total": 91,
+          "samples": 12
+        }
+      },
+      "mutation": {
+        "backend": "shared",
+        "pass": true,
+        "elapsed_s": 156.788,
+        "total": 8,
+        "killed": 8,
+        "survived": 0,
+        "errors": 0
+      }
+    },
+    "memory": {
+      "runs": [
+        {
+          "backend": "memory",
+          "run": 1,
+          "pass": true,
+          "exit": 0,
+          "real_s": 13.83,
+          "user_s": 4.43,
+          "sys_s": 6.24,
+          "max_rss_bytes": 232652800,
+          "log_bytes": 3334
+        },
+        {
+          "backend": "memory",
+          "run": 2,
+          "pass": true,
+          "exit": 0,
+          "real_s": 14.21,
+          "user_s": 4.52,
+          "sys_s": 6.17,
+          "max_rss_bytes": 236699648,
+          "log_bytes": 3337
+        },
+        {
+          "backend": "memory",
+          "run": 3,
+          "pass": true,
+          "exit": 0,
+          "real_s": 12.22,
+          "user_s": 4.19,
+          "sys_s": 5.45,
+          "max_rss_bytes": 230277120,
+          "log_bytes": 3337
+        }
+      ],
+      "pass": true,
+      "median_wall_s": 13.83,
+      "median_max_rss_bytes": 232652800,
+      "phases": {
+        "total_ms": {
+          "median": 2798.0,
+          "total": 34384,
+          "samples": 12
+        },
+        "setup_ms": {
+          "median": 524.0,
+          "total": 6290,
+          "samples": 12
+        },
+        "bridge_start_ms": {
+          "median": 1322.5,
+          "total": 15870,
+          "samples": 12
+        },
+        "scenario_ms": {
+          "median": 889.0,
+          "total": 12109,
+          "samples": 12
+        },
+        "teardown_ms": {
+          "median": 8.0,
+          "total": 96,
+          "samples": 12
+        }
+      },
+      "mutation": {
+        "backend": "memory",
+        "pass": true,
+        "elapsed_s": 145.138,
+        "total": 8,
+        "killed": 8,
+        "survived": 0,
+        "errors": 0
+      }
+    }
+  },
+  "speedup_vs_fresh": {
+    "shared": 1.3987692307692308,
+    "memory": 1.64352856109906
+  },
+  "equivalent": true,
+  "recommendation": "adopt the in-memory backend as an opt-in fast lane for routine process-heavy Gherkin scenarios, keep a smaller fresh-Synapse compatibility lane for Olm/device and protocol drift, and retain shared Synapse only for scenarios that need a real server without per-scenario process startup"
+}

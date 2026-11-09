@@ -152,3 +152,25 @@ follow-up rather than changing the production default.
   transport unchanged.
 - `docs/manual-contract.edn` links the fixture selector to an executable
   example.
+
+## Delivery record
+
+- `acceptance/fixtures.Homeserver` is the shared URL/registration/backend
+  boundary for fresh Synapse, shared Synapse and memory.
+- `acceptance/fixtures.MemoryHomeserver` relays opaque encrypted events and
+  implements registration/login, sync, rooms, memberships, state, messages,
+  threads, device keys, one-time keys, to-device traffic and account data used
+  by the selected feature.
+- The default `fresh` backend is unchanged. `shared` uses one server per test
+  process with unique bridge devices; `memory` is in-process and test-only.
+- Per-world timing records total, fixture setup, bridge startup, scenario and
+  teardown separately.
+- `features/in-memory-matrix-acceptance.feature` runs the opt-in memory lane
+  through the real bridge and encrypted fixture clients.
+- `scripts/run-matrix-prototype.sh`, `qa/e2e.edn` and
+  `docs/evidence/matrix-backend-prototype.{json,md}` reproduce and publish the
+  three-backend measurement.
+- `README.md` records the opt-in selector. `docs/manual.md` owns isolation,
+  resource and compatibility details. `ARCHITECTURE.md` records the fixture
+  boundary. `docs/manual-contract.edn` adds an executable homeserver API
+  example.

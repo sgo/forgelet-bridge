@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"maunium.net/go/mautrix"
 )
 
 // ServerName is the homeserver name every fixture user id belongs to.
@@ -26,6 +28,16 @@ type Synapse struct {
 	port int
 	cmd  *exec.Cmd
 	log  *os.File
+}
+
+// BaseURL is the homeserver address fixture clients use.
+func (s *Synapse) BaseURL() string {
+	return s.URL
+}
+
+// Backend names this homeserver implementation.
+func (s *Synapse) Backend() MatrixBackend {
+	return MatrixBackendFresh
 }
 
 // StartSynapse installs the pinned Synapse into the project-local environment
@@ -139,6 +151,39 @@ func (s *Synapse) Register(ctx context.Context, localpart, password string) (use
 		return "", "", "", fmt.Errorf("register %s: %s %s", localpart, parsed.ErrCode, parsed.Error)
 	}
 	return parsed.UserID, parsed.AccessToken, parsed.DeviceID, nil
+}
+
+// Login creates a fresh device session for an existing fixture user.
+func (s *Synapse) Login(ctx context.Context, localpart, password string) (userID, accessToken, deviceID string, err error) {
+	body, err := json.Marshal(mautrix.ReqLogin{
+		Type: mautrix.AuthTypePassword,
+		Identifier: mautrix.UserIdentifier{
+			Type: mautrix.IdentifierTypeUser,
+			User: UserID(localpart),
+		},
+		Password: password,
+	})
+	if err != nil {
+		return "", "", "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL+"/_matrix/client/v3/login", bytes.NewReader(body))
+	if err != nil {
+		return "", "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer resp.Body.Close()
+	var parsed mautrix.RespLogin
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", "", "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", "", "", fmt.Errorf("login %s: HTTP %d", localpart, resp.StatusCode)
+	}
+	return parsed.UserID.String(), parsed.AccessToken, parsed.DeviceID.String(), nil
 }
 
 // UserID builds a fixture user id on this homeserver.

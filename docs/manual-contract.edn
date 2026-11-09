@@ -78,6 +78,10 @@
    :document "docs/manual.md"
    :heading "## Acceptance and verification"
    :apis ["scripts/acceptance.sh" "acceptance/runtime.Registry" "scripts/property.sh"]}
+  {:id "manual-matrix-fixture-backends"
+   :document "docs/manual.md"
+   :heading "## Matrix fixture backends"
+   :apis ["acceptance/fixtures.Homeserver" "acceptance/fixtures.StartMemoryHomeserver" "scripts/run-matrix-prototype.sh"]}
   {:id "manual-extension"
    :document "docs/manual.md"
    :heading "## Extension points"
@@ -143,4 +147,8 @@
   {:id "manual-acceptance-api"
    :section "manual-verification"
    :command ["bash" "-lc" "go doc ./acceptance/runtime Registry"]
-   :expect ["type Registry struct" "func (r *Registry) Execute"]}]}
+   :expect ["type Registry struct" "func (r *Registry) Execute"]}
+  {:id "manual-matrix-fixture-api"
+   :section "manual-matrix-fixture-backends"
+   :command ["bash" "-lc" "go doc ./acceptance/fixtures Homeserver; go doc ./acceptance/fixtures MatrixBackend"]
+   :expect ["type Homeserver interface" "Backend() MatrixBackend"]}]}

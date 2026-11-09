@@ -76,7 +76,7 @@ type User struct {
 
 // NewUser registers a fixture user on the homeserver, logs in, and starts
 // syncing and decrypting.
-func NewUser(ctx context.Context, hs *Synapse, localpart string, dir string) (*User, error) {
+func NewUser(ctx context.Context, hs Homeserver, localpart string, dir string) (*User, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func NewUser(ctx context.Context, hs *Synapse, localpart string, dir string) (*U
 		return nil, err
 	}
 
-	cli, err := mautrix.NewClient(hs.URL, id.UserID(userID), token)
+	cli, err := mautrix.NewClient(hs.BaseURL(), id.UserID(userID), token)
 	if err != nil {
 		return nil, err
 	}

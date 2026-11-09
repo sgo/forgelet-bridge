@@ -105,7 +105,7 @@ func (w *World) removalRoomsBefore() []string {
 
 func (w *World) duplicateConfiguredBasename(servedRoot, basename string) error {
 	cfg := map[string]any{
-		"homeserver_url": w.synapse.URL,
+		"homeserver_url": w.matrixServer.BaseURL(),
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,

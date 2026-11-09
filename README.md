@@ -223,6 +223,20 @@ the encrypted round trip is proven by decrypting what the bridge actually sent.
 The first run installs the pinned homeserver into the project-local environment;
 later runs reuse it.
 
+An opt-in Matrix fixture backend is available for fixture experiments:
+
+```sh
+FORGELET_MATRIX_BACKEND=memory \
+  ./scripts/acceptance.sh features/in-memory-matrix-acceptance.feature
+```
+
+The default remains `fresh`, which starts a pinned real Synapse for every
+scenario. `shared` starts one real Synapse per acceptance process, and `memory`
+uses the test-only in-process Matrix server. The bridge, dashboard and Olm
+clients remain real in every lane. The measured prototype and recommendation
+are in [docs/evidence/matrix-backend-prototype.md](docs/evidence/matrix-backend-prototype.md);
+wholesale migration remains a separate card.
+
 ## Property tests
 
 The invariants the bridge leans on — restart bookkeeping repeats nothing, the

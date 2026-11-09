@@ -34,8 +34,10 @@ const bridgePassword = "bridge-password"
 type World struct {
 	workDir string
 	log     *slog.Logger
+	started time.Time
 
-	synapse        *fixtures.Synapse
+	matrixServer   fixtures.Homeserver
+	matrixBackend  fixtures.MatrixBackend
 	bridgeUserID   string
 	bridgePassword string
 	bridgeToken    string
@@ -129,6 +131,11 @@ type World struct {
 	lane           *laneState
 	removal        *removalScenario
 	projectRemoval *projectRemovalScenario
+
+	setupTime    time.Duration
+	bridgeTime   time.Duration
+	teardownTime time.Duration
+	profileDir   string
 }
 
 // Registry builds the acceptance registry.
@@ -143,22 +150,31 @@ func Registry() *runtime.Registry {
 
 func newWorld() *World {
 	workDir := filepath.Join(fixtures.WorkDir(), fmt.Sprintf("scenario-%d", time.Now().UnixNano()))
+	backend, err := fixtures.MatrixBackendFromEnv()
+	if err != nil {
+		panic(err)
+	}
 	return &World{
-		workDir:    workDir,
-		log:        slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
-		forgeRoots: nil,
-		forgeNames: map[string]string{},
-		operatorID: DefaultOperator,
-		users:      map[string]*fixtures.User{},
-		dashboards: map[string]*dashboard.Store{},
-		stubs:      map[string]*child{},
-		running:    map[string]*fixtures.Dashboard{},
-		anchors:    map[string]string{},
+		workDir:       workDir,
+		started:       time.Now(),
+		matrixBackend: backend,
+		profileDir:    os.Getenv("FORGELET_MATRIX_PROFILE_DIR"),
+		log:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		forgeRoots:    nil,
+		forgeNames:    map[string]string{},
+		operatorID:    DefaultOperator,
+		users:         map[string]*fixtures.User{},
+		dashboards:    map[string]*dashboard.Store{},
+		stubs:         map[string]*child{},
+		running:       map[string]*fixtures.Dashboard{},
+		anchors:       map[string]string{},
 	}
 }
 
 // Close stops everything the scenario started.
 func (w *World) Close() {
+	teardownStart := time.Now()
+	defer func() { w.writeProfile(time.Since(teardownStart)) }()
 	w.stopBridge()
 	w.stopAdapterBridge()
 	for _, socket := range w.sockets {
@@ -176,8 +192,8 @@ func (w *World) Close() {
 	for _, user := range w.users {
 		_ = user.Close()
 	}
-	if w.synapse != nil {
-		w.synapse.Stop()
+	if w.matrixServer != nil && w.matrixBackend != fixtures.MatrixBackendShared {
+		w.matrixServer.Stop()
 	}
 }
 

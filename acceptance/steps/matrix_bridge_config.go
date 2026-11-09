@@ -57,7 +57,7 @@ func configureForAdapter(_ context.Context, world any, captures []string) error 
 	root := served.Root()
 	stateDir := w.stateDirOf(root)
 	config := map[string]any{
-		"homeserver_url": synapse.URL,
+		"homeserver_url": synapse.BaseURL(),
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,

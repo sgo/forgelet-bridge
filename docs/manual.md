@@ -178,6 +178,29 @@ The property suite is separate from unit coverage:
 `scripts/test.sh` and the `goolm` build tag. Documentation checks execute the
 examples declared in `docs/manual-contract.edn`.
 
+## Matrix fixture backends
+
+The acceptance selector `FORGELET_MATRIX_BACKEND` is test-only and defaults to
+`fresh`, preserving one pinned real Synapse process per scenario. `shared`
+uses one real Synapse for the generated acceptance test process; each scenario
+still gets its own rooms and a unique bridge device. `memory` starts the
+in-process Matrix Client API fixture from
+`acceptance/fixtures.StartMemoryHomeserver`.
+
+All three implement the `acceptance/fixtures.Homeserver` boundary. The real
+bridge process, forge dashboard, fixture clients and Olm encryption remain in
+use when `memory` is selected; the fake relays opaque encrypted content and
+implements registration/login, sync, rooms, state, messages, threads,
+memberships, device keys, one-time keys and to-device traffic.
+
+`scripts/run-matrix-prototype.sh` measures
+`features/forge-display-names.feature` three times on every backend and runs
+the same eight Gherkin mutations on each. It writes machine-readable evidence
+to `target/acceptance-matrix-prototype/` and maintains
+`docs/evidence/matrix-backend-prototype.{json,md}`. The default acceptance lane
+is unchanged; the memory backend is opt-in until a separate migration card
+proves each additional scenario class.
+
 ## Extension points
 
 New bridge commands belong under `cmd/`, policy and durable questions belong in

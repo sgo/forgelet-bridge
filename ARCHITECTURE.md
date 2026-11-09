@@ -28,6 +28,13 @@ Acceptance fixtures and the Gherkin runtime are under `acceptance/`; they drive
 the real bridge binary and public adapter rather than reimplementing bridge
 policy.
 
+`acceptance/fixtures.Homeserver` is the test-side Matrix boundary. Real Synapse
+(`fresh` and process-scoped `shared`) and `MemoryHomeserver` implement the same
+registration and base-URL contract. The in-memory implementation is not a
+production transport and is never imported by `cmd/` or `internal/`; it relays
+client ciphertext and supplies Matrix Client API endpoints needed by fixture
+clients.
+
 ## Why
 
 The bridge must keep carrying other forges when one homeserver or forge is
@@ -51,6 +58,8 @@ commands and `build/acceptance/bin` output remain the contract.
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs
   through `scripts/acceptance.sh`.
+- The acceptance Matrix backend defaults to fresh Synapse; shared and memory
+  are opt-in test fixtures and do not alter production bridge configuration.
 - Every required gate writes evidence under `build/stages/`.
 - Dashboard request source metadata is carried through `internal/dashboard` and
   `internal/relay`; only the exact `app.completed-card-report` value changes

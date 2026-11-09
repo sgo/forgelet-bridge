@@ -217,7 +217,7 @@ func sendProjectFact(
 	if err != nil {
 		return err
 	}
-	client, err := mautrix.NewClient(synapse.URL, id.UserID(w.bridgeUserID), w.bridgeToken)
+	client, err := mautrix.NewClient(synapse.BaseURL(), id.UserID(w.bridgeUserID), w.bridgeToken)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,10 @@
   {:procedure "qa/label-app-originated-forge-requests.md"
    :script "qa/label-app-originated-forge-requests.sh"
    :required-inputs []}
+  "prototype-in-memory-matrix-for-bridge-tests"
+  {:procedure "qa/prototype-in-memory-matrix-for-bridge-tests.md"
+   :script "qa/prototype-in-memory-matrix-for-bridge-tests.sh"
+   :required-inputs []}
   "expose-project-removal-plan-in-bridge-adapter"
   {:procedure "qa/expose-project-removal-plan-in-bridge-adapter.md"
    :script "qa/expose-project-removal-plan-in-bridge-adapter.sh"

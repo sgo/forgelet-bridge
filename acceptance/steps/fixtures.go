@@ -6,30 +6,55 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
-// homeserver starts the scenario's Synapse on first use.
-func (w *World) homeserver(ctx context.Context) (*fixtures.Synapse, error) {
-	if w.synapse != nil {
-		return w.synapse, nil
+func matrixFixtureBackend(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	if w.matrixServer != nil {
+		return fmt.Errorf("the Matrix fixture backend must be chosen before the homeserver starts")
 	}
-	synapse, err := fixtures.StartSynapse(ctx, filepath.Join(w.workDir, "synapse"))
+	w.matrixBackend = fixtures.MatrixBackend(captures[1])
+	return nil
+}
+
+// homeserver starts the scenario's Matrix server on first use.
+func (w *World) homeserver(ctx context.Context) (fixtures.Homeserver, error) {
+	if w.matrixServer != nil {
+		return w.matrixServer, nil
+	}
+	started := time.Now()
+	var (
+		server fixtures.Homeserver
+		err    error
+	)
+	switch w.matrixBackend {
+	case fixtures.MatrixBackendFresh:
+		server, err = fixtures.StartSynapse(ctx, filepath.Join(w.workDir, "synapse"))
+	case fixtures.MatrixBackendShared:
+		server, err = fixtures.SharedSynapse(ctx, filepath.Join(fixtures.WorkDir(), "shared-synapse"))
+	case fixtures.MatrixBackendMemory:
+		server, err = fixtures.StartMemoryHomeserver(ctx)
+	default:
+		err = fmt.Errorf("unsupported Matrix fixture backend %q", w.matrixBackend)
+	}
 	if err != nil {
 		return nil, err
 	}
-	w.synapse = synapse
+	w.matrixServer = server
+	w.setupTime += time.Since(started)
 
-	userID, token, _, err := synapse.Register(ctx, "bridge", bridgePassword)
+	userID, token, _, err := server.Register(ctx, "bridge", bridgePassword)
 	if err != nil {
 		return nil, err
 	}
 	w.bridgeUserID = userID
 	w.bridgePassword = bridgePassword
 	w.bridgeToken = token
-	return synapse, nil
+	return server, nil
 }
 
 // forge returns the fixture forge root and dashboard queue of a forge name,
@@ -155,14 +180,18 @@ func (w *World) configure(ctx context.Context) error {
 		}
 		forges = append(forges, forge)
 	}
-	body, err := json.MarshalIndent(map[string]any{
-		"homeserver_url": synapse.URL,
+	config := map[string]any{
+		"homeserver_url": synapse.BaseURL(),
 		"user_id":        w.bridgeUserID,
 		"password":       w.bridgePassword,
 		"operator":       w.operatorID,
 		"forges":         forges,
 		"state_dir":      stateDir,
-	}, "", "  ")
+	}
+	if w.matrixBackend == fixtures.MatrixBackendShared {
+		config["device_id"] = fmt.Sprintf("FORGELETBRIDGE%d", time.Now().UnixNano())
+	}
+	body, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
