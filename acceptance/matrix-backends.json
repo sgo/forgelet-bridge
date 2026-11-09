@@ -1,0 +1,5 @@
+{
+  "features": {
+    "features/waiting-facts-as-state.feature": "memory"
+  }
+}

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"maunium.net/go/mautrix"
 )
 
 func TestMemoryHomeserverRejectsUnknownTokens(t *testing.T) {
@@ -53,6 +55,54 @@ func TestMemoryHomeserverRegistrationIsStrict(t *testing.T) {
 	}
 	if _, _, _, err := server.Register(context.Background(), "operator", "secret"); err == nil {
 		t.Fatal("memory homeserver accepted a duplicate registration")
+	}
+}
+
+func TestMemoryHomeserverPasswordLoginUsesTheRequestedDevice(t *testing.T) {
+	server, err := StartMemoryHomeserver(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.Stop)
+
+	if _, _, _, err := server.Register(context.Background(), "bridge", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		body, err := json.Marshal(&mautrix.ReqLogin{
+			Type:       mautrix.AuthTypePassword,
+			Identifier: mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: "@bridge:" + ServerName},
+			Password:   "secret",
+			DeviceID:   "FORGELETBRIDGE",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, err := http.NewRequest(
+			http.MethodPost,
+			server.BaseURL()+"/_matrix/client/v3/login",
+			strings.NewReader(string(body)),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var login mautrix.RespLogin
+		decodeErr := json.NewDecoder(resp.Body).Decode(&login)
+		resp.Body.Close()
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d", resp.StatusCode)
+		}
+		if login.DeviceID != "FORGELETBRIDGE" {
+			t.Errorf("login device = %q, want FORGELETBRIDGE", login.DeviceID)
+		}
 	}
 }
 

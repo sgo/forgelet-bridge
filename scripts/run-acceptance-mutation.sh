@@ -64,7 +64,7 @@ for feature in "${features[@]}"; do
   gherkin-parser "$copy" "$ir"
   ./build/acceptance/bin/acceptance-entrypoint-generator \
     "$ir" "$generated" \
-    --feature "$copy" \
+    --feature "$feature" \
     --project-root "$project_root"
   feature_hash="$(shasum -a 256 "$feature" | awk '{print $1}')"
   implementation_hash="$(shasum -a 256 "$generated"/*_acceptance_test.go | awk '{print $1}' | paste -sd, -)"

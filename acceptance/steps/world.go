@@ -42,6 +42,13 @@ type World struct {
 	bridgePassword string
 	bridgeToken    string
 
+	// matrixPolicy* hold the feature selection contract exercised by the
+	// Matrix backend policy feature. They do not affect whether a homeserver
+	// is started until the scenario's bridge asks for one.
+	matrixPolicyPath    string
+	matrixPolicyBackend fixtures.MatrixBackend
+	matrixPolicyErr     error
+
 	configPath string
 	stateDir   string
 	// servedRoot is the forge root whose own adapter and bridge configuration
@@ -140,7 +147,17 @@ type World struct {
 
 // Registry builds the acceptance registry.
 func Registry() *runtime.Registry {
-	registry := runtime.NewRegistry(func() any { return newWorld() })
+	return matrixRegistry(newWorld)
+}
+
+// RegistryWithBackend builds an acceptance registry whose scenario worlds use
+// one backend chosen for the feature before any scenario starts.
+func RegistryWithBackend(backend fixtures.MatrixBackend) *runtime.Registry {
+	return matrixRegistry(func() *World { return newWorldWithBackend(backend) })
+}
+
+func matrixRegistry(newMatrixWorld func() *World) *runtime.Registry {
+	registry := runtime.NewRegistry(func() any { return newMatrixWorld() })
 	registry.OnClose(func(world any) { world.(*World).Close() })
 	if err := register(registry); err != nil {
 		panic(err)
@@ -149,11 +166,15 @@ func Registry() *runtime.Registry {
 }
 
 func newWorld() *World {
-	workDir := filepath.Join(fixtures.WorkDir(), fmt.Sprintf("scenario-%d", time.Now().UnixNano()))
 	backend, err := fixtures.MatrixBackendFromEnv()
 	if err != nil {
 		panic(err)
 	}
+	return newWorldWithBackend(backend)
+}
+
+func newWorldWithBackend(backend fixtures.MatrixBackend) *World {
+	workDir := filepath.Join(fixtures.WorkDir(), fmt.Sprintf("scenario-%d", time.Now().UnixNano()))
 	return &World{
 		workDir:       workDir,
 		started:       time.Now(),

@@ -142,7 +142,7 @@ func (s *MemoryHomeserver) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.users[req.Username] = req.Password
-	identity, token := s.newLogin(req.Username)
+	identity, token := s.newLogin(req.Username, "")
 	writeJSON(w, http.StatusOK, &mautrix.RespRegister{
 		AccessToken: token,
 		DeviceID:    identity.DeviceID,
@@ -166,7 +166,7 @@ func (s *MemoryHomeserver) login(w http.ResponseWriter, r *http.Request) {
 		writeMatrixError(w, http.StatusForbidden, "M_FORBIDDEN", "invalid username or password")
 		return
 	}
-	identity, token := s.newLogin(localpart)
+	identity, token := s.newLogin(localpart, req.DeviceID)
 	writeJSON(w, http.StatusOK, &mautrix.RespLogin{
 		AccessToken: token,
 		DeviceID:    identity.DeviceID,
@@ -174,11 +174,15 @@ func (s *MemoryHomeserver) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *MemoryHomeserver) newLogin(localpart string) (memoryIdentity, string) {
+func (s *MemoryHomeserver) newLogin(localpart string, requestedDevice id.DeviceID) (memoryIdentity, string) {
 	s.eventSeq++
+	deviceID := requestedDevice
+	if deviceID == "" {
+		deviceID = id.DeviceID(fmt.Sprintf("DEVICE%d", s.eventSeq))
+	}
 	identity := memoryIdentity{
 		UserID:   id.UserID("@" + localpart + ":" + ServerName),
-		DeviceID: id.DeviceID(fmt.Sprintf("DEVICE%d", s.eventSeq)),
+		DeviceID: deviceID,
 	}
 	token := fmt.Sprintf("memory-token-%d", s.eventSeq)
 	s.tokens[token] = identity

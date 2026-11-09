@@ -67,8 +67,11 @@ func TestGenerateWritesEntryPointAndMetadata(t *testing.T) {
 	if !strings.Contains(string(source), "func TestChatChannelRelay(t *testing.T)") {
 		t.Errorf("entry point =\n%s\nwant a test function named after the feature", source)
 	}
-	if !strings.Contains(string(source), "steps.Registry().Run(t, feature)") {
-		t.Errorf("entry point does not delegate to the runtime and step handlers:\n%s", source)
+	if !strings.Contains(string(source), "fixtures.MatrixBackendForFeature(chatChannelRelayFeaturePath)") {
+		t.Errorf("entry point does not resolve its feature's Matrix backend:\n%s", source)
+	}
+	if !strings.Contains(string(source), "steps.RegistryWithBackend(backend).Run(t, feature)") {
+		t.Errorf("entry point does not pass its Matrix backend to step worlds:\n%s", source)
 	}
 	if strings.Contains(string(source), "gherkin") || strings.Contains(string(source), "os.ReadFile(") {
 		t.Errorf("entry point should not parse the feature file:\n%s", source)

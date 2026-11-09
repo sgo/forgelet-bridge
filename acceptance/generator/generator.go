@@ -174,6 +174,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/acceptance/runtime"
 	"github.com/unclebob/forgelet-bridge/acceptance/steps"
 )
@@ -192,9 +193,13 @@ func %s(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load acceptance IR: %%v", err)
 	}
-	steps.Registry().Run(t, feature)
+	backend, err := fixtures.MatrixBackendForFeature(%sFeaturePath)
+	if err != nil {
+		t.Fatalf("resolve Matrix backend: %%v", err)
+	}
+	steps.RegistryWithBackend(backend).Run(t, feature)
 }
-`, prefix, filepath.ToSlash(featurePath), prefix, filepath.ToSlash(irPath), test, prefix)
+`, prefix, filepath.ToSlash(featurePath), prefix, filepath.ToSlash(irPath), test, prefix, prefix)
 }
 
 func lowerFirst(text string) string {
