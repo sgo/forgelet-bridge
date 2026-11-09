@@ -197,10 +197,12 @@ process; each scenario still gets its own rooms and a unique bridge device.
 `memory` starts the in-process Matrix Client API fixture from
 `acceptance/fixtures.StartMemoryHomeserver`.
 
-Policy validation happens before backend use. Missing, malformed or trailing
-JSON, a missing `features` map, unknown fields or backend names, and absolute,
-traversing or nested feature paths fail the generated test. The resolver also
-rejects an attempt to map the required fresh-Synapse compatibility features to
+Policy validation happens before backend use in
+`acceptance/fixtures.ResolveMatrixBackend`. Missing, malformed or trailing JSON,
+a missing `features` map, unknown fields or backend names, and absolute,
+traversing or nested feature paths fail the generated test.
+`acceptance/fixtures.RequiredFreshFeatures` names the compatibility lane, and
+the resolver rejects an attempt to map those required fresh-Synapse features to
 another backend. A focused override is still deliberate and explicit.
 
 All three implement the `acceptance/fixtures.Homeserver` boundary. The real
