@@ -20,9 +20,9 @@ type Queue struct {
 
 // Requests returns the pending and answered requests in relay form.
 func (q Queue) Requests() ([]relay.Request, error) {
-	requests, err := q.Store.Requests()
-	if err != nil {
-		return nil, fmt.Errorf("read dashboard requests for %s: %w", q.Store.Root(), err)
+	requests, readErr := q.Store.Requests()
+	if readErr != nil {
+		return nil, fmt.Errorf("read dashboard requests for %s: %w", q.Store.Root(), readErr)
 	}
 	relayed := make([]relay.Request, 0, len(requests))
 	for _, request := range requests {
@@ -50,5 +50,5 @@ func (q Queue) CreateRequest(ctx context.Context, body string) (string, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-09T11:47:50+01:00","module_hash":"32e06af18c2c9f1afdd2f87397e944358dfce2cefddc811c0ef25aa800f13e5f","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":21,"end_line":36,"hash":"a0f9290e96fadc7c309dafc4090831214947ad499709ba126335792451c5bc3f"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":40,"end_line":49,"hash":"d096d34f1391990cbb5b3916b2e08d34221662bf60e36024e17b66f65932ab5e"}]}
+// {"version":1,"tested_at":"2026-11-09T11:49:19+01:00","module_hash":"bf43a3efbc1b0445d3b382a0eaa5f6b443ae9bdfd548992b78b0eb7a11a734ff","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":22,"end_line":37,"hash":"b4b42e94f6297e2b14ad50a678c29c12d297a297264af1569f8b07a5050aa48c"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":41,"end_line":50,"hash":"d096d34f1391990cbb5b3916b2e08d34221662bf60e36024e17b66f65932ab5e"}]}
 // mutate4go-manifest-end
