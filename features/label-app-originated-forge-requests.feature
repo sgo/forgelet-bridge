@@ -32,6 +32,7 @@ Feature: Label app-originated forge requests
     And the lieutenant answers the chat request "<prior_request>" with "<prior_answer>"
     And the bridge has caught up with the forge
     And the forge's dashboard already holds the app report "<report>" from source app.completed-card-report
+    And the operator decrypts an app-relayed report reading "<report>"
     When the lieutenant answers the chat request "<report>" with "<answer>"
     Then the operator decrypts the thread reply "<answer>" to the app-relayed report "<report>"
     And the operator decrypts the thread reply "<prior_answer>" to the chat message "<prior_request>"
