@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
@@ -21,7 +22,7 @@ type Queue struct {
 func (q Queue) Requests() ([]relay.Request, error) {
 	requests, err := q.Store.Requests()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read dashboard requests for %s: %w", q.Store.Root(), err)
 	}
 	relayed := make([]relay.Request, 0, len(requests))
 	for _, request := range requests {
@@ -49,5 +50,5 @@ func (q Queue) CreateRequest(ctx context.Context, body string) (string, error) {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-22T21:28:19+02:00","module_hash":"200db89bc7045ecc03fc4cc8187e2d0b66e264de75c10004b58e546f05265ab4","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":21,"end_line":35,"hash":"b91905a09bc1c384883a8271cc1bfb18a12ef831c100bf4dab704be7a5cba86f"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":39,"end_line":48,"hash":"d096d34f1391990cbb5b3916b2e08d34221662bf60e36024e17b66f65932ab5e"}]}
+// {"version":1,"tested_at":"2026-11-09T11:47:50+01:00","module_hash":"32e06af18c2c9f1afdd2f87397e944358dfce2cefddc811c0ef25aa800f13e5f","functions":[{"id":"func/Queue.Requests","name":"Queue.Requests","line":21,"end_line":36,"hash":"a0f9290e96fadc7c309dafc4090831214947ad499709ba126335792451c5bc3f"},{"id":"func/Queue.CreateRequest","name":"Queue.CreateRequest","line":40,"end_line":49,"hash":"d096d34f1391990cbb5b3916b2e08d34221662bf60e36024e17b66f65932ab5e"}]}
 // mutate4go-manifest-end

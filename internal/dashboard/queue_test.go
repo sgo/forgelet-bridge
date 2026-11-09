@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +50,21 @@ func TestQueueCreateRequestReportsADashboardThatRefusesIt(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("CreateRequest accepted a chat the dashboard refused")
+	}
+}
+
+func TestQueueRequestsReportsTheQueueItCouldNotRead(t *testing.T) {
+	store := fixedStore(t)
+	if err := os.MkdirAll(filepath.Dir(store.dir(pendingDir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.dir(pendingDir), []byte("not a queue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (Queue{Store: store}).Requests()
+	if err == nil || !strings.Contains(err.Error(), store.Root()) {
+		t.Fatalf("error = %v, want the unreadable queue named", err)
 	}
 }
 
