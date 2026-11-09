@@ -96,3 +96,23 @@ Matrix path. It needs no operator-supplied secret.
   dashboard/relay policy layer and Matrix remains a transport.
 - `docs/manual-contract.edn` links the chat source behavior to an executable
   API example.
+
+## Delivery record
+
+- Dashboard request files now retain the optional `source` header through
+  parsing, pending-to-done transitions, and conversion to relay requests.
+- Relay planning applies only `app.completed-card-report`, prefixes the
+  unchanged body with `From the Forgelet app:` plus one blank line, and stores
+  the resulting Matrix event as the answer anchor.
+- Unit coverage includes request-file round trips, source preservation, queue
+  conversion, ordinary fallback, prior bridge state, threading, and restart
+  idempotence.
+- Acceptance coverage uses the real encrypted Matrix path for all required
+  app-report, ordinary-request, and operator-message cases.
+- `qa/label-app-originated-forge-requests.{md,sh}` and `qa/e2e.edn` define the
+  project-local E2E procedure.
+- `README.md` describes the operator-visible prefix. `docs/manual.md` owns the
+  source field, exact presentation, fallback and threading contract.
+  `ARCHITECTURE.md` records the dashboard-to-relay metadata flow and Matrix
+  transport boundary. `docs/manual-contract.edn` adds an executable source API
+  example.

@@ -52,6 +52,9 @@ commands and `build/acceptance/bin` output remain the contract.
 - The Gherkin runtime dispatches every step to exactly one handler and runs
   through `scripts/acceptance.sh`.
 - Every required gate writes evidence under `build/stages/`.
+- Dashboard request source metadata is carried through `internal/dashboard` and
+  `internal/relay`; only the exact `app.completed-card-report` value changes
+  presentation, and Matrix still carries the event as the bridge account.
 - Forge removal changes only that forge's Matrix rooms and bridge-owned state;
   the bridge configuration and forge files remain unchanged.
 - Project removal uses the saved room for one exact managed project only. Its

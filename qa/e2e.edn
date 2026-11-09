@@ -1,5 +1,9 @@
 {:cards
- {"expose-project-removal-plan-in-bridge-adapter"
+ {"label-app-originated-forge-requests"
+  {:procedure "qa/label-app-originated-forge-requests.md"
+   :script "qa/label-app-originated-forge-requests.sh"
+   :required-inputs []}
+  "expose-project-removal-plan-in-bridge-adapter"
   {:procedure "qa/expose-project-removal-plan-in-bridge-adapter.md"
    :script "qa/expose-project-removal-plan-in-bridge-adapter.sh"
    :required-inputs ["FORGELET_E2E_FAMILY_ROOT"

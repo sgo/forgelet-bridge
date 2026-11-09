@@ -38,11 +38,20 @@ room (`Activity`), and an encrypted clarifications room (`Clarifications`)
 inside it, invites the configured operator, and then:
 
 - a chat request in the forge's dashboard appears as an encrypted chat message;
+- a completed-card report explicitly sourced by the Forgelet app appears with
+  a `From the Forgelet app:` prefix rather than looking like an operator
+  message;
 - the lieutenant's answer arrives as a reply in that message's thread;
 - a message the operator sends becomes a chat request for the lieutenant, and
   the answer comes back in the operator's own thread;
 - messages from anyone but the operator never reach the forge;
 - a restart repeats nothing, in either direction.
+
+The app prefix is presentation metadata, not impersonation: the event remains
+under the bridge's Matrix account and keeps a normal thread root for the
+Lieutenant's answer. Requests without the exact
+`app.completed-card-report` source keep their ordinary message body, and the
+bridge never queues a second dashboard request merely to add the prefix.
 
 In the approvals room the operator sees what each open project in the forge is
 waiting for: the card, the project, the gate (the handover roles when the

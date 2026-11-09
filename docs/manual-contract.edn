@@ -57,7 +57,7 @@
   {:id "manual-operation"
    :document "docs/manual.md"
    :heading "## Bridge operation"
-   :apis ["cmd/forgelet-bridge" "unhappy_forges"]}
+   :apis ["cmd/forgelet-bridge" "unhappy_forges" "internal/relay.Request" "internal/relay.AppCompletedCardReportSource"]}
   {:id "manual-configuration"
    :document "docs/manual.md"
    :heading "## Configuration"
@@ -116,6 +116,10 @@
    :section "manual-operation"
    :command ["bash" "-lc" "go run -tags goolm ./cmd/forgelet-bridge --help"]
    :expect ["-remove-forge string" "-remove-project string" "-validate"]}
+  {:id "manual-chat-source"
+   :section "manual-operation"
+   :command ["bash" "-lc" "go doc ./internal/relay Request.Source; go doc ./internal/relay AppCompletedCardReportSource"]
+   :expect ["Source string" "app.completed-card-report"]}
   {:id "manual-config-api"
    :section "manual-configuration"
    :command ["bash" "-lc" "go doc ./internal/config Config"]

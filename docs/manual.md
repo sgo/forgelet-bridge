@@ -28,6 +28,26 @@ The bridge keeps relay facts in Matrix room state so a restart does not replay
 delivered messages. A temporarily unavailable forge is reported under
 `unhappy_forges` while the other forges continue.
 
+A dashboard request may carry the optional safe `source` field. The exact value
+`app.completed-card-report` identifies a completed-card report created by the
+Forgelet app rather than a message the operator sent in Matrix. The bridge
+posts that report under the bridge's own Matrix account with this exact
+presentation:
+
+```text
+From the Forgelet app:
+
+<the unchanged report body>
+```
+
+The posted event is stored as the request's thread root, so the Lieutenant's
+answer is a reply under the explicit app-relayed report and survives restart
+without replay. The bridge does not create another dashboard request to change
+presentation. A missing source or any other source value keeps the existing
+request body and pairing behavior. `internal/relay.Request.Source` carries the
+metadata and `internal/relay.AppCompletedCardReportSource` names the one value
+that triggers the app-relay presentation.
+
 ## Configuration
 
 The `internal/config.Config` type owns the bridge configuration. Its JSON
