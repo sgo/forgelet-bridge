@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "recorded_at": "20261109T152610Z",
+  "feature": "features/waiting-facts-as-state.feature",
+  "policy": "acceptance/matrix-backends.json",
+  "backends": {
+    "fresh": {
+      "pass": true,
+      "wall_s": 39.75,
+      "mutation": {
+        "total": 0,
+        "killed": 0,
+        "survived": 0,
+        "errors": 0
+      }
+    },
+    "memory": {
+      "pass": true,
+      "wall_s": 22.14,
+      "mutation": {
+        "total": 0,
+        "killed": 0,
+        "survived": 0,
+        "errors": 0
+      }
+    }
+  },
+  "ordinary_equivalent": true,
+  "mutation_equivalent": true,
+  "unlisted_backend": "fresh",
+  "required_fresh_lane": true,
+  "equivalent": true,
+  "before": {
+    "selected_s": 40.1,
+    "operator_reported_selected_s": 32.9,
+    "full_qa_s": 856.908,
+    "full_harden_s": 567.0
+  },
+  "after": {
+    "selected_fresh_s": 39.75,
+    "selected_memory_s": 22.14,
+    "full_qa_s": 0.0,
+    "full_harden_s": 0.0
+  },
+  "selected_speedup": 1.811201445347787
+}

@@ -158,9 +158,12 @@ the project's native scripts:
   pipeline.
 - `qa` runs `scripts/property.sh` and `scripts/acceptance.sh`.
 - `docs` runs `scripts/check-documentation.sh`.
-- `deploy` runs `scripts/build.sh`, restarts `scripts/matrix-bridge.sh`, and
-  checks that the live process accounts for every configured forge, exposes the
-  removal operations, and dispatches both host project-removal commands.
+- `deploy` runs `scripts/build.sh`, checks that the live process accounts for
+  every configured forge, exposes the removal operations, and dispatches both
+  host project-removal commands. Ordinary cards then restart
+  `scripts/matrix-bridge.sh`; a card whose approved task note has
+  `## Acceptance-only deploy` verifies and leaves the current live process
+  running.
 
 Every case writes `build/stages/<stage>.log`. No Maven reactor or second Java
 acceptance harness participates in this project.
@@ -180,12 +183,25 @@ examples declared in `docs/manual-contract.edn`.
 
 ## Matrix fixture backends
 
-The acceptance selector `FORGELET_MATRIX_BACKEND` is test-only and defaults to
-`fresh`, preserving one pinned real Synapse process per scenario. `shared`
-uses one real Synapse for the generated acceptance test process; each scenario
-still gets its own rooms and a unique bridge device. `memory` starts the
-in-process Matrix Client API fixture from
+`acceptance/matrix-backends.json` is the test-only per-feature policy.
+`acceptance/fixtures.MatrixBackendForFeature` resolves an exact
+`features/*.feature` path against it before a generated entry point starts any
+scenario world. A listed feature uses its selected backend; an unlisted feature
+uses `fresh`. The initial policy maps only
+`features/waiting-facts-as-state.feature` to `memory`.
+
+`FORGELET_MATRIX_BACKEND=fresh|shared|memory` remains the focused-run override
+and wins over the policy. `fresh` preserves one pinned real Synapse process per
+scenario. `shared` uses one real Synapse for the generated acceptance test
+process; each scenario still gets its own rooms and a unique bridge device.
+`memory` starts the in-process Matrix Client API fixture from
 `acceptance/fixtures.StartMemoryHomeserver`.
+
+Policy validation happens before backend use. Missing, malformed or trailing
+JSON, a missing `features` map, unknown fields or backend names, and absolute,
+traversing or nested feature paths fail the generated test. The resolver also
+rejects an attempt to map the required fresh-Synapse compatibility features to
+another backend. A focused override is still deliberate and explicit.
 
 All three implement the `acceptance/fixtures.Homeserver` boundary. The real
 bridge process, forge dashboard, fixture clients and Olm encryption remain in
@@ -197,9 +213,13 @@ memberships, device keys, one-time keys and to-device traffic.
 `features/forge-display-names.feature` three times on every backend and runs
 the same eight Gherkin mutations on each. It writes machine-readable evidence
 to `target/acceptance-matrix-prototype/` and maintains
-`docs/evidence/matrix-backend-prototype.{json,md}`. The default acceptance lane
-is unchanged; the memory backend is opt-in until a separate migration card
-proves each additional scenario class.
+`docs/evidence/matrix-backend-prototype.{json,md}`.
+
+`scripts/run-matrix-policy-evidence.sh` runs the waiting-facts feature through
+the policy-selected memory backend and forced fresh Synapse, compares ordinary
+and mutation outcomes, and checks that an unlisted feature is still fresh. It
+maintains `docs/evidence/waiting-facts-memory-policy.{json,md}` with the
+selected-feature, full QA and full harden before/after timings.
 
 ## Extension points
 

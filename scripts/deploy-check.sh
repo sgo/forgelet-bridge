@@ -32,13 +32,8 @@ export MATRIX_BRIDGE_FORGE_ROOT="$forge_root"
 export MATRIX_BRIDGE_BINARY="$binary"
 export MATRIX_BRIDGE_CONFIG="$config"
 
-"$adapter" stop
-"$adapter" start
-status="$("$adapter" status)"
-printf '%s\n' "$status"
-grep -q '^running ' <<< "$status"
-
-MATRIX_BRIDGE_TEST_CONFIG="$config" python3 - <<'PY'
+verify_live_status() {
+  MATRIX_BRIDGE_TEST_CONFIG="$config" python3 - <<'PY'
 import json
 import os
 from pathlib import Path
@@ -60,5 +55,31 @@ if missing:
 print("deploy: reached forges: " + (", ".join(reached) or "none"))
 print("deploy: unavailable forges: " + (", ".join(unhappy) or "none"))
 PY
+}
+
+acceptance_only=false
+if grep -Fxq '## Acceptance-only deploy' "tasks/$(
+  awk -F '\t' '$2 != "done" {print $1}' "$project_root/.swarmforge/board/tasks.tsv"
+).md" 2>/dev/null; then
+  acceptance_only=true
+fi
+
+if [[ "$acceptance_only" == "true" ]]; then
+  status="$("$adapter" status)"
+  printf '%s\n' "$status"
+  grep -q '^running ' <<< "$status"
+  verify_live_status
+  echo "deploy: acceptance-only; live bridge left running without a restart"
+  echo "deploy: adapter conformance and configured-forge status verified"
+  exit 0
+fi
+
+"$adapter" stop
+"$adapter" start
+status="$("$adapter" status)"
+printf '%s\n' "$status"
+grep -q '^running ' <<< "$status"
+
+verify_live_status
 
 echo "deploy: adapter running; host project-removal commands dispatch; bridge exposes removal operations"

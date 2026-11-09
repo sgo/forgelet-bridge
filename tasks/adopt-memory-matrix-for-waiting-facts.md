@@ -73,6 +73,13 @@ Because this card changes acceptance code only, its deploy evidence builds and
 checks the command, adapter conformance and current live status without
 stopping or restarting the live bridge. A restart is not part of this card.
 
+## Acceptance-only deploy
+
+The live bridge stays in its current process. The deploy gate still builds the
+command, checks removal-command help and adapter conformance, requires the
+adapter to report running, and verifies the current status accounts for every
+configured forge. It deliberately does not call `stop` or `start`.
+
 ## Acceptance
 
 `features/waiting-facts-as-state.feature` runs on memory in routine acceptance

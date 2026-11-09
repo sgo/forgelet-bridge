@@ -7,6 +7,10 @@
   {:procedure "qa/prototype-in-memory-matrix-for-bridge-tests.md"
    :script "qa/prototype-in-memory-matrix-for-bridge-tests.sh"
    :required-inputs []}
+  "adopt-memory-matrix-for-waiting-facts"
+  {:procedure "qa/adopt-memory-matrix-for-waiting-facts.md"
+   :script "qa/adopt-memory-matrix-for-waiting-facts.sh"
+   :required-inputs []}
   "expose-project-removal-plan-in-bridge-adapter"
   {:procedure "qa/expose-project-removal-plan-in-bridge-adapter.md"
    :script "qa/expose-project-removal-plan-in-bridge-adapter.sh"

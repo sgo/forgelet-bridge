@@ -58,8 +58,14 @@ commands and `build/acceptance/bin` output remain the contract.
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs
   through `scripts/acceptance.sh`.
-- The acceptance Matrix backend defaults to fresh Synapse; shared and memory
-  are opt-in test fixtures and do not alter production bridge configuration.
+- Generated acceptance entry points resolve
+  `acceptance/fixtures.MatrixBackendForFeature`, then construct a registry bound
+  to that backend before any scenario world starts. Unlisted features default
+  to fresh Synapse; shared and memory remain test-only fixtures and never alter
+  production bridge configuration.
+- `acceptance/matrix-backends.json` is exact-path policy. Its validator rejects
+  malformed or unsafe entries and refuses to move the required fresh-Synapse
+  device, encryption and restart compatibility features to another backend.
 - Every required gate writes evidence under `build/stages/`.
 - Dashboard request source metadata is carried through `internal/dashboard` and
   `internal/relay`; only the exact `app.completed-card-report` value changes

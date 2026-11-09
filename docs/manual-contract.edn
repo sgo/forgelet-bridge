@@ -81,7 +81,7 @@
   {:id "manual-matrix-fixture-backends"
    :document "docs/manual.md"
    :heading "## Matrix fixture backends"
-   :apis ["acceptance/fixtures.Homeserver" "acceptance/fixtures.StartMemoryHomeserver" "scripts/run-matrix-prototype.sh"]}
+   :apis ["acceptance/fixtures.Homeserver" "acceptance/fixtures.StartMemoryHomeserver" "acceptance/fixtures.MatrixBackendForFeature" "acceptance/fixtures.ResolveMatrixBackend" "acceptance/fixtures.RequiredFreshFeatures" "scripts/run-matrix-prototype.sh" "scripts/run-matrix-policy-evidence.sh"]}
   {:id "manual-extension"
    :document "docs/manual.md"
    :heading "## Extension points"
@@ -151,4 +151,8 @@
   {:id "manual-matrix-fixture-api"
    :section "manual-matrix-fixture-backends"
    :command ["bash" "-lc" "go doc ./acceptance/fixtures Homeserver; go doc ./acceptance/fixtures MatrixBackend"]
-   :expect ["type Homeserver interface" "Backend() MatrixBackend"]}]}
+   :expect ["type Homeserver interface" "Backend() MatrixBackend"]}
+  {:id "manual-matrix-policy-api"
+   :section "manual-matrix-fixture-backends"
+   :command ["bash" "-lc" "go doc ./acceptance/fixtures MatrixBackendForFeature; go doc ./acceptance/fixtures RequiredFreshFeatures"]
+   :expect ["func MatrixBackendForFeature" "func RequiredFreshFeatures"]}]}
