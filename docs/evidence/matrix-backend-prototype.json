@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_at": "20261109T133748Z",
+  "recorded_at": "20261109T144327Z",
   "feature": "features/forge-display-names.feature",
   "runs_per_backend": 3,
   "backends": {
@@ -11,69 +11,69 @@
           "run": 1,
           "pass": true,
           "exit": 0,
-          "real_s": 22.26,
-          "user_s": 12.83,
-          "sys_s": 6.97,
-          "max_rss_bytes": 232980480,
-          "log_bytes": 4788
+          "real_s": 23.97,
+          "user_s": 12.9,
+          "sys_s": 7.63,
+          "max_rss_bytes": 243777536,
+          "log_bytes": 4786
         },
         {
           "backend": "fresh",
           "run": 2,
           "pass": true,
           "exit": 0,
-          "real_s": 22.73,
-          "user_s": 12.93,
-          "sys_s": 7.32,
-          "max_rss_bytes": 237142016,
-          "log_bytes": 4787
+          "real_s": 21.81,
+          "user_s": 12.64,
+          "sys_s": 6.93,
+          "max_rss_bytes": 245071872,
+          "log_bytes": 4786
         },
         {
           "backend": "fresh",
           "run": 3,
           "pass": true,
           "exit": 0,
-          "real_s": 23.9,
-          "user_s": 13.13,
-          "sys_s": 7.7,
-          "max_rss_bytes": 229048320,
-          "log_bytes": 4790
+          "real_s": 23.12,
+          "user_s": 13.18,
+          "sys_s": 7.47,
+          "max_rss_bytes": 244219904,
+          "log_bytes": 4788
         }
       ],
       "pass": true,
-      "median_wall_s": 22.73,
-      "median_max_rss_bytes": 232980480,
+      "median_wall_s": 23.12,
+      "median_max_rss_bytes": 244219904,
       "phases": {
         "total_ms": {
-          "median": 5201.5,
-          "total": 64235,
+          "median": 5387.0,
+          "total": 64118,
           "samples": 12
         },
         "setup_ms": {
-          "median": 1331.5,
-          "total": 16371,
+          "median": 1331.0,
+          "total": 16547,
           "samples": 12
         },
         "bridge_start_ms": {
-          "median": 2541.0,
-          "total": 30384,
+          "median": 2440.5,
+          "total": 30587,
           "samples": 12
         },
         "scenario_ms": {
-          "median": 1312.0,
-          "total": 17214,
+          "median": 1292.5,
+          "total": 16740,
           "samples": 12
         },
         "teardown_ms": {
-          "median": 19.5,
-          "total": 247,
+          "median": 18.0,
+          "total": 224,
           "samples": 12
         }
       },
       "mutation": {
         "backend": "fresh",
         "pass": true,
-        "elapsed_s": 170.146,
+        "elapsed_s": 168.641,
         "total": 8,
         "killed": 8,
         "survived": 0,
@@ -87,21 +87,21 @@
           "run": 1,
           "pass": true,
           "exit": 0,
-          "real_s": 18.57,
-          "user_s": 8.95,
-          "sys_s": 6.56,
-          "max_rss_bytes": 241270784,
-          "log_bytes": 3957
+          "real_s": 18.74,
+          "user_s": 8.79,
+          "sys_s": 6.72,
+          "max_rss_bytes": 243908608,
+          "log_bytes": 3958
         },
         {
           "backend": "shared",
           "run": 2,
           "pass": true,
           "exit": 0,
-          "real_s": 16.0,
-          "user_s": 7.79,
-          "sys_s": 5.81,
-          "max_rss_bytes": 234160128,
+          "real_s": 15.82,
+          "user_s": 7.67,
+          "sys_s": 5.77,
+          "max_rss_bytes": 233193472,
           "log_bytes": 14598
         },
         {
@@ -109,47 +109,47 @@
           "run": 3,
           "pass": true,
           "exit": 0,
-          "real_s": 16.25,
-          "user_s": 7.92,
-          "sys_s": 6.14,
-          "max_rss_bytes": 245039104,
+          "real_s": 17.06,
+          "user_s": 8.19,
+          "sys_s": 6.32,
+          "max_rss_bytes": 237633536,
           "log_bytes": 25238
         }
       ],
       "pass": true,
-      "median_wall_s": 16.25,
-      "median_max_rss_bytes": 241270784,
+      "median_wall_s": 17.06,
+      "median_max_rss_bytes": 237633536,
       "phases": {
         "total_ms": {
-          "median": 4121.0,
-          "total": 45884,
+          "median": 4133.5,
+          "total": 46854,
           "samples": 12
         },
         "setup_ms": {
-          "median": 528.5,
-          "total": 8509,
+          "median": 530.0,
+          "total": 8717,
           "samples": 12
         },
         "bridge_start_ms": {
-          "median": 1627.0,
-          "total": 20348,
+          "median": 1629.5,
+          "total": 20156,
           "samples": 12
         },
         "scenario_ms": {
-          "median": 1311.5,
-          "total": 16914,
+          "median": 1310.0,
+          "total": 17864,
           "samples": 12
         },
         "teardown_ms": {
-          "median": 7.0,
-          "total": 91,
+          "median": 7.5,
+          "total": 100,
           "samples": 12
         }
       },
       "mutation": {
         "backend": "shared",
         "pass": true,
-        "elapsed_s": 156.788,
+        "elapsed_s": 154.331,
         "total": 8,
         "killed": 8,
         "survived": 0,
@@ -163,21 +163,21 @@
           "run": 1,
           "pass": true,
           "exit": 0,
-          "real_s": 13.83,
-          "user_s": 4.43,
-          "sys_s": 6.24,
-          "max_rss_bytes": 232652800,
-          "log_bytes": 3334
+          "real_s": 13.75,
+          "user_s": 4.37,
+          "sys_s": 6.11,
+          "max_rss_bytes": 233209856,
+          "log_bytes": 3337
         },
         {
           "backend": "memory",
           "run": 2,
           "pass": true,
           "exit": 0,
-          "real_s": 14.21,
-          "user_s": 4.52,
-          "sys_s": 6.17,
-          "max_rss_bytes": 236699648,
+          "real_s": 12.76,
+          "user_s": 4.31,
+          "sys_s": 5.75,
+          "max_rss_bytes": 236912640,
           "log_bytes": 3337
         },
         {
@@ -185,47 +185,47 @@
           "run": 3,
           "pass": true,
           "exit": 0,
-          "real_s": 12.22,
-          "user_s": 4.19,
-          "sys_s": 5.45,
-          "max_rss_bytes": 230277120,
-          "log_bytes": 3337
+          "real_s": 13.79,
+          "user_s": 4.34,
+          "sys_s": 6.19,
+          "max_rss_bytes": 237191168,
+          "log_bytes": 3335
         }
       ],
       "pass": true,
-      "median_wall_s": 13.83,
-      "median_max_rss_bytes": 232652800,
+      "median_wall_s": 13.75,
+      "median_max_rss_bytes": 236912640,
       "phases": {
         "total_ms": {
-          "median": 2798.0,
-          "total": 34384,
+          "median": 2804.5,
+          "total": 34556,
           "samples": 12
         },
         "setup_ms": {
-          "median": 524.0,
-          "total": 6290,
+          "median": 525.0,
+          "total": 6285,
           "samples": 12
         },
         "bridge_start_ms": {
           "median": 1322.5,
-          "total": 15870,
+          "total": 15690,
           "samples": 12
         },
         "scenario_ms": {
-          "median": 889.0,
-          "total": 12109,
+          "median": 935.5,
+          "total": 12475,
           "samples": 12
         },
         "teardown_ms": {
-          "median": 8.0,
-          "total": 96,
+          "median": 7.0,
+          "total": 86,
           "samples": 12
         }
       },
       "mutation": {
         "backend": "memory",
         "pass": true,
-        "elapsed_s": 145.138,
+        "elapsed_s": 146.239,
         "total": 8,
         "killed": 8,
         "survived": 0,
@@ -234,8 +234,8 @@
     }
   },
   "speedup_vs_fresh": {
-    "shared": 1.3987692307692308,
-    "memory": 1.64352856109906
+    "shared": 1.355216881594373,
+    "memory": 1.6814545454545455
   },
   "equivalent": true,
   "recommendation": "adopt the in-memory backend as an opt-in fast lane for routine process-heavy Gherkin scenarios, keep a smaller fresh-Synapse compatibility lane for Olm/device and protocol drift, and retain shared Synapse only for scenarios that need a real server without per-scenario process startup"

@@ -2,15 +2,15 @@
 
 Selected feature: `features/forge-display-names.feature`
 Runs per backend: 3
-Recorded: `20261109T133748Z`
+Recorded: `20261109T144327Z`
 
 | Backend | Ordinary | Median wall | Median max RSS | Setup median | Bridge median | Scenario median | Teardown median | Mutation wall | Mutations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| fresh | pass | 22.730s | 222.2 MiB | 1332 ms | 2541 ms | 1312 ms | 20 ms | 170.1s | 8/8 killed, 0 survived, 0 errors |
-| shared | pass | 16.250s | 230.1 MiB | 528 ms | 1627 ms | 1312 ms | 7 ms | 156.8s | 8/8 killed, 0 survived, 0 errors |
-| memory | pass | 13.830s | 221.9 MiB | 524 ms | 1322 ms | 889 ms | 8 ms | 145.1s | 8/8 killed, 0 survived, 0 errors |
+| fresh | pass | 23.120s | 232.9 MiB | 1331 ms | 2440 ms | 1292 ms | 18 ms | 168.6s | 8/8 killed, 0 survived, 0 errors |
+| shared | pass | 17.060s | 226.6 MiB | 530 ms | 1630 ms | 1310 ms | 8 ms | 154.3s | 8/8 killed, 0 survived, 0 errors |
+| memory | pass | 13.750s | 225.9 MiB | 525 ms | 1322 ms | 936 ms | 7 ms | 146.2s | 8/8 killed, 0 survived, 0 errors |
 
-Shared/fresh wall-time ratio: 1.40x. In-memory/fresh wall-time ratio: 1.64x.
+Shared/fresh wall-time ratio: 1.36x. In-memory/fresh wall-time ratio: 1.68x.
 Backend and mutation equivalence: pass.
 
 Recommendation: adopt the in-memory backend as an opt-in fast lane for routine process-heavy Gherkin scenarios, keep a smaller fresh-Synapse compatibility lane for Olm/device and protocol drift, and retain shared Synapse only for scenarios that need a real server without per-scenario process startup.
