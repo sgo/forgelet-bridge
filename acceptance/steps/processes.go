@@ -122,7 +122,11 @@ func (w *World) startBridge(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(binary, "--config", w.configPath, "--interval", "200ms")
+	interval := w.bridgeInterval
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+	cmd := exec.Command(binary, "--config", w.configPath, "--interval", interval.String())
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	started := time.Now()

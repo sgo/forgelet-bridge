@@ -3,6 +3,10 @@
   {:procedure "qa/label-app-originated-forge-requests.md"
    :script "qa/label-app-originated-forge-requests.sh"
    :required-inputs []}
+  "fetch-one-dashboard-snapshot-per-bridge-tick"
+  {:procedure "qa/fetch-one-dashboard-snapshot-per-bridge-tick.md"
+   :script "qa/fetch-one-dashboard-snapshot-per-bridge-tick.sh"
+   :required-inputs []}
   "prototype-in-memory-matrix-for-bridge-tests"
   {:procedure "qa/prototype-in-memory-matrix-for-bridge-tests.md"
    :script "qa/prototype-in-memory-matrix-for-bridge-tests.sh"

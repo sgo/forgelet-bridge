@@ -28,18 +28,23 @@ func approvalMessage(approval relay.Approval) string {
 
 // carryOutApprovals brings the approvals room and the forge's projects in step
 // with each other, and reports how much work it did.
-func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, replies []relay.RoomEvent, reactions []relay.Reaction) (int, error) {
+func (b *Bridge) carryOutApprovals(ctx context.Context, root string, room Room, replies []relay.RoomEvent, reactions []relay.Reaction, snapshot relay.DashboardSnapshot, fromSnapshot bool) (int, error) {
 	store, ok := b.approvals[root]
 	if !ok {
 		return 0, fmt.Errorf("no approvals configured for forge root %s", root)
 	}
-	pending, err := store.Pending(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
-	}
-	desk, err := store.Resolved(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("read the desk's resolved approvals for %s: %w", root, err)
+	pending := snapshot.Approvals
+	desk := snapshot.ResolvedApprovals
+	if !fromSnapshot {
+		var err error
+		pending, err = store.Pending(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("read pending approvals for %s: %w", root, err)
+		}
+		desk, err = store.Resolved(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("read the desk's resolved approvals for %s: %w", root, err)
+		}
 	}
 
 	waiting := b.pendingApprovalsFor(root)

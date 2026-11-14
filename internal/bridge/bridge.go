@@ -33,6 +33,7 @@ type Project struct {
 	Root           string
 	Store          ForgeStore
 	Clarifications ClarificationStore
+	Snapshot       SnapshotStore
 }
 
 // ProjectSource discovers the single-agent projects a forge root currently has
@@ -58,6 +59,14 @@ type ApprovalStore interface {
 type ClarificationStore interface {
 	Pending(ctx context.Context) ([]relay.Clarification, error)
 	Answer(ctx context.Context, project, id, answer string) error
+}
+
+// SnapshotStore reads all the waiting work one dashboard reports in one
+// request. Identity names the dashboard so the same response can serve every
+// consumer that addresses it in one tick.
+type SnapshotStore interface {
+	Identity() (string, error)
+	Snapshot(ctx context.Context) (relay.DashboardSnapshot, error)
 }
 
 // BoardStore is the forge side of one root's boards: the cards its projects
@@ -112,6 +121,7 @@ type Bridge struct {
 	stores         map[string]ForgeStore
 	approvals      map[string]ApprovalStore
 	clarifications map[string]ClarificationStore
+	snapshots      map[string]SnapshotStore
 	boards         map[string]BoardStore
 	statePath      string
 	statusDir      string
@@ -147,6 +157,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		stores:                stores,
 		approvals:             approvals,
 		clarifications:        clarifications,
+		snapshots:             map[string]SnapshotStore{},
 		boards:                boards,
 		statePath:             statePath,
 		statusDir:             cfg.StateDir,
@@ -165,6 +176,12 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 // single-agent projects leave it unset.
 func (b *Bridge) SetProjectSource(source ProjectSource) {
 	b.projects = source
+}
+
+// SetSnapshotSources lets the production adapters read each dashboard once
+// per tick. A bridge without them keeps the independent stores as a fallback.
+func (b *Bridge) SetSnapshotSources(sources map[string]SnapshotStore) {
+	b.snapshots = sources
 }
 
 // State exposes the bridge's bookkeeping for tests and status reporting.
@@ -213,11 +230,12 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	snapshots := snapshotCache{}
 
 	b.unhappy = map[string]string{}
 	carriedOut := 0
 	for _, forge := range b.cfg.Forges {
-		done, err := b.tickForge(ctx, forge.Root, seen)
+		done, err := b.tickForge(ctx, forge.Root, seen, snapshots)
 		if err != nil {
 			// A forge the bridge cannot serve is that forge's problem: it is
 			// reported and tried again on its own, and what the rooms said for
@@ -238,7 +256,7 @@ func (b *Bridge) Tick(ctx context.Context) error {
 			if b.state.ProjectRemovalPending(forge.Root, project.Name) {
 				continue
 			}
-			done, err := b.tickProject(ctx, forge.Root, project, seen)
+			done, err := b.tickProject(ctx, forge.Root, project, seen, snapshots)
 			if err != nil {
 				b.refuse(err, project.Root)
 				continue
@@ -367,7 +385,7 @@ func (b *Bridge) drainRooms(ctx context.Context) (roomEvents, error) {
 
 // tickForge catches one forge's rooms up with the forge and the forge up with
 // its rooms, and reports how much work it carried out.
-func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (int, error) {
+func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, snapshots snapshotCache) (int, error) {
 	room, err := b.roomFor(ctx, root)
 	if err != nil {
 		return 0, err
@@ -383,11 +401,23 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 
 	carriedOut := b.carryOutChat(ctx, root, "", store, room, seen, requests)
 
-	approvals, err := b.carryOutApprovals(ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID])
-	if err != nil {
-		b.refuse(err, root)
+	source := b.snapshots[root]
+	var snapshot relay.DashboardSnapshot
+	var snapshotErr error
+	if source != nil {
+		snapshot, snapshotErr = b.snapshotFrom(ctx, snapshots, source)
+	}
+	if source != nil && snapshotErr != nil {
+		b.refuse(snapshotErr, root)
 	} else {
-		carriedOut += approvals
+		approvals, err := b.carryOutApprovals(
+			ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID],
+			snapshot, source != nil)
+		if err != nil {
+			b.refuse(err, root)
+		} else {
+			carriedOut += approvals
+		}
 	}
 
 	activity, err := b.carryOutActivity(ctx, root, room)
@@ -397,7 +427,12 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents) (i
 		carriedOut += activity
 	}
 
-	clarifications, err := b.carryOutClarifications(ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID])
+	if source != nil && snapshotErr != nil {
+		return carriedOut, nil
+	}
+	clarifications, err := b.carryOutClarifications(
+		ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID],
+		snapshot, source != nil)
 	if err != nil {
 		b.refuse(err, root)
 	} else {

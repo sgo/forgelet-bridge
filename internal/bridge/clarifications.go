@@ -22,13 +22,17 @@ func clarificationMessage(clarification relay.Clarification) string {
 
 // carryOutClarifications brings the clarifications room and the forge's
 // blocked roles in step with each other, and reports how much work it did.
-func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store ClarificationStore, room Room, replies []relay.RoomEvent) (int, error) {
+func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store ClarificationStore, room Room, replies []relay.RoomEvent, snapshot relay.DashboardSnapshot, fromSnapshot bool) (int, error) {
 	if store == nil {
 		return 0, fmt.Errorf("no clarifications configured for forge root %s", root)
 	}
-	pending, err := store.Pending(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("read pending clarifications for %s: %w", root, err)
+	pending := snapshot.Clarifications
+	if !fromSnapshot {
+		var err error
+		pending, err = store.Pending(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("read pending clarifications for %s: %w", root, err)
+		}
 	}
 
 	waiting := b.pendingClarificationsFor(root)

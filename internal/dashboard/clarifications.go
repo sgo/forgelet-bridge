@@ -67,17 +67,18 @@ type ClarificationRequest struct {
 	Body    string `json:"body"`
 }
 
-// ClarificationState is what the dashboard reports about its clarifications.
-type ClarificationState struct {
-	Clarifications []ClarificationRequest `json:"clarifications"`
-}
-
 // Clarifications reads the clarifications the dashboard is showing.
 func (a *API) Clarifications(ctx context.Context) ([]relay.Clarification, error) {
-	var state ClarificationState
-	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
+	state, err := a.State(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return a.clarifications(state), nil
+}
+
+// clarifications derives the pending clarifications from a complete dashboard
+// state.
+func (a *API) clarifications(state State) []relay.Clarification {
 	var pending []relay.Clarification
 	for _, request := range state.Clarifications {
 		if request.Status != "pending" {
@@ -91,7 +92,7 @@ func (a *API) Clarifications(ctx context.Context) ([]relay.Clarification, error)
 			Question: strings.TrimSpace(request.Body),
 		})
 	}
-	return pending, nil
+	return pending
 }
 
 // AnswerClarification answers a clarification through the dashboard, so the

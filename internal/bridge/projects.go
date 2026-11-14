@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/unclebob/forgelet-bridge/internal/relay"
 	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
 // tickProject catches one single-agent project's room up with its dashboard
 // queue and the queue up with its room. The project room is the chat and
 // clarification room; it has no approvals or family activity of its own.
-func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Project, seen roomEvents) (int, error) {
+func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Project, seen roomEvents, snapshots snapshotCache) (int, error) {
 	room, err := b.projectRoomFor(ctx, forgeRoot, project)
 	if err != nil {
 		return 0, err
@@ -20,9 +21,20 @@ func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Proj
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", project.Root, err)
 	}
 	carriedOut := b.carryOutChat(ctx, forgeRoot, project.Name, project.Store, room, seen, requests)
-	clarifications, err := b.carryOutClarifications(
-		ctx, project.Root, project.Clarifications, room,
-		seen.messages[room.ClarificationsRoomID])
+	var clarifications int
+	if project.Snapshot == nil {
+		clarifications, err = b.carryOutClarifications(
+			ctx, project.Root, project.Clarifications, room,
+			seen.messages[room.ClarificationsRoomID], relay.DashboardSnapshot{}, false)
+	} else {
+		var snapshot relay.DashboardSnapshot
+		snapshot, err = b.snapshotFrom(ctx, snapshots, project.Snapshot)
+		if err == nil {
+			clarifications, err = b.carryOutClarifications(
+				ctx, project.Root, project.Clarifications, room,
+				seen.messages[room.ClarificationsRoomID], snapshot, true)
+		}
+	}
 	if err != nil {
 		return carriedOut, err
 	}

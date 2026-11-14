@@ -123,6 +123,7 @@ func (a Approvals) client() (*API, error) {
 type State struct {
 	Approvals         []ApprovalRequest         `json:"approvals"`
 	ResolvedApprovals []ResolvedApprovalRequest `json:"resolved_approvals"`
+	Clarifications    []ClarificationRequest    `json:"clarifications"`
 }
 
 // ApprovalRequest is one approval the dashboard is showing.
@@ -155,10 +156,24 @@ func (a *API) Chat(ctx context.Context, text string) error {
 
 // Approvals reads the approvals the dashboard is showing.
 func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
-	var state State
-	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
+	state, err := a.State(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return a.approvals(state), nil
+}
+
+// State reads the complete dashboard payload once.
+func (a *API) State(ctx context.Context) (State, error) {
+	var state State
+	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
+		return State{}, err
+	}
+	return state, nil
+}
+
+// approvals derives the pending approvals from a complete dashboard state.
+func (a *API) approvals(state State) []relay.Approval {
 	approvals := make([]relay.Approval, 0, len(state.Approvals))
 	for _, request := range state.Approvals {
 		approval := relay.Approval{
@@ -182,7 +197,7 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 		}
 		approvals = append(approvals, approval)
 	}
-	return approvals, nil
+	return approvals
 }
 
 // forgeKey names one item inside one forge: what the bridge remembers is per
@@ -196,10 +211,16 @@ func forgeKey(root, project, id string) string {
 // report the ending the desk recorded rather than only that the approval is
 // gone.
 func (a *API) ResolvedApprovals(ctx context.Context) (map[string]string, error) {
-	var state State
-	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
+	state, err := a.State(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return a.resolvedApprovals(state), nil
+}
+
+// resolvedApprovals derives the desk resolutions from a complete dashboard
+// state.
+func (a *API) resolvedApprovals(state State) map[string]string {
 	resolved := make(map[string]string, len(state.ResolvedApprovals))
 	for _, request := range state.ResolvedApprovals {
 		if request.ID == "" || request.Resolution == "" {
@@ -207,7 +228,7 @@ func (a *API) ResolvedApprovals(ctx context.Context) (map[string]string, error) 
 		}
 		resolved[forgeKey(a.root, request.Project, request.ID)] = request.Resolution
 	}
-	return resolved, nil
+	return resolved
 }
 
 // Approve approves an approval through the dashboard, so the dashboard applies

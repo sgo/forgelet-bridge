@@ -126,6 +126,12 @@ type World struct {
 	configured []string
 	forgeNames map[string]string
 	operatorID string
+	// fakeDashboards are deterministic state endpoints, and dashboardURLs
+	// names the endpoint configured for a forge root. bridgeInterval controls
+	// the real bridge process these scenarios run.
+	fakeDashboards map[string]*fixtures.FakeDashboard
+	dashboardURLs  map[string]string
+	bridgeInterval time.Duration
 
 	users          map[string]*fixtures.User
 	dashboards     map[string]*dashboard.Store
@@ -176,19 +182,22 @@ func newWorld() *World {
 func newWorldWithBackend(backend fixtures.MatrixBackend) *World {
 	workDir := filepath.Join(fixtures.WorkDir(), fmt.Sprintf("scenario-%d", time.Now().UnixNano()))
 	return &World{
-		workDir:       workDir,
-		started:       time.Now(),
-		matrixBackend: backend,
-		profileDir:    os.Getenv("FORGELET_MATRIX_PROFILE_DIR"),
-		log:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
-		forgeRoots:    nil,
-		forgeNames:    map[string]string{},
-		operatorID:    DefaultOperator,
-		users:         map[string]*fixtures.User{},
-		dashboards:    map[string]*dashboard.Store{},
-		stubs:         map[string]*child{},
-		running:       map[string]*fixtures.Dashboard{},
-		anchors:       map[string]string{},
+		workDir:        workDir,
+		started:        time.Now(),
+		matrixBackend:  backend,
+		profileDir:     os.Getenv("FORGELET_MATRIX_PROFILE_DIR"),
+		log:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		forgeRoots:     nil,
+		forgeNames:     map[string]string{},
+		fakeDashboards: map[string]*fixtures.FakeDashboard{},
+		dashboardURLs:  map[string]string{},
+		bridgeInterval: 200 * time.Millisecond,
+		operatorID:     DefaultOperator,
+		users:          map[string]*fixtures.User{},
+		dashboards:     map[string]*dashboard.Store{},
+		stubs:          map[string]*child{},
+		running:        map[string]*fixtures.Dashboard{},
+		anchors:        map[string]string{},
 	}
 }
 
@@ -209,6 +218,9 @@ func (w *World) Close() {
 	}
 	for _, dashboard := range w.running {
 		dashboard.Stop()
+	}
+	for _, fake := range w.fakeDashboards {
+		fake.Close()
 	}
 	for _, user := range w.users {
 		_ = user.Close()

@@ -178,6 +178,9 @@ func (w *World) configure(ctx context.Context) error {
 		if name := w.forgeNames[root]; name != "" {
 			forge["name"] = name
 		}
+		if dashboardURL := w.dashboardURLs[root]; dashboardURL != "" {
+			forge["dashboard_url"] = dashboardURL
+		}
 		forges = append(forges, forge)
 	}
 	config := map[string]any{
