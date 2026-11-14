@@ -14,10 +14,11 @@ import (
 // fakeClarifications is a forge's clarifications for the bridge tests: the
 // questions its agents are blocked on, and the answers the bridge carried back.
 type fakeClarifications struct {
-	mu      sync.Mutex
-	pending []relay.Clarification
-	answers []answer
-	errors  map[string]error
+	mu         sync.Mutex
+	pending    []relay.Clarification
+	answers    []answer
+	errors     map[string]error
+	pendingErr error
 }
 
 type answer struct {
@@ -29,6 +30,9 @@ type answer struct {
 func (f *fakeClarifications) Pending(_ context.Context) ([]relay.Clarification, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.pendingErr != nil {
+		return nil, f.pendingErr
+	}
 	return append([]relay.Clarification(nil), f.pending...), nil
 }
 
@@ -86,6 +90,61 @@ func TestTickPostsAPendingClarificationWithWhatItTakesToAnswer(t *testing.T) {
 		if !strings.Contains(message.body, want) {
 			t.Errorf("clarification message %q does not name %q", message.body, want)
 		}
+	}
+}
+
+func TestClarificationFactsKeepWorkAlreadyCarriedOutWhenALaterWriteFails(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{stateErrAfter: 2}
+	first := clarificationOf("forgelet-bridge", "clar-1", "coder", "first?")
+	second := clarificationOf("forgelet-bridge", "clar-2", "coder", "second?")
+	store := &fakeClarifications{pending: []relay.Clarification{first, second}}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+
+	carriedOut, err := built.carryOutClarifications(
+		context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+		nil, relay.DashboardSnapshot{}, false)
+	if err == nil {
+		t.Fatal("carryOutClarifications accepted a failed second fact write")
+	}
+	if carriedOut != 3 {
+		t.Errorf("carried out = %d, want two messages and one written fact", carriedOut)
+	}
+}
+
+func TestUnknownClarificationActionsAreRefused(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+
+	if err := built.carryOutClarification(
+		context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+		relay.ClarificationAction{Kind: "unknown"}); err == nil {
+		t.Error("carryOutClarification accepted an unknown action")
+	}
+}
+
+func TestClarificationInputFailureReportsNoWork(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{pendingErr: context.DeadlineExceeded}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+
+	carriedOut, err := built.carryOutClarifications(
+		context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+		nil, relay.DashboardSnapshot{}, false)
+	if err == nil {
+		t.Fatal("carryOutClarifications accepted unreadable pending clarifications")
+	}
+	if carriedOut != 0 {
+		t.Errorf("carried out = %d, want none when clarification inputs fail", carriedOut)
 	}
 }
 

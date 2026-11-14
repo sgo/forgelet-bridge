@@ -75,7 +75,7 @@ type Approvals struct {
 func (a Approvals) Pending(ctx context.Context) ([]relay.Approval, error) {
 	api, err := a.client()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find the dashboard for %s: %w", a.Root, err)
 	}
 	return api.Approvals(ctx)
 }
@@ -86,7 +86,7 @@ func (a Approvals) Pending(ctx context.Context) ([]relay.Approval, error) {
 func (a Approvals) Resolved(ctx context.Context) (map[string]string, error) {
 	api, err := a.client()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find the dashboard for %s: %w", a.Root, err)
 	}
 	return api.ResolvedApprovals(ctx)
 }
@@ -167,7 +167,7 @@ func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 func (a *API) State(ctx context.Context) (State, error) {
 	var state State
 	if err := a.call(ctx, http.MethodGet, "/api/state", nil, &state); err != nil {
-		return State{}, err
+		return State{}, fmt.Errorf("read dashboard state: %w", err)
 	}
 	return state, nil
 }
@@ -255,26 +255,35 @@ func (r ApprovalRequest) gate() string {
 }
 
 func (a *API) call(ctx context.Context, method, path string, body any, out any) error {
-	request, err := a.request(ctx, method, path, body)
+	data, err := a.exchange(ctx, method, path, body)
 	if err != nil {
-		return err
-	}
-	response, err := a.client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		return err
-	}
-	if err := responseError(method, path, response, data); err != nil {
 		return err
 	}
 	if out == nil {
 		return nil
 	}
 	return json.Unmarshal(data, out)
+}
+
+// exchange performs one dashboard request and returns the successful body.
+func (a *API) exchange(ctx context.Context, method, path string, body any) ([]byte, error) {
+	request, err := a.request(ctx, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+	response, err := a.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := responseError(method, path, response, data); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // request builds one call to the dashboard, with its body encoded when it has
@@ -308,5 +317,5 @@ func responseError(method, path string, response *http.Response, data []byte) er
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-10-03T14:05:27+02:00","module_hash":"37655bfc24247a066d035d3bd71843be06fdf20451479bbfaa9fc746e2e6e1f8","functions":[{"id":"func/URL","name":"URL","line":24,"end_line":37,"hash":"02435bf9efa0da8437614814eb0491ea73522de78bfd0c2a4c25c16ba9b3f103"},{"id":"func/dashboardAddress","name":"dashboardAddress","line":41,"end_line":43,"hash":"b76dd39e121cb0ee924beff64dbc18ab006ee205f49714645c81417027ca8a86"},{"id":"func/NewAPI","name":"NewAPI","line":56,"end_line":58,"hash":"9f67e71d7be154031c299fc890b6a646278e87625f2bfe01612333013a6ec1ee"},{"id":"func/NewForgeAPI","name":"NewForgeAPI","line":61,"end_line":65,"hash":"beec8d70a512a1f1f9ddd9bebf8f513ec285b618b76f775ca461bda915472b5a"},{"id":"func/Approvals.Pending","name":"Approvals.Pending","line":75,"end_line":81,"hash":"ef0c4e28072730d93ed8f54ead0ee4dd26c3b3af3b9d92395a20279e4d7d9383"},{"id":"func/Approvals.Resolved","name":"Approvals.Resolved","line":86,"end_line":92,"hash":"08b27419a029262de60ea078db57e2c52740fa40bc3f988d37649da8373a346b"},{"id":"func/Approvals.Approve","name":"Approvals.Approve","line":95,"end_line":101,"hash":"dd5c9e0c32bf7fddd77ed9df501a1eb46c000b40809321994b846bad432beb61"},{"id":"func/Approvals.SendBack","name":"Approvals.SendBack","line":104,"end_line":110,"hash":"cca8f8845d3a0f192314e1e235deacd539c0da098b4c82930b6a587684e87dc7"},{"id":"func/Approvals.client","name":"Approvals.client","line":114,"end_line":120,"hash":"4211b729e1f50037a1951c0132a1b6c039dc8a376a94573aa5c18dc5824deca5"},{"id":"func/API.Chat","name":"API.Chat","line":152,"end_line":154,"hash":"398a79c219221477b37ca392b678c0590d51ac1b76519427fecf986c88b45fca"},{"id":"func/API.Approvals","name":"API.Approvals","line":157,"end_line":186,"hash":"c8fa181a635a4b6baca3c2cdd0c957abe272be1a3b7efcbd628dddfec10410ca"},{"id":"func/forgeKey","name":"forgeKey","line":190,"end_line":192,"hash":"af8ef28a37c8ca5da468f5fc9640b3d2b542bb246cb2e0e5f82536914c62500f"},{"id":"func/API.ResolvedApprovals","name":"API.ResolvedApprovals","line":198,"end_line":211,"hash":"d53417f8c3347d0249585d4f3b3757aee5217b1af2257c3855c016c4a30e8df2"},{"id":"func/API.Approve","name":"API.Approve","line":215,"end_line":218,"hash":"8ef15c887c5b867ee8d942c11fd9de792523bee41abfa529c9c1bc601dc6a32c"},{"id":"func/API.SendBack","name":"API.SendBack","line":222,"end_line":225,"hash":"fe863288823571b281980c77e1ce6b1c9b1b5526d42e58f3626ab7826f6800b3"},{"id":"func/ApprovalRequest.gate","name":"ApprovalRequest.gate","line":229,"end_line":234,"hash":"11d7e24233706f967539b6d653cf6b1e6ba19c47bc181edb42cb330378f00ac9"},{"id":"func/API.call","name":"API.call","line":236,"end_line":257,"hash":"ed70d9387061331e57004fb0f855e2f5c2712bcb4aaf2f253f7d8f22ad155c2f"},{"id":"func/API.request","name":"API.request","line":261,"end_line":278,"hash":"4721157c005933e4f45d589fe9bb65e0dd3da721df8b2ecab475f46f3ad39b24"},{"id":"func/responseError","name":"responseError","line":282,"end_line":287,"hash":"efe5dae148dd33495d0d899815f1b887cdcc8075a74c262d501a55ef204ca4c3"}]}
+// {"version":1,"tested_at":"2026-11-14T23:42:46+01:00","module_hash":"5ed9c8b9f2f7597dd0f38497cc9515bd50cf6691e6e9396240515639644d61d7","functions":[{"id":"func/URL","name":"URL","line":24,"end_line":37,"hash":"02435bf9efa0da8437614814eb0491ea73522de78bfd0c2a4c25c16ba9b3f103"},{"id":"func/dashboardAddress","name":"dashboardAddress","line":41,"end_line":43,"hash":"b76dd39e121cb0ee924beff64dbc18ab006ee205f49714645c81417027ca8a86"},{"id":"func/NewAPI","name":"NewAPI","line":56,"end_line":58,"hash":"9f67e71d7be154031c299fc890b6a646278e87625f2bfe01612333013a6ec1ee"},{"id":"func/NewForgeAPI","name":"NewForgeAPI","line":61,"end_line":65,"hash":"beec8d70a512a1f1f9ddd9bebf8f513ec285b618b76f775ca461bda915472b5a"},{"id":"func/Approvals.Pending","name":"Approvals.Pending","line":75,"end_line":81,"hash":"761383ec898c5bc2ebc2abbd07ffb324856e10a6e610d047096954ed9da1e22b"},{"id":"func/Approvals.Resolved","name":"Approvals.Resolved","line":86,"end_line":92,"hash":"6393e7f3bc8cec2f0bae7e839483bbc1d6b5833f3c0573e13a3517699c7b13fb"},{"id":"func/Approvals.Approve","name":"Approvals.Approve","line":95,"end_line":101,"hash":"dd5c9e0c32bf7fddd77ed9df501a1eb46c000b40809321994b846bad432beb61"},{"id":"func/Approvals.SendBack","name":"Approvals.SendBack","line":104,"end_line":110,"hash":"cca8f8845d3a0f192314e1e235deacd539c0da098b4c82930b6a587684e87dc7"},{"id":"func/Approvals.client","name":"Approvals.client","line":114,"end_line":120,"hash":"4211b729e1f50037a1951c0132a1b6c039dc8a376a94573aa5c18dc5824deca5"},{"id":"func/API.Chat","name":"API.Chat","line":153,"end_line":155,"hash":"398a79c219221477b37ca392b678c0590d51ac1b76519427fecf986c88b45fca"},{"id":"func/API.Approvals","name":"API.Approvals","line":158,"end_line":164,"hash":"aca6d6ee166ffd50c7412203ec207b0cd215c1c345a36bd503e78a2b28a732cf"},{"id":"func/API.State","name":"API.State","line":167,"end_line":173,"hash":"adb7af5fb376ef83932531b55dee9c1f4c57b3543683a040b414d249693eb1c4"},{"id":"func/API.approvals","name":"API.approvals","line":176,"end_line":201,"hash":"a724f516a64fceb1b82a8b08ab71af081814f274bda33034446df1f100af62c7"},{"id":"func/forgeKey","name":"forgeKey","line":205,"end_line":207,"hash":"af8ef28a37c8ca5da468f5fc9640b3d2b542bb246cb2e0e5f82536914c62500f"},{"id":"func/API.ResolvedApprovals","name":"API.ResolvedApprovals","line":213,"end_line":219,"hash":"fb05dc44311251761b19f65b5fc659bec892490be1e5d73ff1ce95e2ca7fb1a1"},{"id":"func/API.resolvedApprovals","name":"API.resolvedApprovals","line":223,"end_line":232,"hash":"29cfa7b23dfebde2fa2a490bf668fb96c6f0bb016782089cd5a2c7d405d3a077"},{"id":"func/API.Approve","name":"API.Approve","line":236,"end_line":239,"hash":"8ef15c887c5b867ee8d942c11fd9de792523bee41abfa529c9c1bc601dc6a32c"},{"id":"func/API.SendBack","name":"API.SendBack","line":243,"end_line":246,"hash":"fe863288823571b281980c77e1ce6b1c9b1b5526d42e58f3626ab7826f6800b3"},{"id":"func/ApprovalRequest.gate","name":"ApprovalRequest.gate","line":250,"end_line":255,"hash":"11d7e24233706f967539b6d653cf6b1e6ba19c47bc181edb42cb330378f00ac9"},{"id":"func/API.call","name":"API.call","line":257,"end_line":266,"hash":"ca6ecb4e74466521df2f49062018da206d1c040fab9cde41c5485cf85e57e32d"},{"id":"func/API.exchange","name":"API.exchange","line":269,"end_line":287,"hash":"3caf111bf577197fae47fb4ce85440873097cf0c9a6bedc5e5fd295f73a1c81b"},{"id":"func/API.request","name":"API.request","line":291,"end_line":308,"hash":"4721157c005933e4f45d589fe9bb65e0dd3da721df8b2ecab475f46f3ad39b24"},{"id":"func/responseError","name":"responseError","line":312,"end_line":317,"hash":"efe5dae148dd33495d0d899815f1b887cdcc8075a74c262d501a55ef204ca4c3"}]}
 // mutate4go-manifest-end

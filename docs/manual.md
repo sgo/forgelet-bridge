@@ -48,6 +48,37 @@ request body and pairing behavior. `internal/relay.Request.Source` carries the
 metadata and `internal/relay.AppCompletedCardReportSource` names the one value
 that triggers the app-relay presentation.
 
+## Dashboard state snapshots
+
+Each bridge tick reads `/api/state` once from every dashboard it addresses.
+`internal/dashboard.SnapshotSource` decodes the complete response into one
+`internal/relay.DashboardSnapshot`, from which the bridge derives pending
+approvals, desk resolutions, forge clarifications and project clarifications.
+`internal/bridge.SnapshotStore` reads that value once for the tick.
+
+The tick cache is keyed by both the forge root and the resolved dashboard
+address. Forge-level and project-level work that address the same dashboard
+therefore share one response. The cache is discarded when the tick ends, so a
+later tick never sees an earlier response. Two different forge roots never
+share a dashboard result.
+
+If the request fails, every consumer that needs that snapshot fails for the
+tick. The bridge does not retry the state request in the same tick, substitute
+an earlier response, or manufacture empty data. Chat relay and board activity
+continue because they do not depend on the dashboard state response. The
+dashboard's approval, send-back, clarification-answer and chat endpoints are
+unchanged.
+
+The fixed synthetic comparison in
+`docs/evidence/fetch-one-dashboard-snapshot-per-bridge-tick.json` uses 32 ticks
+and two 1 MiB dashboards. It measures 128 state requests and 134,256,768 bytes
+for the old four-reads-per-tick pattern, versus 64 requests and 67,128,384
+bytes for complete snapshots: a 50% reduction in each. The same run measured
+3.281 seconds of process CPU before and 1.813 seconds after, a 44.7% reduction.
+These synthetic figures isolate payload construction, transfer and decoding;
+the deploy gate and operator acceptance still check the live bridge and Matrix
+delivery.
+
 ## Configuration
 
 The `internal/config.Config` type owns the bridge configuration. Its JSON

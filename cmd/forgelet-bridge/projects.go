@@ -51,10 +51,6 @@ func (forgeProjects) Projects(forgeRoot string) ([]bridge.Project, error) {
 				Root:    root,
 				Project: name,
 			},
-			Snapshot: dashboard.SnapshotSource{
-				Root:    root,
-				Project: name,
-			},
 		})
 	}
 	return projects, nil

@@ -16,6 +16,14 @@ small Matrix boundary that forge removal needs and
 Project identity is resolved through `ProjectCatalog`; Matrix commands never
 accept a project room id from their caller.
 
+Within one relay pass, `internal/dashboard.SnapshotSource` reads the complete
+dashboard payload once and returns `internal/relay.DashboardSnapshot`.
+`internal/bridge` owns a tick-local cache keyed by forge root and dashboard
+address and passes the derived approvals, resolutions and clarifications to
+their consumers. The cache has no lifetime beyond that `Tick`, and a failed
+entry is retained only long enough to prevent a same-tick retry. Action calls
+still go through the existing dashboard endpoints.
+
 The installed `scripts/matrix-bridge.sh` adapter is the process boundary for
 host project removal. Its `remove-project-plan` operation validates configured
 identity before crossing into the bridge binary and reduces the binary's result
@@ -54,6 +62,8 @@ commands and `build/acceptance/bin` output remain the contract.
   client.
 - Core policy and state packages do not import `internal/bridge` or
   `internal/matrix`.
+- Dashboard state is read at most once per forge-root/dashboard identity per
+  `Bridge.Tick`; a snapshot cannot cross a tick or a dashboard identity.
 - `scripts/check-architecture.sh` executes `go vet` and rejects either
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs

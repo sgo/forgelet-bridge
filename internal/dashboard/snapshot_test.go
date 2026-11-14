@@ -44,6 +44,13 @@ func TestSnapshotSourceCarriesEveryConsumerFromOneStateRead(t *testing.T) {
 	defer server.Close()
 
 	source := SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL, Project: "project-a"}
+	identity, err := source.Identity()
+	if err != nil {
+		t.Fatalf("Identity: %v", err)
+	}
+	if identity != "/forges/forge-a\x00"+server.URL {
+		t.Errorf("identity = %q, want the root and dashboard address", identity)
+	}
 	snapshot, err := source.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
@@ -75,6 +82,27 @@ func TestSnapshotSourceNamesTheProjectWhenTheDashboardDoesNot(t *testing.T) {
 	}
 	if len(snapshot.Clarifications) != 1 || snapshot.Clarifications[0].Project != "project-a" {
 		t.Errorf("clarifications = %+v, want the source project", snapshot.Clarifications)
+	}
+}
+
+func TestSnapshotSourceReportsAnUnannouncedDashboard(t *testing.T) {
+	source := SnapshotSource{Root: t.TempDir()}
+	if _, err := source.Identity(); err == nil {
+		t.Error("Identity accepted a dashboard that never announced itself")
+	}
+	if _, err := source.Snapshot(context.Background()); err == nil {
+		t.Error("Snapshot accepted a dashboard that never announced itself")
+	}
+}
+
+func TestSnapshotSourceReportsAFailedDashboard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "dashboard unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	source := SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}
+	if _, err := source.Snapshot(context.Background()); err == nil {
+		t.Error("Snapshot accepted a failed dashboard")
 	}
 }
 

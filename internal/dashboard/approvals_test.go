@@ -76,6 +76,9 @@ func TestApprovalsExplainsAForgeWithoutADashboard(t *testing.T) {
 	if _, err := approvals.Pending(context.Background()); err == nil {
 		t.Fatal("Pending succeeded for a forge whose dashboard never announced itself")
 	}
+	if _, err := approvals.Resolved(context.Background()); err == nil {
+		t.Fatal("Resolved succeeded for a forge whose dashboard never announced itself")
+	}
 }
 
 // announced tells a forge where its dashboard is, the way the real dashboard

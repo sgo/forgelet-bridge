@@ -79,6 +79,27 @@ func TestTickProvisionsAProjectRoomInsideItsForgeSpaceAndReusesIt(t *testing.T) 
 	}
 }
 
+func TestProjectForgeEnsuresAndThenReusesItsRoomState(t *testing.T) {
+	cfg := newTestConfig(t, "/forges/forge-a")
+	rooms := &fakeRooms{}
+	built := projectBridge(t, cfg, rooms, fakeProjectSource{})
+
+	forge, err := built.projectForge(context.Background(), "/forges/forge-a")
+	if err != nil {
+		t.Fatalf("first projectForge: %v", err)
+	}
+	if forge.SpaceID != "!space-forge-a" || forge.RoomID != "!room-forge-a" {
+		t.Errorf("forge = %+v, want the provisioned forge rooms", forge)
+	}
+	again, err := built.projectForge(context.Background(), "/forges/forge-a")
+	if err != nil {
+		t.Fatalf("second projectForge: %v", err)
+	}
+	if again.SpaceID != forge.SpaceID || again.RoomID != forge.RoomID {
+		t.Errorf("reused forge = %+v, want %+v", again, forge)
+	}
+}
+
 func TestProjectRoomCarriesChatToItsOwnQueue(t *testing.T) {
 	cfg := newTestConfig(t, "/forges/forge-a")
 	projectStore := &fakeStore{requests: []relay.Request{

@@ -119,6 +119,28 @@ func TestResolvedApprovalsReadsHowTheDeskEndedThem(t *testing.T) {
 	}
 }
 
+func TestStateAndConsumersReportAFailedDashboard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "dashboard unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	api := NewForgeAPI("/forges/forge-a", server.URL)
+	ctx := context.Background()
+
+	if _, err := api.State(ctx); err == nil {
+		t.Error("State accepted a failed dashboard")
+	}
+	if _, err := api.Approvals(ctx); err == nil {
+		t.Error("Approvals accepted a failed dashboard")
+	}
+	if _, err := api.ResolvedApprovals(ctx); err == nil {
+		t.Error("ResolvedApprovals accepted a failed dashboard")
+	}
+	if _, err := api.Clarifications(ctx); err == nil {
+		t.Error("Clarifications accepted a failed dashboard")
+	}
+}
+
 func TestApproveCallsTheDashboardEndpoint(t *testing.T) {
 	var gotPath, gotBody string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

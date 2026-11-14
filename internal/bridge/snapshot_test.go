@@ -18,6 +18,19 @@ type fakeSnapshotSource struct {
 	callLimit int
 }
 
+type fakeSnapshotClarifications struct {
+	*fakeClarifications
+	source *fakeSnapshotSource
+}
+
+func (f fakeSnapshotClarifications) Identity() (string, error) {
+	return f.source.Identity()
+}
+
+func (f fakeSnapshotClarifications) Snapshot(ctx context.Context) (relay.DashboardSnapshot, error) {
+	return f.source.Snapshot(ctx)
+}
+
 func (f *fakeSnapshotSource) Identity() (string, error) {
 	return f.identity, nil
 }
@@ -180,8 +193,7 @@ func TestSnapshotCacheIsScopedToTheTickAndDashboardIdentity(t *testing.T) {
 		Name:           "project-a",
 		Root:           "/forges/forge-a/projects/project-a",
 		Store:          &fakeStore{},
-		Clarifications: &fakeClarifications{},
-		Snapshot:       source,
+		Clarifications: fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: source},
 	}
 	built.SetSnapshotSources(map[string]SnapshotStore{root: source})
 	built.SetProjectSource(fakeProjectSource{projects: []Project{project}})
@@ -198,7 +210,7 @@ func TestSnapshotCacheIsScopedToTheTickAndDashboardIdentity(t *testing.T) {
 
 	other := &fakeSnapshotSource{identity: "other-dashboard", snapshot: source.snapshot}
 	built.SetSnapshotSources(map[string]SnapshotStore{root: other})
-	project.Snapshot = other
+	project.Clarifications = fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: other}
 	built.SetProjectSource(fakeProjectSource{projects: []Project{project}})
 	if err := built.Tick(context.Background()); err != nil {
 		t.Fatalf("second Tick: %v", err)
@@ -239,5 +251,56 @@ func TestDifferentDashboardIdentitiesEachReadOncePerTick(t *testing.T) {
 		if got := fakes[root].callCount(); got != 1 {
 			t.Errorf("%s snapshot calls = %d, want one", root, got)
 		}
+	}
+}
+
+func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
+	root := "/forges/forge-a"
+	projectRoot := root + "/projects/agent"
+	project := Project{
+		Name:           "agent",
+		Root:           projectRoot,
+		Store:          &fakeStore{},
+		Clarifications: fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: nil},
+	}
+	source := &fakeSnapshotSource{
+		identity: projectRoot + "/dashboard",
+		snapshot: relay.DashboardSnapshot{Clarifications: []relay.Clarification{
+			clarificationOf("agent", "clar-1", "coder", "which stage is next?"),
+		}},
+	}
+	project.Clarifications = fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: source}
+	rooms := &fakeRooms{}
+	built := projectBridge(t, newTestConfig(t, root), rooms, fakeProjectSource{})
+	room := projectRoom("!space-forge-a", "!project-agent-forge-a")
+	seen := roomEvents{messages: map[string][]relay.RoomEvent{}, reactions: map[string][]relay.Reaction{}}
+
+	carriedOut, err := built.carryOutProjectClarifications(context.Background(), project, room, seen, snapshotCache{})
+	if err != nil {
+		t.Fatalf("carryOutProjectClarifications: %v", err)
+	}
+	if carriedOut == 0 || lastMessageIn(rooms, room.RoomID) == nil {
+		t.Errorf("carried out = %d, sent = %+v, want the project clarification", carriedOut, rooms.sentMessages())
+	}
+}
+
+func TestProjectClarificationSnapshotFailureCarriesNoWork(t *testing.T) {
+	source := &fakeSnapshotSource{identity: "project-dashboard", err: errors.New("unavailable"), callLimit: 1}
+	project := Project{
+		Name: "agent",
+		Root: "/forges/forge-a/projects/agent",
+		Clarifications: fakeSnapshotClarifications{
+			fakeClarifications: &fakeClarifications{},
+			source:             source,
+		},
+	}
+	built := &Bridge{}
+	carriedOut, err := built.carryOutProjectClarifications(
+		context.Background(), project, Room{ClarificationsRoomID: "!project"}, roomEvents{}, snapshotCache{})
+	if err == nil {
+		t.Fatal("carryOutProjectClarifications accepted a failed snapshot")
+	}
+	if carriedOut != 0 {
+		t.Errorf("carried out = %d, want none from a failed project snapshot", carriedOut)
 	}
 }

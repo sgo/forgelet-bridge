@@ -35,3 +35,7 @@ func (b *Bridge) snapshotFrom(ctx context.Context, cache snapshotCache, source S
 	cache[identity] = snapshotResult{snapshot: snapshot, err: err}
 	return snapshot, err
 }
+
+// mutate4go-manifest-begin
+// {"version":1,"tested_at":"2026-11-14T23:40:44+01:00","module_hash":"e344de0616f40518b32c58755bbeb4e46cbc16505db3e940bd526337ed6cb321","functions":[{"id":"func/Bridge.snapshotFrom","name":"Bridge.snapshotFrom","line":23,"end_line":37,"hash":"71424fa3e14c4788ec798991f510a2e6eebab9b2657466d487ebdaa60d533ad0"}]}
+// mutate4go-manifest-end

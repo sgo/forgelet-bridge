@@ -8,7 +8,7 @@ cd "$project_root"
 scripts/acceptance.sh features/fetch-one-dashboard-snapshot-per-bridge-tick.feature
 
 mkdir -p target/e2e
-go run -tags goolm ./cmd/state-snapshot-measure \
+go run -tags goolm ./qa/state-snapshot-measure \
   --ticks 32 \
   --payload-bytes 1048576 \
   --output target/e2e/state-snapshot-measure.json

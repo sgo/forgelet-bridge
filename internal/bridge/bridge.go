@@ -33,7 +33,6 @@ type Project struct {
 	Root           string
 	Store          ForgeStore
 	Clarifications ClarificationStore
-	Snapshot       SnapshotStore
 }
 
 // ProjectSource discovers the single-agent projects a forge root currently has
@@ -147,9 +146,9 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		log = slog.Default()
 	}
 	statePath := filepath.Join(cfg.StateDir, "bridge-state.json")
-	loaded, err := state.Load(statePath)
+	loaded, err := loadBridgeState(statePath)
 	if err != nil {
-		return nil, fmt.Errorf("load bridge state: %w", err)
+		return nil, err
 	}
 	return &Bridge{
 		cfg:                   cfg,
@@ -157,7 +156,7 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		stores:                stores,
 		approvals:             approvals,
 		clarifications:        clarifications,
-		snapshots:             map[string]SnapshotStore{},
+		snapshots:             snapshotStores(approvals),
 		boards:                boards,
 		statePath:             statePath,
 		statusDir:             cfg.StateDir,
@@ -169,6 +168,28 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		pendingClarifications: map[string]*pendingClarifications{},
 		unhappy:               map[string]string{},
 	}, nil
+}
+
+// loadBridgeState loads the durable relay bookkeeping for one bridge.
+func loadBridgeState(path string) (*state.State, error) {
+	loaded, err := state.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("load bridge state: %w", err)
+	}
+	return loaded, nil
+}
+
+// snapshotStores finds dashboard adapters that can serve one complete state
+// response. The capability travels with the existing approvals adapter, so the
+// process boundary does not need a second configuration surface.
+func snapshotStores(approvals map[string]ApprovalStore) map[string]SnapshotStore {
+	sources := make(map[string]SnapshotStore, len(approvals))
+	for root, store := range approvals {
+		if source, ok := store.(SnapshotStore); ok {
+			sources[root] = source
+		}
+	}
+	return sources
 }
 
 // SetProjectSource lets the bridge discover single-agent projects from the
@@ -194,17 +215,14 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 {
 		interval = time.Second
 	}
-	if err := b.Tick(ctx); err != nil {
-		b.log.Error("tick failed", "error", err)
-	}
+	b.runTick(ctx)
 	wait := interval
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(wait):
-			if err := b.Tick(ctx); err != nil {
-				b.log.Error("tick failed", "error", err)
+			if b.runTick(ctx) {
 				wait = backOff(wait, interval)
 				continue
 			}
@@ -213,15 +231,22 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration) error {
 	}
 }
 
+// runTick performs one relay pass and reports whether it failed.
+func (b *Bridge) runTick(ctx context.Context) bool {
+	err := b.Tick(ctx)
+	if err != nil {
+		b.log.Error("tick failed", "error", err)
+	}
+	// The caller uses this result to choose whether to back off.
+	return err != nil
+}
+
 // backOff spaces out retries after a failed tick, so a homeserver that is
 // throttling or away is not hammered: the wait doubles, never drops below the
 // interval the bridge was told to tick at, and never passes its ceiling.
 func backOff(wait, interval time.Duration) time.Duration {
-	return min(max(wait*2, interval), maxBackOff)
+	return min(max(wait*2, interval), 30*time.Second)
 }
-
-// maxBackOff is how long the bridge waits at most between tries.
-const maxBackOff = 30 * time.Second
 
 // Tick carries out one round of work: catch the rooms up with the forges and
 // the forges up with the rooms.
@@ -233,39 +258,70 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	snapshots := snapshotCache{}
 
 	b.unhappy = map[string]string{}
+	carriedOut := b.tickConfiguredForges(ctx, seen, snapshots)
+	b.tick++
+	return b.writeTickStatus(carriedOut)
+}
+
+// tickConfiguredForges serves every configured forge and the projects that
+// forge has open, keeping one snapshot cache for the whole tick.
+func (b *Bridge) tickConfiguredForges(ctx context.Context, seen roomEvents, snapshots snapshotCache) int {
 	carriedOut := 0
 	for _, forge := range b.cfg.Forges {
-		done, err := b.tickForge(ctx, forge.Root, seen, snapshots)
-		if err != nil {
-			// A forge the bridge cannot serve is that forge's problem: it is
-			// reported and tried again on its own, and what the rooms said for
-			// every other forge is still carried out.
-			b.refuse(err, forge.Root)
-			continue
-		}
-		carriedOut += done
-		if b.projects == nil {
-			continue
-		}
-		projects, err := b.projects.Projects(forge.Root)
-		if err != nil {
-			b.refuse(err, forge.Root)
-			continue
-		}
-		for _, project := range projects {
-			if b.state.ProjectRemovalPending(forge.Root, project.Name) {
-				continue
-			}
-			done, err := b.tickProject(ctx, forge.Root, project, seen, snapshots)
-			if err != nil {
-				b.refuse(err, project.Root)
-				continue
-			}
-			carriedOut += done
-		}
+		carriedOut += b.tickForgeAndProjects(ctx, forge.Root, seen, snapshots)
 	}
+	return carriedOut
+}
 
-	b.tick++
+// tickForgeAndProjects keeps a forge failure local to that forge. Its projects
+// are not attempted when the forge room itself cannot be served.
+func (b *Bridge) tickForgeAndProjects(ctx context.Context, root string, seen roomEvents, snapshots snapshotCache) int {
+	done, err := b.tickForge(ctx, root, seen, snapshots)
+	if err != nil {
+		b.refuse(err, root)
+		// Projects are not attempted when their forge room cannot be served.
+		return 0
+	}
+	// The tick's work is the forge room plus every open project it served.
+	return done + b.tickProjects(ctx, root, seen, snapshots)
+}
+
+// tickProjects serves the open projects inside one forge.
+func (b *Bridge) tickProjects(ctx context.Context, root string, seen roomEvents, snapshots snapshotCache) (carriedOut int) {
+	if b.projects == nil {
+		return
+	}
+	projects, err := b.projects.Projects(root)
+	if err != nil {
+		b.refuse(err, root)
+		// A failed project discovery carries out no project work.
+		return
+	}
+	for _, project := range projects {
+		carriedOut += b.tickProjectIfOpen(ctx, root, project, seen, snapshots)
+	}
+	// Counts start empty and grow by the work each project carried out.
+	return
+}
+
+// tickProjectIfOpen skips a project whose removal is already in progress and
+// keeps any other project failure local to that project.
+func (b *Bridge) tickProjectIfOpen(ctx context.Context, root string, project Project, seen roomEvents, snapshots snapshotCache) (carriedOut int) {
+	if b.state.ProjectRemovalPending(root, project.Name) {
+		// Removal progress suppresses this project until removal completes.
+		return
+	}
+	done, err := b.tickProject(ctx, root, project, seen, snapshots)
+	if err != nil {
+		b.refuse(err, project.Root)
+		return
+	}
+	carriedOut = done
+	return
+}
+
+// writeTickStatus records the result of the relay pass that just finished.
+func (b *Bridge) writeTickStatus(carriedOut int) error {
 	status := Status{
 		Tick:              b.tick,
 		Idle:              carriedOut == 0 && b.pendingCount() == 0,
@@ -386,38 +442,17 @@ func (b *Bridge) drainRooms(ctx context.Context) (roomEvents, error) {
 // tickForge catches one forge's rooms up with the forge and the forge up with
 // its rooms, and reports how much work it carried out.
 func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, snapshots snapshotCache) (int, error) {
-	room, err := b.roomFor(ctx, root)
+	room, store, requests, err := b.forgeTickInputs(ctx, root)
 	if err != nil {
 		return 0, err
 	}
-	store, ok := b.stores[root]
-	if !ok {
-		return 0, fmt.Errorf("no dashboard queue configured for forge root %s", root)
-	}
-	requests, err := store.Requests()
-	if err != nil {
-		return 0, fmt.Errorf("read dashboard requests for %s: %w", root, err)
-	}
 
 	carriedOut := b.carryOutChat(ctx, root, "", store, room, seen, requests)
-
-	source := b.snapshots[root]
-	var snapshot relay.DashboardSnapshot
-	var snapshotErr error
-	if source != nil {
-		snapshot, snapshotErr = b.snapshotFrom(ctx, snapshots, source)
-	}
-	if source != nil && snapshotErr != nil {
-		b.refuse(snapshotErr, root)
+	stateWork, err := b.carryOutStateConsumers(ctx, root, room, seen, snapshots)
+	if err != nil {
+		b.refuse(err, root)
 	} else {
-		approvals, err := b.carryOutApprovals(
-			ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID],
-			snapshot, source != nil)
-		if err != nil {
-			b.refuse(err, root)
-		} else {
-			carriedOut += approvals
-		}
+		carriedOut += stateWork
 	}
 
 	activity, err := b.carryOutActivity(ctx, root, room)
@@ -427,8 +462,49 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, sn
 		carriedOut += activity
 	}
 
-	if source != nil && snapshotErr != nil {
-		return carriedOut, nil
+	return carriedOut, nil
+}
+
+// forgeTickInputs reads the room and dashboard queue one forge needs before
+// its consumers can run.
+func (b *Bridge) forgeTickInputs(ctx context.Context, root string) (Room, ForgeStore, []relay.Request, error) {
+	room, err := b.roomFor(ctx, root)
+	if err != nil {
+		return Room{}, nil, nil, err
+	}
+	store, ok := b.stores[root]
+	if !ok {
+		return Room{}, nil, nil, fmt.Errorf("no dashboard queue configured for forge root %s", root)
+	}
+	requests, err := store.Requests()
+	if err != nil {
+		return Room{}, nil, nil, fmt.Errorf("read dashboard requests for %s: %w", root, err)
+	}
+	return room, store, requests, nil
+}
+
+// carryOutStateConsumers reads one dashboard snapshot when available and
+// carries its approval and clarification work. Approval or clarification
+// action failures remain local to their consumer.
+func (b *Bridge) carryOutStateConsumers(ctx context.Context, root string, room Room, seen roomEvents, snapshots snapshotCache) (int, error) {
+	source := b.snapshots[root]
+	snapshot := relay.DashboardSnapshot{}
+	var err error
+	if source != nil {
+		snapshot, err = b.snapshotFrom(ctx, snapshots, source)
+		if err != nil {
+			// Both dependent consumers fail without any work for this tick.
+			return 0, err
+		}
+	}
+	carriedOut := 0
+	approvals, err := b.carryOutApprovals(
+		ctx, root, room, seen.messages[room.ApprovalsRoomID], seen.reactions[room.ApprovalsRoomID],
+		snapshot, source != nil)
+	if err != nil {
+		b.refuse(err, root)
+	} else {
+		carriedOut += approvals
 	}
 	clarifications, err := b.carryOutClarifications(
 		ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID],
@@ -491,5 +567,5 @@ func (b *Bridge) carryOut(ctx context.Context, root, project string, store Forge
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-07T22:40:33+01:00","module_hash":"1e0d3fa44fabf3f600d062c7f691660e5a147d0ea2e31bfa575f8d24eb0154a7","functions":[{"id":"func/New","name":"New","line":135,"end_line":161,"hash":"e8586e0ff92b2cfe628b8eb3d8720d1e2f911844113b32202bcea3594258a87a"},{"id":"func/Bridge.SetProjectSource","name":"Bridge.SetProjectSource","line":166,"end_line":168,"hash":"81cceca900d1598467e463637cdaa435545ec6b05d6b3d2cc5e04ceb31f71d06"},{"id":"func/Bridge.State","name":"Bridge.State","line":171,"end_line":173,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":176,"end_line":197,"hash":"8f3f629a65f21167539ddf1f5f571a073f55caec778b2ce61c1d37026e0dc233"},{"id":"func/backOff","name":"backOff","line":202,"end_line":204,"hash":"313dab7f39c47410d8e18174342f6c613f4c66b3081679d7099f2bf342b7a010"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":211,"end_line":267,"hash":"91d6eb98cb3131bdd458962a756624520671025aaf53e28a74c290c7deae40de"},{"id":"func/Bridge.forgeReport","name":"Bridge.forgeReport","line":272,"end_line":283,"hash":"ae1f631af0f579c29587141c1cc92631d2f0a11dce543cf99bb4a3464505a046"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":286,"end_line":288,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.owedReport","name":"Bridge.owedReport","line":292,"end_line":298,"hash":"9fba61b71ca397e843f6642fb1f4102a576086811147030152f04749cd2c2a9a"},{"id":"func/Bridge.owedFor","name":"Bridge.owedFor","line":302,"end_line":306,"hash":"0fc7db7e7230a2e5b8b8db380f8ed44932819fe4cedb25d27be537d6d388d104"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":309,"end_line":311,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":315,"end_line":317,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":322,"end_line":330,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":335,"end_line":338,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":348,"end_line":366,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":370,"end_line":407,"hash":"8f9191918ae4743a5e5a1036c873f96e15fc64f2bdcf67aaa5ce9a467cf95f1e"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":412,"end_line":436,"hash":"248d1f49bef5a99de88b154b21af4f14835e0fcbdee451364ad5a59ff002e68b"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":438,"end_line":443,"hash":"eae760be9fe3e2d404da7f84cb87961a48db887e2a0149e422bc625ec61b3700"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":446,"end_line":456,"hash":"aecb68109dc127d8cb20847827edd650d29c8c215e1fbddda6ba39560649b0a8"}]}
+// {"version":1,"tested_at":"2026-11-14T23:34:48+01:00","module_hash":"bffec7d92583d2237c58f5a62cd329f0b53499e1fadce410146d79fec139dd7d","functions":[{"id":"func/New","name":"New","line":144,"end_line":171,"hash":"f07fb878396714e70abaf86cbddc098f2cffa9c3d5f4a3c9e976e5690030e279"},{"id":"func/loadBridgeState","name":"loadBridgeState","line":174,"end_line":180,"hash":"3af36a0c01e53921f684edbc2cc0e7f6549f682fc7d208ac7a60ec80b8d7c9d2"},{"id":"func/snapshotStores","name":"snapshotStores","line":185,"end_line":193,"hash":"d58459d5645da3fdf440e91b006e008095fe054e16f45d35f84c29eee994ad2c"},{"id":"func/Bridge.SetProjectSource","name":"Bridge.SetProjectSource","line":198,"end_line":200,"hash":"81cceca900d1598467e463637cdaa435545ec6b05d6b3d2cc5e04ceb31f71d06"},{"id":"func/Bridge.SetSnapshotSources","name":"Bridge.SetSnapshotSources","line":204,"end_line":206,"hash":"4dac8d7a533f0beb0ae0c129b8e3fef340ad9842b73a8206bb31ae942214d694"},{"id":"func/Bridge.State","name":"Bridge.State","line":209,"end_line":211,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":214,"end_line":232,"hash":"4c794a9bf882c89a9285371a77b07a4ebdb83e767a88bce6c694c76c363c494a"},{"id":"func/Bridge.runTick","name":"Bridge.runTick","line":235,"end_line":242,"hash":"a9bcaa6d9f1f172c20ac37dcf91b794f30cd0030a6ac6e67b8c4335ec9645ab2"},{"id":"func/backOff","name":"backOff","line":247,"end_line":249,"hash":"f79b36ff71b470c2d08648b1816e8ead1da7c3aca5887a2cb0cc7424bf6a7090"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":253,"end_line":264,"hash":"a32a60d148c284154e5a82ff4d4f7b9873d56d1bf54b93a372367d5e0f43d1d2"},{"id":"func/Bridge.tickConfiguredForges","name":"Bridge.tickConfiguredForges","line":268,"end_line":274,"hash":"5b427af14ba4f9c4ef4e6da52aba02dff492f507a7e51eed2e92cc300690f513"},{"id":"func/Bridge.tickForgeAndProjects","name":"Bridge.tickForgeAndProjects","line":278,"end_line":287,"hash":"6b5571a0eda85e6c6446b1847559874226323d7896c433496bbd5e00063f7f53"},{"id":"func/Bridge.tickProjects","name":"Bridge.tickProjects","line":290,"end_line":305,"hash":"a5a27217d534cd6d8c4d99540f1c079d7a06775a389bc71e03fa29c75fe8d6ed"},{"id":"func/Bridge.tickProjectIfOpen","name":"Bridge.tickProjectIfOpen","line":309,"end_line":321,"hash":"c1df7287938b576ac0ad17ece9420e773e201c42ad26607149e73a215247066f"},{"id":"func/Bridge.writeTickStatus","name":"Bridge.writeTickStatus","line":324,"end_line":341,"hash":"f6c96efddb0332abec2d9d151694ffd5c40a5dfaea81d7ef90e8ab737b151747"},{"id":"func/Bridge.forgeReport","name":"Bridge.forgeReport","line":346,"end_line":357,"hash":"ae1f631af0f579c29587141c1cc92631d2f0a11dce543cf99bb4a3464505a046"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":360,"end_line":362,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.owedReport","name":"Bridge.owedReport","line":366,"end_line":372,"hash":"9fba61b71ca397e843f6642fb1f4102a576086811147030152f04749cd2c2a9a"},{"id":"func/Bridge.owedFor","name":"Bridge.owedFor","line":376,"end_line":380,"hash":"0fc7db7e7230a2e5b8b8db380f8ed44932819fe4cedb25d27be537d6d388d104"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":383,"end_line":385,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":389,"end_line":391,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":396,"end_line":404,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":409,"end_line":412,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":422,"end_line":440,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":444,"end_line":466,"hash":"e90bd49cebe11da73e6d29e5537797b8987aff9fc62ff98d0717e92a1a2035bf"},{"id":"func/Bridge.forgeTickInputs","name":"Bridge.forgeTickInputs","line":470,"end_line":484,"hash":"4787f4356a9734b593311f0f6ecfaf900efb30fdbc5b307551c27faf97d199b8"},{"id":"func/Bridge.carryOutStateConsumers","name":"Bridge.carryOutStateConsumers","line":489,"end_line":518,"hash":"be5ff3648c784349a3e7a794a34403b7fabeb621b9375d846f1719d1a0422115"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":523,"end_line":547,"hash":"248d1f49bef5a99de88b154b21af4f14835e0fcbdee451364ad5a59ff002e68b"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":549,"end_line":554,"hash":"eae760be9fe3e2d404da7f84cb87961a48db887e2a0149e422bc625ec61b3700"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":557,"end_line":567,"hash":"aecb68109dc127d8cb20847827edd650d29c8c215e1fbddda6ba39560649b0a8"}]}
 // mutate4go-manifest-end

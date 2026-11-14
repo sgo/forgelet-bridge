@@ -101,7 +101,6 @@ func serve(ctx context.Context, cfg config.Config, interval time.Duration, log *
 	if err != nil {
 		return err
 	}
-	relay.SetSnapshotSources(opened.snapshots)
 	relay.SetProjectSource(forgeProjects{})
 	deviceID, fingerprint := client.DeviceIdentity()
 	relay.ReportDevice(bridge.Device{ID: deviceID, Fingerprint: fingerprint})
@@ -118,7 +117,6 @@ type adapters struct {
 	chat           map[string]bridge.ForgeStore
 	approvals      map[string]bridge.ApprovalStore
 	clarifications map[string]bridge.ClarificationStore
-	snapshots      map[string]bridge.SnapshotStore
 	boards         map[string]bridge.BoardStore
 }
 
@@ -131,14 +129,12 @@ func openAdapters(cfg config.Config) adapters {
 		chat:           make(map[string]bridge.ForgeStore, len(cfg.Forges)),
 		approvals:      make(map[string]bridge.ApprovalStore, len(cfg.Forges)),
 		clarifications: make(map[string]bridge.ClarificationStore, len(cfg.Forges)),
-		snapshots:      make(map[string]bridge.SnapshotStore, len(cfg.Forges)),
 		boards:         make(map[string]bridge.BoardStore, len(cfg.Forges)),
 	}
 	for _, forge := range cfg.Forges {
 		opened.chat[forge.Root] = dashboard.Queue{Store: dashboard.New(forge.Root), Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.approvals[forge.Root] = dashboard.Approvals{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.clarifications[forge.Root] = dashboard.Clarifications{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
-		opened.snapshots[forge.Root] = dashboard.SnapshotSource{Root: forge.Root, ConfiguredURL: forge.DashboardURL}
 		opened.boards[forge.Root] = board.Queue{Store: board.New(forge.Root), Forge: forge.Root}
 	}
 	return opened

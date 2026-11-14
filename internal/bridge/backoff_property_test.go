@@ -16,14 +16,14 @@ import (
 // passes its ceiling however many ticks fail in a row.
 func TestPropertyFailedTicksWaitLongerButNotForever(t *testing.T) {
 	property := func(interval time.Duration, failures uint8) bool {
-		if interval <= 0 || interval > maxBackOff {
+		if interval <= 0 || interval > 30*time.Second {
 			// The bridge backs off the interval it was configured with.
 			return true
 		}
 		wait := interval
 		for range failures {
 			next := backOff(wait, interval)
-			if next < interval || next < wait || next > maxBackOff {
+			if next < interval || next < wait || next > 30*time.Second {
 				return false
 			}
 			wait = next
@@ -34,7 +34,7 @@ func TestPropertyFailedTicksWaitLongerButNotForever(t *testing.T) {
 		MaxCount: 300,
 		Values: func(values []reflect.Value, rnd *rand.Rand) {
 			intervals := []time.Duration{
-				time.Millisecond, 200 * time.Millisecond, time.Second, 5 * time.Second, maxBackOff,
+				time.Millisecond, 200 * time.Millisecond, time.Second, 5 * time.Second, 30 * time.Second,
 			}
 			values[0] = reflect.ValueOf(intervals[rnd.Intn(len(intervals))])
 			values[1] = reflect.ValueOf(uint8(rnd.Intn(256)))

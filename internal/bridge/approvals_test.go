@@ -140,6 +140,68 @@ func TestTickPostsPendingApprovalsIntoTheApprovalsRoom(t *testing.T) {
 	}
 }
 
+func TestApprovalInputFailureReportsNoWork(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeApprovals{resolvedErr: context.DeadlineExceeded}
+	built, _ := newTestBridgeWithApprovals(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: store}, root)
+
+	carriedOut, err := built.carryOutApprovals(
+		context.Background(), root, Room{ApprovalsRoomID: "!approvals-forge-a"},
+		nil, nil, relay.DashboardSnapshot{}, false)
+	if err == nil {
+		t.Fatal("carryOutApprovals accepted unreadable desk resolutions")
+	}
+	if carriedOut != 0 {
+		t.Errorf("carried out = %d, want none when snapshot inputs fail", carriedOut)
+	}
+}
+
+func TestApprovalFactsKeepWorkAlreadyCarriedOutWhenALaterWriteFails(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{stateErrAfter: 2}
+	first := phoneApproval()
+	second := first
+	second.Key = "forgelet-bridge/approval-2"
+	second.ID = "approval-2"
+	store := &fakeApprovals{pending: []relay.Approval{first, second}}
+	built, _ := newTestBridgeWithApprovals(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: store}, root)
+
+	carriedOut, err := built.carryOutApprovals(
+		context.Background(), root, Room{ApprovalsRoomID: "!approvals-forge-a"},
+		nil, nil, relay.DashboardSnapshot{}, false)
+	if err == nil {
+		t.Fatal("carryOutApprovals accepted a failed second fact write")
+	}
+	if carriedOut != 3 {
+		t.Errorf("carried out = %d, want two messages and one written fact", carriedOut)
+	}
+}
+
+func TestUnknownApprovalActionsAndResolutionsAreRefused(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeApprovals{}
+	built, _ := newTestBridgeWithApprovals(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: store}, root)
+	room := Room{ApprovalsRoomID: "!approvals-forge-a"}
+
+	if err := built.carryOutApproval(context.Background(), root, store, room, relay.ApprovalAction{Kind: "unknown"}); err == nil {
+		t.Error("carryOutApproval accepted an unknown action")
+	}
+	if err := built.resolveApproval(context.Background(), root, store, relay.ApprovalAction{
+		Key:        "approval-1",
+		Resolution: "unknown",
+	}); err == nil {
+		t.Error("resolveApproval accepted an unknown resolution")
+	}
+}
+
 func TestTickApprovesWhenTheOperatorReacts(t *testing.T) {
 	store := &fakeApprovals{pending: []relay.Approval{phoneApproval()}}
 	rooms := &fakeRooms{}

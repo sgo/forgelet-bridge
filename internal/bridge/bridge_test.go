@@ -84,11 +84,17 @@ type fakeRooms struct {
 	reactions         []relay.Reaction
 	drainErr          error
 	stateErr          map[string]error
+	stateErrAfter     int
+	stateCalls        int
+	ensureErr         error
 }
 
 func (r *fakeRooms) EnsureForge(_ context.Context, forgeName, _ string) (Room, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.ensureErr != nil {
+		return Room{}, r.ensureErr
+	}
 	r.ensured = append(r.ensured, forgeName)
 	return Room{
 		SpaceID:              "!space-" + forgeName,
@@ -167,8 +173,12 @@ func (r *fakeRooms) SendReaction(_ context.Context, roomID, targetEventID, key s
 func (r *fakeRooms) SetState(_ context.Context, roomID, eventType, stateKey string, content map[string]any) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.stateCalls++
 	if err := r.stateErr[roomID]; err != nil {
 		return "", err
+	}
+	if r.stateErrAfter > 0 && r.stateCalls == r.stateErrAfter {
+		return "", fmt.Errorf("state write %d refused", r.stateCalls)
 	}
 	r.states = append(r.states, sentState{roomID: roomID, eventType: eventType, stateKey: stateKey, content: content})
 	return "$state-" + eventType + "-" + stateKey, nil
@@ -883,8 +893,8 @@ func TestBackOffSlowsRetriesDownAndIsCapped(t *testing.T) {
 	if wait != 2*time.Second {
 		t.Errorf("first back off = %v, want twice the interval", wait)
 	}
-	if got := backOff(time.Minute, interval); got != maxBackOff {
-		t.Errorf("back off = %v, want it capped at %v", got, maxBackOff)
+	if got := backOff(time.Minute, interval); got != 30*time.Second {
+		t.Errorf("back off = %v, want it capped at %v", got, 30*time.Second)
 	}
 	if got := backOff(time.Millisecond, interval); got != interval {
 		t.Errorf("back off = %v, want it never below the interval %v", got, interval)

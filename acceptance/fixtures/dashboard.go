@@ -89,6 +89,15 @@ func (d *Dashboard) Typed() ([]string, error) {
 			typed = append(typed, line)
 		}
 	}
+	// A pasted wake carries its text through load-buffer's stdin; the argv log
+	// records only the tmux command that consumed it.
+	if input, err := os.ReadFile(wakeLog(d.Root) + ".stdin"); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(input)), "\n") {
+			if strings.TrimSpace(line) != "" {
+				typed = append(typed, line)
+			}
+		}
+	}
 	return typed, nil
 }
 

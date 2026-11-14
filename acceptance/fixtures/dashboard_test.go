@@ -1,7 +1,9 @@
 package fixtures
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,6 +41,27 @@ func TestFixtureRepositoryIsOnlyPreparedOnce(t *testing.T) {
 func TestFixtureHeadNamesNoCommitWithoutARepository(t *testing.T) {
 	if head := FixtureHead(t.TempDir()); head != "" {
 		t.Errorf("head = %q for a directory that is not a repository, want none", head)
+	}
+}
+
+func TestTypedIncludesTheTextTheDashboardPasted(t *testing.T) {
+	root := t.TempDir()
+	log := wakeLog(root)
+	if err := os.MkdirAll(filepath.Dir(log), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(log, []byte("[\"tmux\" \"load-buffer\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(log+".stdin", []byte("[req-1] is the build green?\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	typed, err := (&Dashboard{Root: root}).Typed()
+	if err != nil {
+		t.Fatalf("Typed: %v", err)
+	}
+	if len(typed) != 2 || !strings.Contains(typed[1], "is the build green?") {
+		t.Errorf("typed = %v, want the pasted request text", typed)
 	}
 }
 
