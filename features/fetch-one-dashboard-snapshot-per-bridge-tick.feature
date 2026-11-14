@@ -53,18 +53,17 @@ Feature: Fetch one dashboard snapshot per bridge tick
     And the bridge is configured with the operator @operator:example.org
     And the bridge is started
     And the bridge has caught up with the forge
-    When the fake dashboards forge-a and forge-b next serve approvals in <approval-a> and <approval-b>
-    And the fake dashboards forge-a and forge-b next serve clarifications in <clarification-a> and <clarification-b>
+    When the fake dashboards forge-a and forge-b next serve approvals in <approval-seed-a> and <approval-seed-b>
+    And the fake dashboards forge-a and forge-b next serve clarifications in <clarification-seed-a> and <clarification-seed-b>
     And the bridge has caught up with the forge
-    Then the forge forge-a approval room holds the card card-<approval-a> and not the card card-<approval-b>
-    And the forge forge-b approval room holds the card card-<approval-b> and not the card card-<approval-a>
-    And the forge forge-a clarifications room holds the project <clarification-a> and not <clarification-b>
-    And the forge forge-b clarifications room holds the project <clarification-b> and not <clarification-a>
+    Then the forge forge-a approval room holds the card card-<approval-expected-a> and not the card card-<approval-expected-b>
+    And the forge forge-b approval room holds the card card-<approval-expected-b> and not the card card-<approval-expected-a>
+    And the forge forge-a clarifications room holds the project <clarification-expected-a> and not <clarification-expected-b>
+    And the forge forge-b clarifications room holds the project <clarification-expected-b> and not <clarification-expected-a>
     And the project room alpha carries the clarification for project-alpha
     And the project room beta carries the clarification for project-beta
     And the fake dashboards forge-a, forge-b, project-alpha and project-beta each serve at most one state request per tick over three more ticks
 
     Examples:
-      | approval-a | approval-b | clarification-a | clarification-b |
-      | alpha-room | beta-room  | alpha-room      | beta-room       |
-      | alpha-new  | beta-new   | alpha-new       | beta-new        |
+      | approval-seed-a | approval-expected-a | approval-seed-b | approval-expected-b | clarification-seed-a | clarification-expected-a | clarification-seed-b | clarification-expected-b |
+      | alpha-room      | alpha-room          | beta-room       | beta-room           | alpha-room           | alpha-room              | beta-room            | beta-room               |
