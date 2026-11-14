@@ -18,7 +18,7 @@ Feature: Fetch one dashboard snapshot per bridge tick
     When the fake dashboard forge-a next serves <state>
     And the bridge has caught up with the forge
     Then the approvals room holds <approval_messages> approval messages
-    And the clarifications room holds <clarification_messages> clarification messages
+    And the clarifications room holds exactly <clarification_messages> clarification messages
     And the approval for the card card-a carries <resolution>
     And the fake dashboard forge-a serves at most one state request per tick over three more ticks
 
@@ -36,20 +36,21 @@ Feature: Fetch one dashboard snapshot per bridge tick
     And the bridge has caught up with the forge
     Then the bridge's status names the forge forge-a as one it did not reach
     And the approvals room holds 0 approval messages
-    And the clarifications room holds 0 clarification messages
+    And the clarifications room holds exactly 0 clarification messages
     And the fake dashboard forge-a serves at most one failed state request per tick over three more ticks
     When the fake dashboard forge-a next serves a pending approval, a resolved approval, and a pending clarification
     And the bridge has caught up with the forge
     Then the bridge's status names the forge forge-a as one it reached
     And the approvals room holds 1 approval messages
-    And the clarifications room holds 1 clarification messages
+    And the clarifications room holds exactly 1 clarification messages
     And the fake dashboard forge-a serves at most one state request per tick over three more ticks
 
   Scenario Outline: two forges and two projects keep their snapshots isolated
     Given the fake dashboards forge-a and forge-b are available
     And the fake dashboard project-alpha for the forge root forge-a serves a pending clarification from the role coder asking "which alpha stage is next?"
     And the fake dashboard project-beta for the forge root forge-b serves a pending clarification from the role coder asking "which beta stage is next?"
-    And the bridge is configured with the forge roots forge-a and forge-b and the operator @operator:example.org
+    And the bridge is configured with the forge roots forge-a, forge-b
+    And the bridge is configured with the operator @operator:example.org
     And the bridge is started
     And the bridge has caught up with the forge
     When the fake dashboards forge-a and forge-b next serve approvals in <approval-a> and <approval-b>
