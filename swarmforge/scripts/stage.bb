@@ -21,7 +21,17 @@
        "  stage approve <proposal> --words \"<operator's words>\" [--root DIR]\n"
        "  stage reject <proposal> --words \"<operator's words>\" [--root DIR]\n"
        "  stage complete [--root DIR]\n"
-       "  stage status [--json] [--root DIR]\n"))
+       "  stage status [--json] [--root DIR]\n"
+       "\n"
+       "A new task report has ## Verification and ## Operator acceptance\n"
+       "sections. Operator acceptance is None. or bounded entries with owner,\n"
+       "environment, checks and pending/confirmed status. Pending entries do\n"
+       "not replace any executable, release, destructive or policy gate.\n"
+       "\n"
+       "For task notes, spec hashing omits only the ## Verification and\n"
+       "## Operator acceptance sections; stage completion still parses both.\n"
+       "Use focused :stamp inputs for the files a gate actually consumes instead\n"
+       "of copying :whole-tree. Missing inputs remain fail-visible.\n"))
 
 (defn usage []
   (println usage-text))
@@ -36,12 +46,27 @@
 (defn now []
   (str (Instant/now)))
 
+(def ^:dynamic *operation-cache* nil)
+
+(defn cached-operation [key f]
+  (if *operation-cache*
+    (let [entry (delay (f))
+          cached (get (swap! *operation-cache*
+                             #(if (contains? % key)
+                                %
+                                (assoc % key entry)))
+                      key)]
+      @cached)
+    (f)))
+
 (defn sha256 [^bytes bytes]
   (let [digest (MessageDigest/getInstance "SHA-256")]
     (format "%064x" (BigInteger. 1 (.digest digest bytes)))))
 
 (defn file-hash [path]
-  (sha256 (Files/readAllBytes (fs/path path))))
+  (cached-operation
+   [:file-hash (str (fs/canonicalize (fs/path path)))]
+   #(sha256 (Files/readAllBytes (fs/path path)))))
 
 (defn read-edn [path]
   (edn/read-string (slurp (str path))))
@@ -376,16 +401,6 @@
 (defn predecessors [config name]
   (take-while #(not= name (:name %)) (:stages config)))
 
-(defn recorded? [state name tree]
-  (= tree (get-in state [:stages name :tree])))
-
-(defn blocked-by [config state name tree]
-  (->> (predecessors config name)
-       (remove :optional)
-       (remove #(recorded? state (:name %) tree))
-       (map :name)
-       vec))
-
 (defn run-command [root command]
   (println "$" (if (string? command) command (str/join " " command)))
   (let [options {:dir (str root) :out :inherit :err :inherit}
@@ -427,28 +442,65 @@
        sort
        vec))
 
+(def report-metadata-headings
+  #{"## Verification" "## Operator acceptance"})
+
+(defn strip-report-metadata [text]
+  (let [lines (str/split-lines (or text ""))
+        trailing-newline? (str/ends-with? (or text "") "\n")]
+    (loop [remaining lines
+           skipping? false
+           kept []]
+      (if-let [line (first remaining)]
+        (let [trimmed (str/trim line)]
+          (cond
+            skipping?
+            (if (str/starts-with? trimmed "## ")
+              (if (contains? report-metadata-headings trimmed)
+                (recur (next remaining) true kept)
+                (recur (next remaining) false (conj kept line)))
+              (recur (next remaining) true kept))
+
+            (contains? report-metadata-headings trimmed)
+            (recur (next remaining) true kept)
+
+            :else
+            (recur (next remaining) false (conj kept line))))
+        (let [result (str/join "\n" kept)]
+          (if (and trailing-newline?
+                   (not (str/ends-with? result "\n")))
+            (str result "\n")
+            result))))))
+
+(defn spec-content [root file]
+  (cached-operation
+   [:spec-content (str root) file]
+   (fn []
+     (let [text (slurp (str (fs/path root file)))]
+       (if (and (str/starts-with? file "tasks/")
+                (str/ends-with? file ".md"))
+         (strip-report-metadata text)
+         text)))))
+
 (defn spec-hash [root files]
   (sha256 (.getBytes
            (str/join "\n"
-                     (map #(str % "\n" (file-hash (fs/path root %)))
+                     (map #(str %
+                                "\n"
+                                (sha256 (.getBytes (spec-content root %)
+                                                   "UTF-8")))
                           files))
            "UTF-8")))
 
 (defn spec-body [root files]
   (str/join "\n\n"
             (for [file files]
-              (str "--- " file " ---\n" (slurp (str (fs/path root file)))))))
+              (str "--- " file " ---\n" (spec-content root file)))))
+
+(declare approved-spec-proposal)
 
 (defn spec-approved? [root config state]
-  (let [stage (some #(when (= "spec" (:name %)) %) (:stages config))
-        spec (or (:spec stage) (:file stage))
-        files (when spec (spec-files root spec))
-        hash (when (seq files) (spec-hash root files))]
-    (boolean
-     (and hash
-          (some #(and (= :approved (:status %))
-                      (= hash (:hash %)))
-                (vals (:proposals state)))))))
+  (boolean (approved-spec-proposal root config state)))
 
 (defn maven-modules [root]
   (let [pom (fs/path root "pom.xml")]
@@ -475,16 +527,131 @@
        (= input :features) ["features"]
        (= input :snapshots)
        (do
-         (println "  note: :snapshots widened to the whole tree")
+         (binding [*out* *err*]
+           (println "  note: :snapshots widened to the whole tree"))
          ["."])
        (= input :whole-tree) ["."]
        (string? input) [input]
        :else
        (do
-         (println "  note: unknown stamp input" (pr-str input)
-                  "- widened to the whole tree")
+         (binding [*out* *err*]
+           (println "  note: unknown stamp input" (pr-str input)
+                    "- widened to the whole tree"))
          ["."])))
    (or (:stamp stage) [:whole-tree])))
+
+(defn input-files [root pattern]
+  (cached-operation
+   [:input-files (str root) pattern]
+   (fn []
+     (cond
+       (= pattern ".") (->> (fs/glob root "**")
+                            (filter fs/regular-file?)
+                            (sort))
+       (glob? pattern)
+       (let [segments (str/split pattern #"/")
+             prefix-parts (take-while #(not (re-find #"[*?\[]" %)) segments)
+             prefix (str/join "/" prefix-parts)
+             remaining (drop (count prefix-parts) segments)
+             remaining-pattern (str/join "/" remaining)]
+         (if (str/blank? prefix)
+           (->> (fs/glob root pattern)
+                (filter fs/regular-file?)
+                (sort))
+           (let [base (fs/path root prefix)]
+             (if (fs/directory? base)
+               (->> (fs/glob base remaining-pattern)
+                    (filter fs/regular-file?)
+                    (sort))
+               []))))
+       (fs/directory? (fs/path root pattern))
+       (->> (fs/glob (fs/path root pattern) "**")
+            (filter fs/regular-file?)
+            (sort))
+       (fs/regular-file? (fs/path root pattern)) [(fs/path root pattern)]
+       :else []))))
+
+(defn input-fingerprint-entries [root patterns]
+  (->> patterns
+       (mapcat
+        (fn [pattern]
+          (if (= pattern ".")
+            [{:path "."
+              :hash (whole-tree-hash root)}]
+            (let [files (input-files root pattern)]
+              (if (seq files)
+                (for [file files]
+                  {:path (str (fs/relativize root file))
+                   :hash (file-hash file)})
+                [{:path (str pattern) :missing true}])))))
+       (sort-by :path)
+       vec))
+
+(defn content-hash [entries]
+  (sha256 (.getBytes (pr-str entries) "UTF-8")))
+
+(defn spec-stage [config]
+  (some #(when (= "spec" (:name %)) %) (:stages config)))
+
+(defn proposal-current? [root proposal]
+  (try
+    (and (seq (:files proposal))
+         (= (:hash proposal)
+            (spec-hash root (:files proposal))))
+    (catch Exception _ false)))
+
+(defn proposal-for-active-card? [state proposal]
+  (let [card (:card state)
+        proposal-card (:card proposal)]
+    (and (map? card)
+         (map? proposal-card)
+         (not (str/blank? (:id card)))
+         (= (:id card) (:id proposal-card)))))
+
+(defn approved-spec-proposal [root config state]
+  (let [stage (spec-stage config)
+        spec (or (:spec stage) (:file stage))]
+    (when spec
+      (->> (vals (:proposals state))
+           (filter #(= :approved (:status %)))
+           (filter #(proposal-for-active-card? state %))
+           (filter #(proposal-current? root %))
+           (sort-by (juxt :at :id))
+           last))))
+
+(defn stage-input-fingerprint [root config state stage]
+  (if (= "spec" (:name stage))
+    (if-let [proposal (approved-spec-proposal root config state)]
+      {:input_hash (:hash proposal)
+       :inputs (:files proposal)
+       :proposal (:id proposal)}
+      (let [spec (or (:spec stage) (:file stage))
+            files (if spec (spec-files root spec) [])]
+        {:input_hash nil
+         :inputs files
+         :proposal nil}))
+    (let [patterns (resolve-inputs root stage)]
+      {:input_hash (content-hash (input-fingerprint-entries root patterns))
+       :inputs patterns})))
+
+(defn stage-fingerprints [root config state]
+  (into {}
+        (map (juxt :name #(stage-input-fingerprint root config state %)))
+        (:stages config)))
+
+(defn recorded? [state name fingerprints]
+  (let [stored (get-in state [:stages name :input_hash])
+        current (:input_hash (get fingerprints name))]
+    (and (string? stored)
+         (string? current)
+         (= stored current))))
+
+(defn blocked-by [config state fingerprints name]
+  (->> (predecessors config name)
+       (remove :optional)
+       (remove #(recorded? state (:name %) fingerprints))
+       (map :name)
+       vec))
 
 (defn collect-evidence [root patterns]
   (vec (for [pattern patterns
@@ -499,10 +666,11 @@
                                    (expand-paths root pattern)))]
          pattern)))
 
-(defn record-stage [state name tree evidence inputs]
+(defn record-stage [state name tree input-hash evidence inputs]
   (assoc-in state [:stages name]
             {:tree tree
              :at (now)
+             :input_hash input-hash
              :evidence evidence
              :inputs (vec (distinct inputs))}))
 
@@ -530,8 +698,9 @@
     (update-board! root config
                    (or (:card state) (fallback-card root config []))
                    name)
-    (println (str "stage " name ": done at tree "
-                  (get-in state [:stages name :tree])))))
+    (println (str "stage " name ": done at inputs "
+                  (get-in state [:stages name :input_hash])
+                  " (tree " (get-in state [:stages name :tree]) ")"))))
 
 (defn fail-stage! [root config state code message]
   (let [running (assoc (:running state)
@@ -545,33 +714,27 @@
                    (or (:card state) (fallback-card root config []))
                    (:stage running))))
 
-(defn check-spec [root state stage tree]
+(defn check-spec [root state stage tree fingerprint]
   (let [spec (or (:spec stage) (:file stage))]
     (when-not spec
       (throw (ex-info "The spec stage needs :spec <file> or a vector of paths"
                       {:exit 1})))
-    (let [files (spec-files root spec)
-          hash (when (seq files) (spec-hash root files))
-          approved (->> (vals (:proposals state))
-                        (filter #(and (= :approved (:status %))
-                                      (= hash (:hash %))))
-                        first)]
-      (when (empty? files)
-        (throw (ex-info (str "No spec files found for " (pr-str spec))
-                        {:exit 1})))
-      (when-not approved
-        (throw (ex-info (str "No current approved proposal for "
-                             (str/join ", " files) " at " hash)
-                        {:exit 1})))
-      (println "spec approved:" (:id approved))
-      (record-stage state "spec" tree
-                    [{:proposal (:id approved) :hash hash :files files}]
-                    files))))
+    (when-not (:input_hash fingerprint)
+      (throw (ex-info "No current approved proposal for the active spec bundle"
+                      {:exit 1})))
+    (println "spec approved:" (:proposal fingerprint))
+    (record-stage state "spec" tree (:input_hash fingerprint)
+                  [{:proposal (:proposal fingerprint)
+                    :hash (:input_hash fingerprint)
+                    :files (:inputs fingerprint)}]
+                  (:inputs fingerprint))))
 
 (defn check! [root config state name]
   (let [stage (stage-by-name config name)
         tree (worktree-tree root)
-        blocked (blocked-by config state name tree)]
+        fingerprints (stage-fingerprints root config state)
+        fingerprint (get fingerprints name)
+        blocked (blocked-by config state fingerprints name)]
     (when (seq blocked)
       (exit! 1 (str "Stage " name " is blocked by: "
                     (str/join ", " blocked))))
@@ -579,7 +742,7 @@
       (try
         (let [state
               (if (= :operator (:approval stage))
-                (check-spec root state stage tree)
+                (check-spec root state stage tree fingerprint)
                 (do
                   (doseq [command (:runs stage)]
                     (run-command root command))
@@ -589,9 +752,9 @@
                       (throw (ex-info (str "Evidence missing: "
                                            (str/join ", " missing))
                                       {:exit 1})))
-                    (record-stage state name tree
+                    (record-stage state name tree (:input_hash fingerprint)
                                   (collect-evidence root patterns)
-                                  (resolve-inputs root stage)))))]
+                                  (:inputs fingerprint)))))]
           (finish-stage! root config state name))
         (catch Throwable error
           (let [code (or (:exit (ex-data error)) 1)
@@ -687,7 +850,7 @@
             state (assoc-in (assoc state :card card)
                             [:proposals id] proposal)
             state (if auto-approve?
-                    (record-stage state "spec" tree
+                    (record-stage state "spec" tree (:hash proposal)
                                   [{:proposal id :hash (:hash proposal)
                                     :files files}]
                                   files)
@@ -738,7 +901,7 @@
                             :approved-at (now)
                             :words words)
             state (assoc-in state [:proposals id] approved)
-            state (record-stage state "spec" tree
+            state (record-stage state "spec" tree (:hash proposal)
                                 [{:proposal id :hash (:hash proposal)
                                   :files files}]
                                 files)]
@@ -769,10 +932,213 @@
       (update-board! root config (:card proposal) "spec")
       (println (str "sent back " id)))))
 
-(defn stage-status [config state stage tree]
+(def report-path-re
+  #"(?:(?<![A-Za-z0-9+.-])/(?:Users|home|private|var|tmp|opt|Volumes|srv)/[^\s)\]},>]+|[A-Za-z]:\\[^\s)\]},>]+)")
+
+(def report-token-re
+  #"\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,})\b")
+
+(def operator-acceptance-limit 8)
+(def operator-field-limits
+  {"owner" 80
+   "environment" 120
+   "checks" 500
+   "status" 20})
+
+(defn report-invalid! [message]
+  (throw (ex-info message {:exit 1})))
+
+(defn section-lines [lines heading]
+  (let [headings (keep-indexed
+                  (fn [index line]
+                    (when (= heading (str/trim line)) index))
+                  lines)]
+    (when (> (count headings) 1)
+      (report-invalid! (str "Task report has more than one " heading " section")))
+    (when-let [start (first headings)]
+      (let [end (or (some #(when (and (> % start)
+                                      (str/starts-with?
+                                       (str/trim (nth lines %)) "## "))
+                              %)
+                          (range (inc start) (count lines)))
+                    (count lines))]
+        {:present true
+         :lines (subvec (vec lines) (inc start) end)}))))
+
+(defn safe-report-field! [field value]
+  (let [maximum (get operator-field-limits field)
+        value (some-> value str/trim)]
+    (when (or (str/blank? value)
+              (> (count value) maximum)
+              (re-find #"[\p{Cc}\p{Cf}]" value)
+              (re-find report-path-re value)
+              (re-find report-token-re value))
+      (report-invalid! (str "Operator acceptance " field " is malformed or unsafe")))
+    value))
+
+(defn acceptance-fields [line]
+  (when-not (str/starts-with? line "- ")
+    (report-invalid! "Operator acceptance entries must begin with '- '"))
+  (let [parts (str/split (subs line 2) #" \| " -1)]
+    (when-not (= ["owner" "environment" "checks" "status"]
+                 (mapv #(first (str/split % #": " 2)) parts))
+      (report-invalid!
+       "Operator acceptance entry needs owner, environment, checks and status"))
+    (let [fields (into {}
+                       (map (fn [part]
+                              (let [[key value] (str/split part #": " 2)]
+                                [key (safe-report-field! key value)]))
+                            parts))
+          owner (str/lower-case (get fields "owner"))
+          status (str/lower-case (get fields "status"))]
+      (when (not= "operator" owner)
+        (report-invalid! "Operator acceptance owner must be operator"))
+      (when-not (contains? #{"pending" "confirmed"} status)
+        (report-invalid! "Operator acceptance status must be pending or confirmed"))
+      {:owner "operator"
+       :environment (get fields "environment")
+       :checks (get fields "checks")
+       :status (keyword status)})))
+
+(defn parse-operator-acceptance [lines]
+  (let [lines (vec (remove str/blank? lines))]
+    (cond
+      (and (= 1 (count lines))
+           (= "none." (str/lower-case (first lines))))
+      {:recorded true :verification_recorded true :status :none :entries []}
+
+      (empty? lines)
+      (report-invalid! "Operator acceptance must be None. or bounded entries")
+
+      (> (count lines) operator-acceptance-limit)
+      (report-invalid! "Operator acceptance has too many entries")
+
+      (some #(= "none." (str/lower-case %)) lines)
+      (report-invalid! "Operator acceptance None. cannot be combined with entries")
+
+      :else
+      (let [entries (mapv acceptance-fields lines)]
+        {:recorded true
+         :verification_recorded true
+         :status (if (some #(= :pending (:status %)) entries)
+                   :pending
+                   :confirmed)
+         :entries entries}))))
+
+(defn parse-task-report [text]
+  (let [lines (str/split-lines (or text ""))
+        verification (section-lines lines "## Verification")
+        acceptance (section-lines lines "## Operator acceptance")]
+    (cond
+      (and (nil? verification) (nil? acceptance))
+      {:recorded false
+       :verification_recorded false
+       :status :not-recorded
+       :entries []}
+
+      (or (nil? verification) (nil? acceptance))
+      (report-invalid!
+       "Task report must include both ## Verification and ## Operator acceptance")
+
+      (every? str/blank? (:lines verification))
+      (report-invalid! "Task report ## Verification section must not be empty")
+
+      :else
+      (parse-operator-acceptance (:lines acceptance)))))
+
+(defn task-report-file [root config state]
+  (let [card (:card state)
+        proposal (approved-spec-proposal root config state)
+        tasks-dir (try (fs/canonicalize (fs/path root "tasks"))
+                       (catch Exception _ nil))
+        direct (when (and card (not (str/blank? (:name card))))
+                 (try
+                   (fs/canonicalize
+                    (fs/path root "tasks" (str (:name card) ".md")))
+                   (catch Exception _ nil)))
+        direct (when (and direct tasks-dir
+                          (= tasks-dir (fs/parent direct))
+                          (fs/regular-file? direct))
+                 direct)
+        candidates (->> (:files proposal)
+                        (filter #(str/starts-with? % "tasks/"))
+                        (map #(fs/path root %))
+                        (filter fs/regular-file?)
+                        vec)]
+    (or direct
+        (when (= 1 (count candidates)) (first candidates)))))
+
+(defn task-report [root config state]
+  (if-not (single-agent? root)
+    {:recorded false
+     :verification_recorded false
+     :status :not-recorded
+     :entries []}
+    (if-let [file (task-report-file root config state)]
+      (try
+        (parse-task-report (slurp (str file)))
+        (catch Exception error
+          (if (:exit (ex-data error))
+            (throw error)
+            (report-invalid! (or (ex-message error) "Task report is malformed")))))
+      {:recorded false
+       :verification_recorded false
+       :status :not-recorded
+       :entries []})))
+
+(defn safe-task-report [root config state]
+  (try
+    (task-report root config state)
+    (catch Exception error
+      {:recorded true
+       :verification_recorded false
+       :status :invalid
+       :entries []
+       :error (or (ex-message error) "Task report is malformed")})))
+
+(defn completion-report [root config state tree]
+  (if (and (= tree (get-in state [:complete :tree]))
+           (map? (get-in state [:complete :operator_acceptance])))
+    (get-in state [:complete :operator_acceptance])
+    (safe-task-report root config state)))
+
+(defn required-stages-current? [config state fingerprints]
+  (every? #(recorded? state (:name %) fingerprints)
+          (remove :optional (:stages config))))
+
+(defn completion-summary [root config state tree fingerprints]
+  (let [automation? (required-stages-current? config state fingerprints)
+        completed? (= tree (get-in state [:complete :tree]))
+        report (completion-report root config state tree)]
+    (cond
+      (not automation?) "automation incomplete"
+      (= :invalid (:status report))
+      (str "automation complete; operator acceptance invalid: " (:error report))
+      (= :pending (:status report))
+      "automation complete; operator acceptance pending"
+      completed? "fully complete"
+      (= :not-recorded (:status report))
+      "automation complete; completion not recorded (legacy task note)"
+      :else "automation complete; completion not recorded")))
+
+(defn operator-acceptance-summary [report]
+  (case (:status report)
+    :none "operator acceptance: none"
+    :confirmed "operator acceptance: confirmed"
+    :pending "operator acceptance: pending"
+    :not-recorded "operator acceptance: not recorded (legacy task note)"
+    :invalid "operator acceptance: invalid"
+    "operator acceptance: unknown"))
+
+(defn operator-acceptance-lines [report]
+  (for [entry (:entries report)]
+    (str "  - " (:owner entry) " | " (:environment entry)
+         " | " (:checks entry) " | " (name (:status entry)))))
+
+(defn stage-status [config state fingerprints stage]
   (let [name (:name stage)
         record (get-in state [:stages name])
-        blocked (blocked-by config state name tree)
+        blocked (blocked-by config state fingerprints name)
         running (:running state)
         attempt (when (= name (:stage running)) running)
         attempt-status (when attempt
@@ -784,7 +1150,7 @@
                            nil))]
     (cond
       attempt-status attempt-status
-      (and record (= tree (:tree record))) "done"
+      (and record (recorded? state name fingerprints)) "done"
       record "stale"
       (:optional stage) "n/a"
       (seq blocked) "blocked"
@@ -802,22 +1168,29 @@
 (declare deploy-configuration-problem)
 
 (defn list! [root config state]
-  (let [tree (worktree-tree root)]
+  (let [tree (worktree-tree root)
+        fingerprints (stage-fingerprints root config state)
+        report (completion-report root config state tree)]
     (println (str "task: " (:task config)))
     (when-let [card (:card state)]
       (println (str "card: " (:name card) " (" (:id card) ")")))
     (println (str "tree: " tree))
+    (println (str "completion: "
+                  (completion-summary root config state tree fingerprints)))
+    (println (operator-acceptance-summary report))
+    (doseq [line (operator-acceptance-lines report)]
+      (println line))
     (println "Each stage is a gate on the current vertical slice; tests, cleanup and hardening are not later tasks.")
     (when-let [problem (deploy-configuration-problem root config)]
       (println (str "warning: " problem)))
     (doseq [stage (:stages config)]
       (println (format "%-10s %-8s %s"
                        (:name stage)
-                       (stage-status config state stage tree)
+                       (stage-status config state fingerprints stage)
                        (stage-command root stage)))
       (when (seq (:evidence stage))
         (println (str "           evidence: " (str/join ", " (:evidence stage)))))
-      (let [inputs (resolve-inputs root stage)]
+      (let [inputs (:inputs (get fingerprints (:name stage)))]
         (when (seq inputs)
           (println (str "           inputs: " (str/join ", " inputs))))))))
 
@@ -836,32 +1209,43 @@
 
 (defn status-json [root config state]
   (let [tree (worktree-tree root)
-        head (head-tree root)]
+        head (head-tree root)
+        fingerprints (stage-fingerprints root config state)
+        report (completion-report root config state tree)]
     (json/generate-string
      {:task (:task config)
       :card (:card state)
       :tree tree
       :head-tree head
       :clean (= tree head)
+      :completion_status (completion-summary root config state tree fingerprints)
+      :automation_complete
+      (required-stages-current? config state fingerprints)
+      :operator_acceptance report
       :spec_approval_mode (name (spec-approval-mode root))
       :spec_approved (spec-approved? root config state)
       :complete (get-in state [:complete :tree])
       :running (:running state)
       :stages (mapv (fn [stage]
-                      {:name (:name stage)
-                       :status (stage-status config state stage tree)
+                      (let [fingerprint (get fingerprints (:name stage))
+                            record (get-in state [:stages (:name stage)])]
+                        {:name (:name stage)
+                       :status (stage-status config state fingerprints stage)
                        :command (:runs stage)
                        :evidence (:evidence stage)
-                       :inputs (vec (resolve-inputs root stage))
-                       :recorded-at (get-in state [:stages (:name stage) :at])
+                       :inputs (vec (:inputs fingerprint))
+                       :input_hash (:input_hash fingerprint)
+                       :recorded_input_hash (:input_hash record)
+                       :recorded_at (:at record)
                        :attempt (when (= (:name stage)
                                          (get-in state [:running :stage]))
-                                  (:running state))})
+                                  (:running state))}))
                     (:stages config))})))
 
 (defn complete! [root config state]
   (let [tree (worktree-tree root)
-        head (head-tree root)]
+        head (head-tree root)
+        fingerprints (stage-fingerprints root config state)]
     (when-let [problem (deploy-configuration-problem root config)]
       (exit! 1 problem))
     (when-not head
@@ -872,14 +1256,25 @@
                (when (seq status) status))))
     (let [missing (->> (:stages config)
                        (remove :optional)
-                       (remove #(recorded? state (:name %) tree))
+                       (remove #(recorded? state (:name %) fingerprints))
                        (map :name)
                        vec)]
       (when (seq missing)
         (exit! 1 (str "Stages not current: " (str/join ", " missing))))
-      (save-state root (:task config)
-                  (assoc state :complete {:tree tree :at (now)
-                                          :card (:card state)}))
+      (let [report (try
+                     (task-report root config state)
+                     (catch Exception error
+                       (exit! 1 (or (ex-message error)
+                                    "Task report is malformed"))))
+            complete-state
+            (assoc state :complete {:tree tree
+                                    :at (now)
+                                    :card (:card state)
+                                    :task_report
+                                    {:verification_recorded
+                                     (:verification_recorded report)}
+                                    :operator_acceptance report})]
+        (save-state root (:task config) complete-state)
       (let [card (or (:card state) (fallback-card root config []))
             pack-board-sh (fs/path root "swarmforge" "scripts" "pack_board.sh")
             pack-board-bb (let [project-script (fs/path root "swarmforge" "scripts"
@@ -901,7 +1296,10 @@
                      (str/trim (str (:err result) (:out result)))))
             (print (:out result)))
           (update-board! root config card "done")))
-      (println (str "complete: " (:task config) " at tree " tree)))))
+        (println (operator-acceptance-summary report))
+        (doseq [line (operator-acceptance-lines report)]
+          (println line))
+        (println (str "complete: " (:task config) " at tree " tree))))))
 
 (defn parse-args [args]
   (loop [remaining args
@@ -963,4 +1361,6 @@
         "help" (usage)
         (usage)))))
 
-(apply -main *command-line-args*)
+(when (= (str *file*) (System/getProperty "babashka.file"))
+  (binding [*operation-cache* (atom {})]
+    (apply -main *command-line-args*)))

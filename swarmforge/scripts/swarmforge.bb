@@ -133,6 +133,9 @@
 (defn skip-config-line? [line]
   (or (str/blank? line) (str/starts-with? line "#")))
 
+(defn lieutenant-config-line? [line]
+  (= "lieutenant" (str/lower-case (first (str/split (str/trim line) #"\s+")))))
+
 (defn special-worktree? [worktree]
   (#{"none" "master"} worktree))
 
@@ -241,7 +244,7 @@
     (if-let [[line-index raw-line] (first lines)]
       (let [line-no (inc line-index)
             line (str/trim raw-line)]
-        (if (skip-config-line? line)
+        (if (or (skip-config-line? line) (lieutenant-config-line? line))
           (recur (next lines) rows roles worktrees)
           (let [row (parse-window-line ctx line-no line roles worktrees)
                 worktree (:worktree-name row)]
@@ -250,9 +253,14 @@
                    (conj roles (:role row))
                    (cond-> worktrees (not (special-worktree? worktree)) (conj worktree))))))
       (do
-        (reject-if (empty? rows)
-                   (str "No windows defined in " (:config-file ctx)))
-        (require-master-worktree! rows)
+        (let [lieutenant?
+              (and (fs/directory? (fs/path (:working-dir ctx) "packs"))
+                   (some lieutenant-config-line?
+                         (str/split-lines (slurp (str (:config-file ctx))))))]
+          (when-not (and lieutenant? (empty? rows))
+            (reject-if (empty? rows)
+                       (str "No windows defined in " (:config-file ctx)))
+            (require-master-worktree! rows)))
         (assoc ctx :roles rows)))))
 
 (defn write-sessions-file! [ctx]
@@ -296,7 +304,8 @@
    "swarm-terminal-adapter.sh" "swarmforge.sh" "swarmforge.bb"
    "pack_board.sh" "pack_board.bb"
    "pack_web.sh" "pack_web.bb"
-   "pack_dashboard_request.sh" "pack_dashboard_request.bb"])
+   "pack_dashboard_request.sh" "pack_dashboard_request.bb"
+   "completed_card_report.sh" "completed_card_report.bb"])
 
 (def terminal-helpers
   ["terminal-app.sh" "iterm2.sh" "ghostty.sh" "kitty.sh" "windows-terminal.sh" "none.sh"])
@@ -466,7 +475,7 @@
          "- Do not clone those repos into `./tmp`.\n"
          "- If merge_and_process.sh or ready_for_next reports a merge conflict, resolve the conflicted files, git add, and commit. Do not invent git merge. Parallel cards on one tree will conflict; that is expected.\n"
          "- Operator follow-ups arrive as `[id] text` in this pane. Answer with `pack_dashboard_request.sh answer <id> ./tmp/answer.txt`.\n"
-         "- Ask the operator with `pack_dashboard_request.sh clarify ./tmp/question.txt`. Do not ask in the pane.\n"
+         "- Ask the operator in project chat with `pack_dashboard_request.sh clarify-chat clar-<stable-id> ./tmp/question.txt`. Do not ask in the pane.\n"
          "- Do not ask for approval in the pane. Queue `git_handoff`; the operator uses Attention.\n"
          "- When a card's work merges into the master worktree and the board already marks the card done, the tooling runs `swarmforge/hooks/card-complete.sh` if the project provides one, and prints what it did. A `HOOK_FAILED` line means the project's finishing step failed: report it to the operator rather than quietly continuing.\n"
          (when last-role?
@@ -540,6 +549,49 @@
   ;; ran a whole session unaware of its own prompt. Ask the agent, not the role.
   (or (not= role "lieutenant") (not (reads-own-prompt-file? agent))))
 
+(def terminal-value-re #"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
+(def lang-value-re #"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}")
+
+(defn usable-terminal? [value]
+  (and (string? value)
+       (re-matches terminal-value-re value)
+       (not= "dumb" (str/lower-case value))))
+
+(defn caller-env [name]
+  (let [value (not-empty (System/getenv name))]
+    (when (and value (not (re-find #"[\p{Cntrl}\s]" value)))
+      value)))
+
+(defn tmux-client-terminal [ctx session]
+  (let [result (process/sh {:continue true}
+                           "tmux" "-S" (:tmux-socket ctx)
+                           "display-message" "-p" "-t" session
+                           "#{client_termname}")
+        terminal (not-empty (str/trim (:out result)))]
+    (when (and (zero? (:exit result)) (usable-terminal? terminal))
+      terminal)))
+
+(defn role-terminal [ctx session]
+  (or (when-let [terminal (caller-env "TERM")]
+        (when (usable-terminal? terminal) terminal))
+      (tmux-client-terminal ctx session)
+      "tmux-256color"))
+
+(defn role-environment-prefix [ctx session]
+  (let [terminal (role-terminal ctx session)
+        colorterm (caller-env "COLORTERM")
+        lang (caller-env "LANG")]
+    (str "unset NO_COLOR; "
+         "if [ -z \"${TERM:-}\" ] || [ \"${TERM:-}\" = dumb ]; then "
+         "export TERM=" (sq terminal) "; fi; "
+         (when (and colorterm (re-matches terminal-value-re colorterm))
+           (str "if [ -z \"${COLORTERM:-}\" ]; then export COLORTERM="
+                (sq colorterm) "; fi; "))
+         (when (and lang (re-matches lang-value-re lang))
+           (str "if [ -z \"${LANG:-}\" ] || [ \"${LANG:-}\" = C ] || "
+                "[ \"${LANG:-}\" = POSIX ]; then export LANG="
+                (sq lang) "; fi; ")))))
+
 (defn launch-command [ctx index row]
   (let [role (:role row)
         agent (:agent row)
@@ -564,11 +616,12 @@
                                "file it refers to recursively, and follow all of those instructions.\"")
         initial-prompt (if (= role "lieutenant") lieutenant-prompt prompt)
         initial-prompt? (gets-initial-prompt? role agent)
+        environment-prefix (role-environment-prefix ctx (:session row))
         base (str "export SWARMFORGE_ROLE=" (sq role)
                   " && export PATH=" (sq (str local-scripts)) ":" (sq (str tool-bin)) ":"
                   (sq (str role-script-dir)) ":$PATH"
                   " && cd " (sq (str role-worktree))
-                  " && ")]
+                  " && " environment-prefix)]
     (write-agent-instruction-file! ctx role prompt-file (last-pack-role? ctx role))
     (cond-> (str base
                 (case agent
@@ -635,6 +688,19 @@
     (ensure-codex-trust! (:worktree-path row)))
   (let [session (:session row)
         display (:display-name row)
+        terminal (role-terminal ctx session)
+        colorterm (caller-env "COLORTERM")
+        lang (caller-env "LANG")
+        _ (sh "tmux" "-S" (:tmux-socket ctx)
+              "set-environment" "-t" session "TERM" terminal)
+        _ (sh "tmux" "-S" (:tmux-socket ctx)
+              "set-environment" "-t" session "-u" "NO_COLOR")
+        _ (when (and colorterm (re-matches terminal-value-re colorterm))
+            (sh "tmux" "-S" (:tmux-socket ctx)
+                "set-environment" "-t" session "COLORTERM" colorterm))
+        _ (when (and lang (re-matches lang-value-re lang))
+            (sh "tmux" "-S" (:tmux-socket ctx)
+                "set-environment" "-t" session "LANG" lang))
         command (launch-command ctx index row)]
     (sh "tmux" "-S" (:tmux-socket ctx) "send-keys" "-t"
         (tmux-agent-target display (:tmux-pane-base-index ctx) session)
@@ -813,13 +879,46 @@
 (defn dashboard-url-file [ctx]
   (fs/path (:state-dir ctx) "dashboard-url"))
 
+(defn dashboard-port-file [ctx]
+  (fs/path (:state-dir ctx) "dashboard-port"))
+
 (defn pack-web-pid-file [ctx]
   (fs/path (:state-dir ctx) "pack_web.pid"))
 
+(defn valid-dashboard-port [value]
+  (let [text (str/trim (str value))]
+    (when (re-matches #"[0-9]{1,5}" text)
+      (let [port (Long/parseLong text)]
+        (when (<= 1 port 65535)
+          (str port))))))
+
+(defn port-from-dashboard-url [url]
+  (second (re-matches #"http://127\.0\.0\.1:([0-9]{1,5})\s*" (str/trim (str url)))))
+
+(defn write-dashboard-port! [ctx port]
+  (let [file (dashboard-port-file ctx)
+        text (str (valid-dashboard-port port))]
+    (fs/create-dirs (fs/parent file))
+    (let [tmp (fs/create-temp-file {:dir (fs/parent file)
+                                    :prefix ".dashboard-port."})]
+      (spit (str tmp) (str text "\n"))
+      (fs/move tmp file {:replace-existing true :atomic-move true}))
+    text))
+
+(defn preferred-dashboard-port [ctx]
+  (let [port-file (dashboard-port-file ctx)
+        url-file (dashboard-url-file ctx)
+        stored (when (fs/regular-file? port-file)
+                 (valid-dashboard-port (slurp (str port-file))))
+        migrated (when (and (not stored) (fs/regular-file? url-file))
+                   (valid-dashboard-port
+                    (port-from-dashboard-url (slurp (str url-file)))))]
+    (when migrated
+      (write-dashboard-port! ctx migrated))
+    (or stored migrated)))
+
 (defn previous-dashboard-port [ctx]
-  (let [file (dashboard-url-file ctx)]
-    (when (fs/regular-file? file)
-      (second (re-matches #".*:(\d+)\s*$" (str/trim (slurp (str file))))))))
+  (preferred-dashboard-port ctx))
 
 (defn process-alive? [pid]
   (zero? (:exit (process/sh {:continue true} "kill" "-0" pid))))
@@ -863,8 +962,13 @@
 
 (defn test-dashboard-address! [root port]
   (let [ctx {:state-dir (fs/path root ".swarmforge")}]
-    (println (str "previous=" (or (previous-dashboard-port ctx) "none")
+    (println (str "previous=" (or (preferred-dashboard-port ctx) "none")
                   " available=" (port-available? port)))))
+
+(defn test-dashboard-port-usable! [port]
+  (println (str "available=" (port-available? port)
+                " usable=" (preferred-port-usable? port)
+                " listening=" (port-listening? port))))
 
 (def dashboard-session "swarmforge-dashboard")
 
@@ -942,9 +1046,11 @@
         pid-file (pack-web-pid-file ctx)
         url (when (fs/regular-file? url-file)
               (not-empty (str/trim (slurp (str url-file)))))
+        port (preferred-dashboard-port ctx)
         pid (when (fs/regular-file? pid-file)
               (not-empty (str/trim (slurp (str pid-file)))))]
     {:url url
+     :port port
      :pid pid
      :supervised (dashboard-running? ctx)
      :process (boolean (and pid (dashboard-process? ctx pid)))
@@ -952,11 +1058,12 @@
      :log (str (fs/path (:state-dir ctx) "dashboard.log"))}))
 
 (defn print-dashboard-status! [ctx]
-  (let [{:keys [url pid supervised process socket log]} (dashboard-status ctx)]
+  (let [{:keys [url port pid supervised process socket log]} (dashboard-status ctx)]
     (println (str "supervisor=" (if supervised "running" "stopped")))
     (println (str "process=" (if process "running" "stopped")))
     (println (str "pid=" (or pid "none")))
     (println (str "url=" (or url "none")))
+    (println (str "port=" (or port "none")))
     (println (str "socket=" socket))
     (println (str "log=" log))))
 
@@ -981,7 +1088,7 @@
   ;; served on last time whenever that port is free. A fresh port on every start
   ;; is a bookmark that dies on every restart. If the port is taken, by another
   ;; forge or another program, the dashboard falls back to a random one.
-  (let [previous (previous-dashboard-port ctx)]
+  (let [previous (preferred-dashboard-port ctx)]
     (stop-existing-pack-web! ctx)
     (fs/create-dirs (:state-dir ctx))
     (let [script (str (fs/path (:script-dir ctx) "pack_web.sh"))
@@ -1006,7 +1113,11 @@
         (fail-dashboard! ctx "Dashboard did not announce an address."))
       (when-not (dashboard-running? ctx)
         (fail-dashboard! ctx "Dashboard exited during startup."))
-      (let [url (str/trim (slurp (str (dashboard-url-file ctx))))]
+      (let [url (str/trim (slurp (str (dashboard-url-file ctx))))
+            serving-port (valid-dashboard-port
+                          (port-from-dashboard-url url))]
+        (when serving-port
+          (write-dashboard-port! ctx serving-port))
         (println (str green "Dashboard: " url reset))
         (maybe-open-browser! url)
         url))))
@@ -1127,6 +1238,8 @@
                         " running " running " - not a shell, so not a dead agent"))
           false))))
 
+(declare lieutenant-row)
+
 (defn restart-roles!
   "Restart the dead agents among a project's roles - all of them, or the ones
   named. Prints what it found and what it did, and returns how many it started."
@@ -1135,12 +1248,24 @@
   (let [ctx (-> (context root)
                 detect-tmux-base-indexes
                 parse-config)
-        roles (vec (:roles ctx))
+        configured-lieutenant?
+        (some lieutenant-config-line?
+              (str/split-lines (slurp (str (:config-file ctx)))))
+        roles (cond-> (vec (:roles ctx))
+                (and (fs/directory? (fs/path root "packs"))
+                     configured-lieutenant?)
+                (conj (lieutenant-row ctx)))
         named (set wanted)
         chosen (if (seq named)
                  (filterv (fn [[_ row]] (contains? named (:role row)))
                           (map-indexed vector roles))
                  (mapv vector (range) roles))]
+    (when (and (some (fn [[_ row]] (= "lieutenant" (:role row))) chosen)
+               (not (fs/regular-file?
+                     (fs/path (:roles-dir ctx) "lieutenant.prompt"))))
+      (fail! (str red "Error:" reset
+                  " Missing Lieutenant prompt at "
+                  (fs/path (:roles-dir ctx) "lieutenant.prompt"))))
     (when (and (seq named) (empty? chosen))
       (fail! (str red "Error:" reset " no such role in " root ": " (str/join ", " named)
                   ". Known roles: " (str/join ", " (map :role roles)))))
@@ -1529,6 +1654,7 @@
     "--dashboard-status" (test-dashboard-status! (second args))
     "--test-tmux-base-indexes" (test-tmux-base-indexes! (second args))
     "--test-dashboard-address" (test-dashboard-address! (second args) (nth args 2))
+    "--test-dashboard-port-usable" (test-dashboard-port-usable! (second args))
     "--test-create-role-session" (test-create-role-session! (second args) (nth args 2) (nth args 3 nil))
     "--test-enclosing-forge" (println (str (or (enclosing-forge-root (second args)) "none")))
     "--test-mark-project" (do

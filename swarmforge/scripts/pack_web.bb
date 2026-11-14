@@ -6,18 +6,24 @@
             [clojure.edn :as edn]
             [clojure.java.shell :refer [sh]]
             [clojure.string :as str]
-            [org.httpkit.server :as http]))
+            [org.httpkit.server :as http])
+  (:import [java.nio.channels FileChannel]
+           [java.nio.file OpenOption StandardOpenOption]))
 
 (def script-dir (fs/parent *file*))
 (load-file (str (fs/path script-dir "forge.bb")))
+(load-file (str (fs/path script-dir "completed_card_report.bb")))
 
 (def usage-text
   (str "Usage:\n"
        "  pack_web.sh --serve <root> [port]\n"
        "  pack_web.sh --test-state <root>\n"
+       "  pack_web.sh --test-state-query <root> <query>\n"
        "  pack_web.sh --test-html\n"
        "  pack_web.sh --test-post-task <root> <name> <text>\n"
        "  pack_web.sh --test-post-chat <root> <text>\n"
+       "  pack_web.sh --test-post-chat-json <root> <json>\n"
+       "  pack_web.sh --test-post-chat-file <root> <json-file>\n"
        "  pack_web.sh --test-inject-payload [name text]\n"
        "  pack_web.sh --test-inject-argv <root> <file> <text>\n"
        "  pack_web.sh --test-approve <root> <id>\n"
@@ -35,6 +41,9 @@
        "  pack_web.sh --test-status-pane <root> <text>\n"
        "  pack_web.sh --test-status-persist <root> <first> <second>\n"
        "  pack_web.sh --test-answer-clarification <root> <id> <text>\n"
+       "  pack_web.sh --test-create-chat-clarification <root> <id> <body-file> [reference-id]\n"
+       "  pack_web.sh --test-mark-chat-clarification-seen <root> <id>\n"
+       "  pack_web.sh --test-withdraw-chat-clarification <root> <id>\n"
        "  pack_web.sh --test-task <root> <name>\n"
        "  pack_web.sh --test-delete-task <root> <name>\n"
        "  pack_web.sh --test-delete-approval <root> <id>\n"
@@ -55,17 +64,54 @@
 (def ^:dynamic *tmux-stub* nil)
 (def ^:dynamic *pane-text* nil)
 (def ^:dynamic *sync-teardown?* false)
+(def ^:dynamic *state-cache* nil)
+(def ^:dynamic *state-metrics* nil)
 (def teardown-delay-ms 250)
 (def pane-capture-lines 2000)
 (def pane-heat (atom {}))
 (def pane-status (atom {}))
 (def pane-status-lines (atom {}))
+(def lieutenant-activity-history (atom {}))
+(def ^:dynamic *lieutenant-activity-context* nil)
+
+(defn state-metric! [kind]
+  (when *state-metrics*
+    (swap! *state-metrics* update kind (fnil inc 0))))
+
+(defn state-cached [kind key f]
+  (if *state-cache*
+    (let [entry (delay (do (state-metric! kind) (f)))
+          cached (get (swap! *state-cache*
+                             #(if (contains? % key) % (assoc % key entry)))
+                      key)]
+      @cached)
+    (do
+      (state-metric! kind)
+      (f))))
+
+(def dashboard-project-workers 4)
+(def dashboard-chat-workers 8)
+
+(defn bounded-pmap [limit f values]
+  (let [values (vec values)]
+    (loop [offset 0
+           result []]
+      (if (>= offset (count values))
+        result
+        (let [end (min (count values) (+ offset limit))
+              jobs (mapv #(future (f %)) (subvec values offset end))
+              next-result (try
+                            (into result (mapv deref jobs))
+                            (catch Throwable throwable
+                              (doseq [job jobs] (future-cancel job))
+                              (throw throwable)))]
+          (recur end next-result))))))
 
 (declare session-name pane-target live-pane-text role-row pane-sample backend-name
          in-process-for-row in-process-task-names approvals
          handoff-files batch-dirs in-process-dir allowed-doc?
          delete-approval! retry-approval! parse-message pane-status-for role-rows
-         recorded-pane single-agent-project?)
+         recorded-pane state-pane-text state-session-alive? single-agent-project?)
 
 (defn usage []
   (binding [*out* *err*]
@@ -98,6 +144,11 @@
     (fs/create-dirs dir))
   (spit (str file) (str (pr-str (vec argv)) "\n") :append true))
 
+(defn record-buffer! [file text]
+  (when-let [dir (fs/parent file)]
+    (fs/create-dirs dir))
+  (spit (str file ".stdin") text :append true))
+
 (defn send-keys! [socket session & keys]
   (let [argv (into ["tmux" "-S" socket "send-keys" "-t" session] keys)]
     (if-let [stub (tmux-stub)]
@@ -114,13 +165,26 @@
         (when-not (zero? (:exit result))
           (throw (ex-info "tmux failed" result)))))))
 
+(defn tmux-load-buffer! [socket buffer text]
+  (let [argv ["tmux" "-S" socket "load-buffer" "-b" buffer "-"]]
+    (if-let [stub (tmux-stub)]
+      (do
+        (record-argv! stub argv)
+        (record-buffer! stub text))
+      (let [result (apply sh (concat argv [:in text]))]
+        (when-not (zero? (:exit result))
+          (throw (ex-info "tmux load-buffer failed" result)))))))
+
 (defn role-rows [root]
-  (let [file (fs/path root ".swarmforge" "roles.tsv")]
-    (if (fs/exists? file)
-      (->> (str/split-lines (slurp (str file)))
-           (remove str/blank?)
-           (mapv #(str/split % #"\t" -1)))
-      [])))
+  (state-cached
+   :role-row-reads [::role-rows (str root)]
+   (fn []
+     (let [file (fs/path root ".swarmforge" "roles.tsv")]
+       (if (fs/exists? file)
+         (->> (str/split-lines (slurp (str file)))
+              (remove str/blank?)
+              (mapv #(str/split % #"\t" -1)))
+         [])))))
 
 (defn master-row [root]
   (if (single-agent-project? root)
@@ -151,7 +215,7 @@
 
 (defn inject-target! [socket target text]
   (when (and socket target (not (str/blank? text)))
-    (tmux! socket "set-buffer" "-b" wake-buffer text)
+    (tmux-load-buffer! socket wake-buffer text)
     (tmux! socket "paste-buffer" "-d" "-p" "-b" wake-buffer "-t" target)
     (tmux! socket "send-keys" "-t" target "C-m")))
 
@@ -174,11 +238,25 @@
   (when-let [row (master-row root)]
     (inject-role! root (first row) text)))
 
+(defn inject-master-strict! [root text]
+  (let [row (master-row root)]
+    (when-not row
+      (throw (ex-info "Master wake failed." {:http-status 502})))
+    (let [socket (tmux-socket root)
+          target (pane-target row)]
+      (when-not (and socket target)
+        (throw (ex-info "Master wake failed." {:http-status 502})))
+      (try
+        (inject-target! socket target text)
+        (catch Exception _
+          (throw (ex-info "Master wake failed." {:http-status 502})))))))
+
 (defn pack-board-result [root & args]
   (let [script (str (fs/path script-dir "pack_board.sh"))]
     (apply sh (concat [script] args ["--root" (str root)]))))
 
 (defn pack-board [root & args]
+  (state-metric! :board-subprocesses)
   (let [result (apply pack-board-result root args)]
     (when-not (zero? (:exit result))
       (let [msg (str/trim (str (:err result) "\n" (:out result)))]
@@ -192,10 +270,37 @@
        vec))
 
 (defn lanes [root]
-  (lines (pack-board root "lanes")))
+  (state-cached
+   :lane-builds [::lanes (str root)]
+   (fn []
+     (if (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
+       (let [file (fs/path root "stages.edn")
+             stages (if (fs/regular-file? file)
+                      (:stages (edn/read-string (slurp (str file))))
+                      [])]
+         (into ["queued"] (conj (mapv :name stages) "done")))
+       (let [file (fs/path root ".swarmforge" "board" "lanes.tsv")]
+         (if (fs/regular-file? file)
+           (mapv #(first (str/split % #"\t")) (lines (slurp (str file))))
+           (mapv first (role-rows root))))))))
 
 (defn master-role [root]
-  (str/trim (pack-board root "master-lane")))
+  (state-cached
+   :master-role-builds [::master-role (str root)]
+   (fn []
+     (let [rows (vec (role-rows root))
+           single-agent? (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
+           masters (if single-agent?
+                     rows
+                     (filterv #(= "master" (nth % 1 nil)) rows))]
+       (when-not (= 1 (count masters))
+         (throw
+          (ex-info
+           (if single-agent?
+             "A single-agent project must name exactly one role"
+             "Config must name exactly one master worktree")
+           {:http-status 500})))
+       (ffirst masters)))))
 
 (defn task-entry [line]
   (let [[name lane _created updated task-id audit-count] (str/split line #"\t" -1)]
@@ -210,15 +315,18 @@
 (declare tasks)
 
 (defn active-single-agent-card [root]
-  (when (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
-    (let [stages-file (fs/path root "stages.edn")
-          project-name (when (fs/regular-file? stages-file)
-                         (:task (edn/read-string (slurp (str stages-file)))))]
-      (first
-       (remove (fn [task]
-                 (or (= (:name task) project-name)
-                     (#{"done" "queued"} (:lane task))))
-               (tasks root))))))
+  (state-cached
+   :active-card-builds [::active-card (str root)]
+   (fn []
+     (when (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
+       (let [stages-file (fs/path root "stages.edn")
+             project-name (when (fs/regular-file? stages-file)
+                            (:task (edn/read-string (slurp (str stages-file)))))]
+         (first
+          (remove (fn [task]
+                    (or (= (:name task) project-name)
+                        (#{"done" "queued"} (:lane task))))
+                  (tasks root))))))))
 
 (defn project-idle? [root]
   (and (fs/regular-file? (fs/path root ".swarmforge" "single-agent"))
@@ -278,7 +386,7 @@
        (or (i-status? sentence) (other-status? sentence))))
 
 (defn strip-bullet [sentence]
-  (str/replace (or sentence "") #"^[•*]\s*" ""))
+  (str/replace (or sentence "") #"^[•*›]\s*" ""))
 
 (defn codex-throwaway-bullet? [sentence]
   (let [n (str/lower-case (fold-apostrophe (strip-bullet sentence)))]
@@ -332,45 +440,47 @@
   (or (last (im-status-lines role text backend)) ""))
 
 (defn board-tasks [root]
-  (mapv task-entry (lines (pack-board root "list"))))
+  (state-cached
+   :board-task-reads [::board-tasks (str root)]
+   (fn []
+     (let [file (fs/path root ".swarmforge" "board" "tasks.tsv")]
+       (if (fs/regular-file? file)
+         (mapv task-entry (lines (slurp (str file))))
+         [])))))
 
 (defn pane-status-lines-for [root role]
-  (let [row (role-row root role)
-        text (when row (live-pane-text root role))
-        backend (when row (backend-name row))]
-    (if row
-      (im-status-lines (pane-cache-key root role) text backend)
-      [])))
+  (state-cached
+   :pane-status-builds [::pane-status (str root) (str role)]
+   (fn []
+     (let [row (role-row root role)
+           text (when row (state-pane-text root role row))
+           backend (when row (backend-name row))]
+       (if row
+         (im-status-lines (pane-cache-key root role) text backend)
+         [])))))
 
 (defn pane-status-for [root role]
-  (or (last (pane-status-lines-for root role)) ""))
+  (state-cached
+   :pane-status-for-builds [::pane-status-for (str root) (str role)]
+   #(or (last (pane-status-lines-for root role)) "")))
 
-(defn active-card-names [root role]
-  (let [row (role-row root role)
-        names (when row (in-process-task-names (in-process-for-row row)))
-        cards (filter #(= role (:lane %)) (board-tasks root))]
-    (if (seq names)
-      (set names)
-      (if (= 1 (count cards))
-        #{(:name (first cards))}
-        #{}))))
+(defn active-card-names
+  ([root role] (active-card-names root role (board-tasks root)))
+  ([root role cards]
+   (let [row (role-row root role)
+         names (when row (in-process-task-names (in-process-for-row row)))
+         lane-cards (filter #(= role (:lane %)) cards)]
+     (if (seq names)
+       (set names)
+       (if (= 1 (count lane-cards))
+         #{(:name (first lane-cards))}
+         #{})))))
 
 (defn rejected-task? [root name]
   (fs/exists? (fs/path root ".swarmforge" "notify" (str "reject-" name))))
 
-(defn pending-approval-ids [root]
-  (->> (approvals root)
-       (map :task_id)
-       (remove str/blank?)
-       set))
-
-(defn pending-approval-names [root]
-  (->> (approvals root)
-       (map :task)
-       (remove str/blank?)
-       set))
-
-(defn task-with-status [root task]
+(defn task-with-status-from-view
+  [root task pending-ids pending-names active-names pane-statuses]
   (let [role (:lane task)
         name (:name task)
         task-id (:id task)]
@@ -378,11 +488,29 @@
            (cond
              (= "done" role) ""
              (rejected-task? root name) "REJECTED"
-             (or (contains? (pending-approval-ids root) task-id)
-                 (contains? (pending-approval-names root) name)) "Waiting for approval"
-             (contains? (active-card-names root role) name)
-             (pane-status-for root role)
+             (or (contains? pending-ids task-id)
+                 (contains? pending-names name)) "Waiting for approval"
+             (contains? (get active-names role #{}) name)
+             (get pane-statuses role "")
              :else "waiting in queue"))))
+
+(defn task-with-status [root task]
+  (let [board (board-tasks root)
+        approval-items (approvals root)
+        pending-ids (set (keep #(not-empty (:task_id %)) approval-items))
+        pending-names (set (keep #(not-empty (:task %)) approval-items))
+        active-by-role (into {}
+                             (map (fn [row]
+                                    [(first row)
+                                     (active-card-names root (first row) board)])
+                                  (role-rows root)))
+        pane-statuses (into {}
+                            (keep (fn [[role names]]
+                                    (when (seq names)
+                                      [role (pane-status-for root role)])))
+                            active-by-role)]
+    (task-with-status-from-view root task pending-ids pending-names
+                                active-by-role pane-statuses)))
 
 (defn batch-task-names [dir]
   (in-process-task-names (handoff-files dir)))
@@ -434,23 +562,47 @@
   (vec (keep #(merging-card root %) (role-rows root))))
 
 (defn tasks [root]
-  (let [idx (batch-index root)
-        board (mapv (fn [task]
-                      (if-let [batch (get idx (:name task))]
-                        (assoc (task-with-status root task) :batch batch)
-                        (task-with-status root task)))
-                    (board-tasks root))]
-    (into (merging-cards root) board)))
+  (state-cached
+   :task-view-builds [::tasks (str root)]
+   (fn []
+     (let [raw-board (board-tasks root)
+           idx (batch-index root)
+           approval-items (approvals root)
+           pending-ids (set (keep #(not-empty (:task_id %)) approval-items))
+           pending-names (set (keep #(not-empty (:task %)) approval-items))
+           active-by-role (into {}
+                                (map (fn [row]
+                                       [(first row)
+                                        (active-card-names root (first row)
+                                                           raw-board)])
+                                     (role-rows root)))
+           pane-statuses (into {}
+                               (keep (fn [[role names]]
+                                       (when (seq names)
+                                         [role (pane-status-for root role)])))
+                               active-by-role)
+           board (mapv (fn [task]
+                         (let [task (task-with-status-from-view
+                                     root task pending-ids pending-names
+                                     active-by-role pane-statuses)]
+                           (if-let [batch (get idx (:name task))]
+                             (assoc task :batch batch)
+                             task)))
+                       raw-board)]
+       (into (merging-cards root) board)))))
 
 (defn parse-message [path]
-  (let [content (slurp (str path))
-        [header body] (str/split content #"\n\n" 2)
-        headers (into {}
-                      (for [line (str/split-lines header)
-                            :let [[k v] (str/split line #": " 2)]
-                            :when (and k v)]
-                        [k v]))]
-    {:headers headers :body (or body "")}))
+  (state-cached
+   :message-parses [::message (str path)]
+   (fn []
+     (let [content (slurp (str path))
+           [header body] (str/split content #"\n\n" 2)
+           headers (into {}
+                         (for [line (str/split-lines header)
+                               :let [[k v] (str/split line #": " 2)]
+                               :when (and k v)]
+                           [k v]))]
+       {:headers headers :body (or body "")}))))
 
 (defn comma-list [text]
   (->> (str/split (or text "") #",")
@@ -544,7 +696,9 @@
       kind (assoc :kind kind))))
 
 (defn approvals [root]
-  (mapv #(approval-entry root %) (pending-files root)))
+  (state-cached
+   :approval-scans [::approvals (str root)]
+   #(mapv (fn [path] (approval-entry root path)) (pending-files root))))
 
 ;; An approval the dashboard resolved, kept so a reader that did not resolve it can be
 ;; told how it ended rather than only that it is gone. The bridge's room is that reader:
@@ -575,10 +729,13 @@
     (catch Exception _ nil)))
 
 (defn resolved-approvals [root]
-  (let [dir (resolved-approvals-dir root)]
-    (if (fs/directory? dir)
-      (->> (resolved-approval-files dir) (keep resolved-approval) vec)
-      [])))
+  (state-cached
+   :resolved-approval-scans [::resolved-approvals (str root)]
+   (fn []
+     (let [dir (resolved-approvals-dir root)]
+       (if (fs/directory? dir)
+         (->> (resolved-approval-files dir) (keep resolved-approval) vec)
+         [])))))
 
 (defn record-resolution!
   "Write down how an approval ended, before its pending file is gone: the id, the card,
@@ -631,9 +788,15 @@
   (fs/path worktree ".swarmforge" "handoffs" "inbox" "in_process"))
 
 (defn session-alive? [socket session]
+  (state-metric! :tmux-session-checks)
   (boolean
    (when (and socket session)
      (zero? (:exit (sh "tmux" "-S" socket "has-session" "-t" session))))))
+
+(defn state-session-alive? [root role row]
+  (state-cached
+   :tmux-session-builds [::session-alive (str root) (str role)]
+   #(session-alive? (tmux-socket root) (session-name row))))
 
 (defn role-queue-state [alive? busy?]
   (cond
@@ -645,7 +808,9 @@
   (let [worktree (nth row 2 nil)]
     (if (str/blank? worktree)
       []
-      (in-process-files (in-process-dir worktree)))))
+      (state-cached
+       :in-process-scans [::in-process (str worktree)]
+       #(in-process-files (in-process-dir worktree))))))
 
 (defn session-name [row]
   (let [role (first row)
@@ -696,6 +861,161 @@
     (record-heat! (pane-cache-key root role) text backend)
     0))
 
+(def master-shells
+  #{"zsh" "bash" "sh" "dash" "ksh" "fish" "tcsh" "csh" "login" "-zsh" "-bash"})
+
+(def activity-working-pattern
+  #"(?im)^\s*(?:[•*]\s*working(?:\s*\([^)\r\n]*\))?|[✻✽✶✳]\s*.*\(esc\s+to\s+interrupt[^)\r\n]*\)|esc\s+to\s+interrupt(?:\s*[·.)-].*)?|waiting\s+for\s+response(?:\s+\d+(?:\.\d+)?s)?)\s*$")
+
+(def activity-idle-pattern
+  #"(?im)^\s*(?:[›❯]\s+ask (?:codex|claude|copilot) to do anything|\? for shortcuts|enter:send\s+esc:cancel|⏵⏵\s+bypass permissions on[^\r\n]*|ready(?: for (?:the )?next (?:task|card))?[.!]?|idle[.!]?|(?:done|completed|finished)(?: successfully)?[.!]?)\s*$")
+
+(def activity-token-pattern
+  #"(?i)\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,})\b")
+
+(def activity-path-pattern
+  #"(?:(?:~|/)[^\s]+|[A-Za-z]:\\[^\s]+)")
+
+(def activity-socket-pattern
+  #"\bswarmforge-[A-Za-z0-9._-]+\b")
+
+(def activity-status-max-chars 120)
+(def activity-tail-lines 8)
+
+(defn fallback-shell? [command]
+  (let [normalized (some-> command
+                           str/trim
+                           str/lower-case
+                           (str/replace #"^.*[\\/]" ""))]
+    (contains? master-shells normalized)))
+
+(defn safe-activity-line [line]
+  (some-> line
+          (str/replace #"[\p{Cc}\p{Cf}]" " ")
+          (str/replace #"\s+" " ")
+          str/trim
+          not-empty
+          (str/replace activity-token-pattern "[redacted]")
+          (str/replace activity-path-pattern "[path]")
+          (str/replace activity-socket-pattern "[socket]")
+          (as-> text
+                (if (> (count text) activity-status-max-chars)
+                  (str (subs text 0 (dec activity-status-max-chars)) "…")
+                  text))
+          str/trim
+          not-empty))
+
+(defn last-pattern-match [pattern text]
+  (let [matcher (re-matcher pattern text)]
+    (loop [found nil]
+      (if (.find matcher)
+        (recur {:start (.start matcher)
+                :line (str/trim (.group matcher))})
+        found))))
+
+(defn activity-tail-lines-for [text]
+  (last-n-lines (pane-sample text nil) activity-tail-lines))
+
+(defn activity-marker [text]
+  (let [lines (activity-tail-lines-for text)
+        tail (str/join "\n" lines)
+        working (last-pattern-match activity-working-pattern tail)
+        idle (last-pattern-match activity-idle-pattern tail)
+        claude-footer-idle? (and idle
+                                 (re-find #"(?i)^⏵⏵\s+bypass permissions on"
+                                          (:line idle)))
+        marker (cond
+                 (nil? working) idle
+                 (nil? idle) working
+                 claude-footer-idle? working
+                 (>= (:start idle) (:start working)) idle
+                 :else working)
+        line-number (when marker
+                      (count (re-seq #"\n"
+                                     (subs tail 0 (:start marker)))))]
+    (when marker
+      (assoc marker
+             :state (if (= marker idle) "idle" "working")
+             :line-index (or line-number 0)
+             :kind (if (and (= marker idle)
+                            (re-find #"(?i)ask codex to do anything"
+                                     (:line marker)))
+                     :codex-idle-prompt
+                     (if (and (= marker idle) claude-footer-idle?)
+                       :claude-permissions-footer
+                       :generic))))))
+
+(defn activity-output-state [text]
+  (or (:state (activity-marker text)) "unknown"))
+
+(defn activity-status-line [text marker]
+  (let [lines (activity-tail-lines-for text)
+        current (str/join "\n" (drop (or (:line-index marker) 0) lines))
+        recognized (->> (pane-sentences current)
+                        (filter status-sentence?)
+                        last)
+        candidate (or recognized
+                      (some-> (:line marker) strip-bullet))]
+    (safe-activity-line candidate)))
+
+(defn pane-current-command [socket target]
+  (state-metric! :tmux-command-reads)
+  (try
+    (let [result (sh "tmux" "-S" socket "display-message" "-p" "-t" target
+                     "#{pane_current_command}")]
+      (when (zero? (:exit result))
+        (not-empty (str/trim (:out result)))))
+    (catch Exception _ nil)))
+
+(defn state-pane-command [root role row]
+  (state-cached
+   :pane-command-builds [::pane-command (str root) (str role)]
+   #(pane-current-command (tmux-socket root) (pane-target row))))
+
+(defn lieutenant-runtime-facts [root]
+  (if *lieutenant-activity-context*
+    *lieutenant-activity-context*
+    (if-let [row (master-row root)]
+      (let [alive? (try
+                     (state-session-alive? root "lieutenant" row)
+                     (catch Exception _ false))]
+        {:alive? alive?
+         :command (when alive?
+                    (state-pane-command root "lieutenant" row))})
+      {:alive? false})))
+
+(defn activity-fingerprint [activity]
+  (select-keys activity [:alive :state :status_line]))
+
+(defn lieutenant-activity-snapshot [root]
+  (let [row (master-row root)
+        {:keys [alive? command]} (lieutenant-runtime-facts root)
+        available? (and alive? (not (fallback-shell? command)))
+        backend (when row (backend-name row))
+        text (when available? (state-pane-text root "lieutenant" row))
+        marker (when available? (activity-marker text))
+        state (if available? (or (:state marker) "unknown") "unavailable")
+        heat (if available?
+               (role-heat root "lieutenant" true text backend)
+               0)
+        activity {:alive (boolean alive?)
+                  :state state
+                  :heat heat
+                  :status_line (when (and available? marker)
+                                 (activity-status-line text marker))}
+        fingerprint (activity-fingerprint activity)
+        now (.format java.time.format.DateTimeFormatter/ISO_INSTANT
+                     (java.time.Instant/now))
+        history (swap! lieutenant-activity-history
+                        update root
+                        (fn [previous]
+                          (if (= fingerprint (:fingerprint previous))
+                            previous
+                            {:fingerprint fingerprint
+                             :last_changed_at now})))]
+    (assoc activity :last_changed_at
+           (get-in history [root :last_changed_at]))))
+
 (defn cards-in-lane [all-tasks lane]
   (filterv #(= lane (:lane %)) all-tasks))
 
@@ -736,8 +1056,9 @@
         cards (cards-in-lane all-tasks role)
         card (first cards)
         busy? (boolean (or path card))
-        alive? (session-alive? socket (session-name row))
-        text (live-pane-text root role)
+        alive? (state-session-alive? root role row)
+        text (when (or alive? (some? *pane-text*))
+               (state-pane-text root role row))
         names (work-task-names files cards)
         batch-names (in-process-batch-task-names row)]
     (queue-row role names batch-names busy? alive?
@@ -745,9 +1066,12 @@
                (or (:updated_at from-file) (:updated_at card) ""))))
 
 (defn work-in-flight [root]
-  (let [socket (tmux-socket root)
-        all-tasks (tasks root)]
-    (mapv #(work-row-for-role root socket % all-tasks) (role-rows root))))
+  (state-cached
+   :work-view-builds [::work-in-flight (str root)]
+   (fn []
+     (let [socket (tmux-socket root)
+           all-tasks (tasks root)]
+       (mapv #(work-row-for-role root socket % all-tasks) (role-rows root))))))
 
 (defn chat-pending-dir [root]
   (fs/path root ".swarmforge" "dashboard" "requests" "pending"))
@@ -764,13 +1088,228 @@
     []))
 
 (def chat-thread-id-re #"[A-Za-z0-9][A-Za-z0-9._~:-]{0,150}")
+(def chat-proposal-id-re #"proposal-[A-Za-z0-9][A-Za-z0-9._~:-]{0,150}")
+(def chat-request-id-re #"[A-Za-z0-9][A-Za-z0-9._~:-]{0,150}")
+(def chat-source-re #"[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}")
+(def clarification-id-re #"clar-[A-Za-z0-9][A-Za-z0-9._~:-]{0,139}")
+(def clarification-max-chars 16384)
+(def chat-token-re
+  #"\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,})\b")
+(def clarification-path-re
+  #"(?<![\p{L}\p{N}_+.-])(?:~|/(?:Users|home|private|var|tmp|opt|Volumes|srv|Applications|Library|usr|etc|bin))/[^\s)\]},>]+|(?<![\p{L}\p{N}_])[A-Za-z]:\\[^\s)\]},>]+")
+(def clarification-control-re
+  #"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]")
+
+(declare chat-request-invalid!)
+
+(defn valid-clarification-id? [value]
+  (boolean (and (string? value)
+                (re-matches clarification-id-re value)
+                (not (re-find chat-token-re value)))))
+
+(defn valid-instant-text? [value]
+  (and (string? value)
+       (try
+         (java.time.Instant/parse value)
+         true
+         (catch Exception _ false))))
+
+(defn safe-clarification-body [text]
+  (let [body (str/trimr (or text ""))]
+    (when (str/blank? body)
+      (chat-request-invalid! "Clarification text is required."))
+    (when (re-find clarification-control-re body)
+      (chat-request-invalid! "Clarification text contains a control character."))
+    (when (> (count body) clarification-max-chars)
+      (chat-request-invalid!
+       (str "Clarification text must be at most "
+            clarification-max-chars " characters.")))
+    (-> body
+        (str/replace clarification-path-re "[redacted-path]")
+        (str/replace chat-token-re "[redacted-token]"))))
+
+(defn safe-clarification-reference [value]
+  (when (some? value)
+    (when-not (valid-clarification-id? value)
+      (chat-request-invalid! "Clarification reference is invalid."))
+    value))
 
 (defn chat-thread-id [headers]
   (let [value (some-> (get headers "thread_id") str/trim not-empty)]
     (when (and value (re-matches chat-thread-id-re value))
       value)))
 
-(defn parse-chat [path]
+(defn chat-source [headers]
+  (let [value (some-> (get headers "source") str/trim not-empty)]
+    (when (and value
+               (re-matches chat-source-re value)
+               (not (re-find chat-token-re value)))
+      value)))
+
+(defn chat-proposal-id [headers]
+  (let [value (some-> (get headers "proposal_id") str/trim not-empty)]
+    (when (and value (re-matches chat-proposal-id-re value))
+      value)))
+
+(def route-card-action-type "approve-route-card")
+(def route-action-family-re #"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+(def route-absolute-path-re
+  #"(?<![A-Za-z0-9+.-])/(?:Users|home|private|var|tmp|opt|Volumes|srv)/[^\s)\]},>]+")
+
+(defn route-action-text [value maximum]
+  (let [text (-> (str (or value ""))
+                 (str/replace #"[\p{Cntrl}]" " ")
+                 (str/replace #"\s+" " ")
+                 (str/replace route-absolute-path-re "[redacted-path]")
+                 (str/replace chat-token-re "[redacted-token]")
+                 str/trim)]
+    (when-not (str/blank? text)
+      (subs text 0 (min maximum (count text))))))
+
+(defn route-proposal-status [proposal]
+  (let [status (some-> (:status proposal) name str/lower-case)]
+    (cond
+      (or (not (str/blank? (str (or (:invalidated-at proposal) ""))))
+          (not (str/blank? (str (or (:invalidated-reason proposal) "")))))
+      "invalidated"
+
+      (or (not (str/blank? (str (or (:consumed-at proposal) ""))))
+          (= status "consumed"))
+      "consumed"
+
+      (or (not (str/blank? (str (or (:superseded-at proposal) ""))))
+          (not (str/blank? (str (or (:superseded-by proposal) ""))))
+          (= status "superseded"))
+      "superseded"
+
+      (or (nil? status) (= status "pending"))
+      "pending"
+
+      :else "malformed")))
+
+(defn chat-route-root [root]
+  (when root
+    (let [root (try
+                 (fs/canonicalize (fs/path root))
+                 (catch Exception _ nil))]
+      (when root
+        (or (when (fs/directory? (fs/path root ".swarmforge" "route-proposals"))
+              root)
+            (let [projects (fs/parent root)
+                  forge (when projects (fs/parent projects))]
+              (when (and projects
+                         forge
+                         (= "projects" (str (fs/file-name projects)))
+                         (fs/directory? (fs/path forge ".swarmforge"
+                                                "route-proposals")))
+                forge)))))))
+
+(defn resolve-chat-action [root action]
+  (let [forge (chat-route-root root)
+        proposal-id (:proposal_id action)
+        file (when (and forge proposal-id)
+               (fs/path forge ".swarmforge" "route-proposals"
+                        (str proposal-id ".edn")))
+        proposal (when (and file (fs/regular-file? file))
+                   (try
+                     (edn/read-string (slurp (str file)))
+                     (catch Exception _ nil)))
+        project (when (and forge proposal (string? (:project proposal)))
+                  (try
+                    (fs/canonicalize (fs/path (:project proposal)))
+                    (catch Exception _ nil)))
+        expected-parent (when forge
+                          (try
+                            (fs/canonicalize (fs/path forge "projects"))
+                            (catch Exception _ nil)))
+        family (when forge (route-action-text (fs/file-name forge) 128))
+        project-name (when project (route-action-text (fs/file-name project) 128))
+        status (when (and (map? proposal)
+                          (= proposal-id (:id proposal))
+                          expected-parent
+                          (= expected-parent (fs/parent project))
+                          (= family (:family action))
+                          (= project-name (:project action)))
+                 (route-proposal-status proposal))
+        available? (= "pending" status)]
+    (cond-> action
+      (and available? (route-action-text (:name proposal) 256))
+      (assoc :task_name (route-action-text (:name proposal) 256)
+             :label (route-action-text (str "Approve " (:name proposal)) 80))
+
+      true
+      (assoc :status (or status "unavailable")
+             :available available?))))
+
+(defn chat-action [root headers]
+  (let [stored-status (some-> (get headers "action_status")
+                              str/trim str/lower-case)
+        stored-status (when (contains? #{"pending" "consumed" "invalidated"
+                                          "superseded" "unavailable"}
+                                       stored-status)
+                        stored-status)
+        proposal-id (chat-proposal-id {"proposal_id" (get headers "action_proposal_id")})
+        family (let [value (some-> (get headers "action_family") str/trim not-empty)]
+                 (when (and value (re-matches route-action-family-re value)) value))
+        project (let [value (some-> (get headers "action_project") str/trim not-empty)]
+                  (when (and value (re-matches route-action-family-re value)) value))
+        task-name (route-action-text (get headers "action_task_name") 256)
+        label (route-action-text (get headers "action_label") 80)
+        action (when (and (= route-card-action-type (get headers "action"))
+                          stored-status proposal-id family project task-name label)
+                 {:type route-card-action-type
+                  :proposal_id proposal-id
+                  :family family
+                  :project project
+                  :task_name task-name
+                  :label label
+                  :status stored-status})]
+    (when action
+      (resolve-chat-action root action))))
+
+(defn clarification-metadata [headers]
+  (let [id (get headers "clarification_id")
+        status (get headers "status")
+        attention (get headers "attention_state")
+        reference (get headers "reference_id")
+        created-at (get headers "created_at")
+        answered-at (get headers "answered_at")
+        withdrawn-at (get headers "withdrawn_at")
+        seen-at (get headers "seen_at")
+        answered-by (get headers "answered_by")]
+    (when (and (= "project-agent" (get headers "author"))
+               (= "project-agent" (get headers "direction"))
+               (= "clarification" (get headers "kind"))
+               (= id (get headers "id"))
+               (valid-clarification-id? id)
+               (contains? #{"open" "answered" "withdrawn"} status)
+               (contains? #{"unseen" "seen"} attention)
+               (valid-instant-text? created-at)
+               (or (nil? reference)
+                   (and (valid-clarification-id? reference)
+                        (not= id reference)))
+               (or (nil? answered-at) (valid-instant-text? answered-at))
+               (or (nil? withdrawn-at) (valid-instant-text? withdrawn-at))
+               (or (nil? seen-at) (valid-instant-text? seen-at))
+               (or (nil? answered-by)
+                   (re-matches chat-request-id-re answered-by)))
+      (cond-> {:author "project-agent"
+               :direction "project-agent"
+               :kind "clarification"
+               :clarification_id id
+               :lifecycle status
+               :attention attention
+               :created_at created-at}
+        reference (assoc :reference_id reference)
+        answered-at (assoc :answered_at answered-at)
+        withdrawn-at (assoc :withdrawn_at withdrawn-at)
+        seen-at (assoc :seen_at seen-at)
+        answered-by (assoc :answered_by answered-by)))))
+
+(defn parse-chat
+  ([path] (parse-chat nil path))
+  ([root path]
+  (state-metric! :chat-file-reads)
   (let [raw (slurp (str path))
         [header body] (str/split raw #"\n\n" 2)
         headers (into {}
@@ -778,19 +1317,32 @@
                             :let [[k v] (str/split line #": " 2)]
                             :when (and k v)]
                         [k v]))
-        proposal-id (not-empty (get headers "proposal_id"))
-        thread-id (chat-thread-id headers)]
+        proposal-id (chat-proposal-id headers)
+        thread-id (chat-thread-id headers)
+        source (chat-source headers)
+        action (chat-action root headers)
+        clarification (clarification-metadata headers)
+        reply-to (when (valid-clarification-id? (get headers "clarification_id"))
+                   (get headers "clarification_id"))]
     (cond-> {:id (get headers "id")
              :status (get headers "status")
              :body (or body "")
              :response (str/replace (get headers "response" "") #"\\n" "\n")
              :created_at (get headers "created_at")}
       proposal-id (assoc :proposal_id proposal-id)
-      thread-id (assoc :thread_id thread-id))))
+      thread-id (assoc :thread_id thread-id)
+      source (assoc :source source)
+      action (assoc :actions [action])
+      clarification (merge clarification)
+      (and reply-to (not clarification)) (assoc :clarification_id reply-to)))))
 
 (defn list-chat [root]
-  (vec (concat (map parse-chat (chat-files (chat-pending-dir root)))
-               (map parse-chat (chat-files (chat-done-dir root))))))
+  (state-cached
+   :chat-scans [::chat (str root)]
+   #(vec (bounded-pmap dashboard-chat-workers
+                       (fn [path] (parse-chat root path))
+                       (concat (chat-files (chat-pending-dir root))
+                               (chat-files (chat-done-dir root)))))))
 
 (defn clar-pending-dir [root]
   (fs/path root ".swarmforge" "dashboard" "clarifications" "pending"))
@@ -814,11 +1366,218 @@
      :created_at (get headers "created_at")}))
 
 (defn list-clarifications [root]
-  (vec (concat (map parse-clarification (chat-files (clar-pending-dir root)))
-               (map parse-clarification (chat-files (clar-done-dir root))))))
+  (state-cached
+   :clarification-scans [::clarifications (str root)]
+   #(vec (bounded-pmap dashboard-chat-workers
+                       parse-clarification
+                       (concat (chat-files (clar-pending-dir root))
+                               (chat-files (clar-done-dir root)))))))
 
 (defn chat-id []
   (str "req-" (str/replace (str (java.time.Instant/now)) #"[^0-9A-Za-z]" "")))
+
+(defn chat-request-file [root state id]
+  (fs/path root ".swarmforge" "dashboard" "requests" state
+           (str id ".request")))
+
+(defn existing-chat-request [root id]
+  (some (fn [path]
+          (when (fs/regular-file? path)
+            {:path path :entry (parse-chat path)}))
+        [(chat-request-file root "pending" id)
+         (chat-request-file root "done" id)]))
+
+(defn fresh-chat-id [root]
+  (loop []
+    (let [id (chat-id)]
+      (if (existing-chat-request root id)
+        (recur)
+        id))))
+
+(defn with-chat-request-lock [root f]
+  (let [path (fs/path root ".swarmforge" "dashboard" "requests" "requests.lock")
+        options (into-array OpenOption [StandardOpenOption/CREATE
+                                        StandardOpenOption/WRITE])]
+    (fs/create-dirs (fs/parent path))
+    (with-open [channel (FileChannel/open path options)]
+      (.lock channel)
+      (f))))
+
+(defn chat-request-invalid! [message]
+  (throw (ex-info message {:http-status 400})))
+
+(defn supplied-chat-id [value kind pattern]
+  (when-not (and (string? value)
+                 (re-matches pattern value)
+                 (not (re-find chat-token-re value)))
+    (chat-request-invalid! (str kind " is invalid.")))
+  value)
+
+(defn render-chat-request
+  [{:keys [id status body response created_at updated_at thread_id source
+           proposal_id author direction kind clarification_id reference_id
+           attention_state attention answered_at answered_by withdrawn_at seen_at]}]
+  (str "id: " id "\n"
+       "status: " status "\n"
+       (when thread_id (str "thread_id: " thread_id "\n"))
+       (when source (str "source: " source "\n"))
+       (when proposal_id (str "proposal_id: " proposal_id "\n"))
+       (when author (str "author: " author "\n"))
+       (when direction (str "direction: " direction "\n"))
+       (when kind (str "kind: " kind "\n"))
+       (when clarification_id (str "clarification_id: " clarification_id "\n"))
+       (when reference_id (str "reference_id: " reference_id "\n"))
+       (when-let [attention (or attention_state attention)]
+         (str "attention_state: " attention "\n"))
+       "created_at: " created_at "\n"
+       (when updated_at (str "updated_at: " updated_at "\n"))
+       (when answered_at (str "answered_at: " answered_at "\n"))
+       (when answered_by (str "answered_by: " answered_by "\n"))
+       (when withdrawn_at (str "withdrawn_at: " withdrawn_at "\n"))
+       (when seen_at (str "seen_at: " seen_at "\n"))
+       (when-not (str/blank? response)
+         (str "response: " (str/replace response #"\n" (constantly "\\n")) "\n"))
+       "\n"
+       (or body "")
+       (when-not (str/ends-with? (or body "") "\n") "\n")))
+
+(defn atomic-write-chat-record! [path record]
+  (fs/create-dirs (fs/parent path))
+  (let [tmp (fs/create-temp-file {:dir (fs/parent path)
+                                  :prefix ".chat-record."})]
+    (spit (str tmp) (render-chat-request record))
+    (fs/move tmp path {:replace-existing true :atomic-move true})))
+
+(defn find-clarification-record [root id]
+  (when (valid-clarification-id? id)
+    (some (fn [path]
+            (when (fs/regular-file? path)
+              (let [entry (parse-chat path)]
+                (when (and (= "clarification" (:kind entry))
+                           (= id (:clarification_id entry)))
+                  {:path path :entry entry}))))
+          [(chat-request-file root "pending" id)
+           (chat-request-file root "done" id)])))
+
+(defn same-clarification-content?
+  [entry body reference-id]
+  (and (= "clarification" (:kind entry))
+       (= (str/trimr (or body ""))
+          (str/trimr (or (:body entry) "")))
+       (= reference-id (:reference_id entry))))
+
+(defn create-chat-clarification!
+  [root id text reference-id]
+  (when-not (valid-clarification-id? id)
+    (chat-request-invalid! "Clarification id is invalid."))
+  (let [body (safe-clarification-body text)
+        reference-id (safe-clarification-reference reference-id)]
+    (with-chat-request-lock
+      root
+      (fn []
+        (if-let [{:keys [entry]} (existing-chat-request root id)]
+          (if (same-clarification-content? entry body reference-id)
+            {:clarification_id id :lifecycle (:lifecycle entry)}
+            (throw (ex-info "Clarification id was reused with different content."
+                            {:http-status 409})))
+          (do
+            (when (and reference-id
+                       (nil? (find-clarification-record root reference-id)))
+              (chat-request-invalid! "Clarification reference is unknown."))
+            (let [now (iso-now)
+                  record {:id id
+                          :status "open"
+                          :body body
+                          :created_at now
+                          :updated_at now
+                          :author "project-agent"
+                          :direction "project-agent"
+                          :kind "clarification"
+                          :clarification_id id
+                          :reference_id reference-id
+                          :attention_state "unseen"}]
+              (atomic-write-chat-record!
+               (chat-request-file root "pending" id)
+               record)
+              {:clarification_id id :lifecycle "open"})))))))
+
+(defn change-open-clarification! [found id transition]
+  (when-not found
+    (throw (ex-info (str "Unknown clarification: " id)
+                    {:http-status 404})))
+  (let [{:keys [path entry]} found]
+    (when-not (= "open" (:lifecycle entry))
+      (throw (ex-info
+              (str "Clarification is " (:lifecycle entry)
+                   " and cannot be changed: " id)
+              {:http-status 409})))
+    (let [now (iso-now)
+          changed (transition entry now)]
+      (atomic-write-chat-record! path changed)
+      changed)))
+
+(defn update-clarification-record!
+  [root id transition]
+  (with-chat-request-lock
+    root
+    #(change-open-clarification!
+      (find-clarification-record root id) id transition)))
+
+(defn mark-clarification-answered! [root id reply-id]
+  (update-clarification-record!
+   root id
+   (fn [entry now]
+     (assoc entry
+            :status "answered"
+            :lifecycle "answered"
+            :answered_at now
+            :answered_by reply-id
+            :updated_at now))))
+
+(defn withdraw-chat-clarification! [root id]
+  (update-clarification-record!
+   root id
+   (fn [entry now]
+     (assoc entry
+            :status "withdrawn"
+            :lifecycle "withdrawn"
+            :withdrawn_at now
+            :updated_at now))))
+
+(defn mark-chat-clarification-seen! [root id]
+  (with-chat-request-lock
+    root
+    (fn []
+      (let [{:keys [path entry] :as found} (find-clarification-record root id)]
+        (when-not found
+          (throw (ex-info (str "Unknown clarification: " id)
+                          {:http-status 404})))
+        (if (= "seen" (:attention entry))
+          entry
+          (let [now (iso-now)
+                changed (assoc entry
+                               :attention "seen"
+                               :attention_state "seen"
+                               :seen_at now
+                               :updated_at now)]
+            (atomic-write-chat-record! path changed)
+            changed))))))
+
+(defn clarification-latest-change [entry]
+  (->> [(:withdrawn_at entry) (:answered_at entry) (:seen_at entry)
+        (:created_at entry)]
+       (keep not-empty)
+       sort
+       last))
+
+(defn clarification-attention [chat]
+  (let [clarifications (filter #(= "clarification" (:kind %)) chat)
+        latest (->> clarifications
+                    (keep clarification-latest-change)
+                    sort
+                    last)]
+    {:unresolved (count (filter #(= "open" (:lifecycle %)) clarifications))
+     :latest_change_at latest}))
 
 ;; A request typed into the pane without the command that answers it leaves the
 ;; operator with nothing: the request is written down, and the reply lands only
@@ -862,22 +1621,28 @@
        "Question:\n" (str/trimr (or question "")) "\n"
        "Answer:\n" (str/trimr (or answer ""))))
 
-(defn write-chat-request! [root text]
-  (let [id (chat-id)
-        file (fs/path (chat-pending-dir root) (str id ".request"))]
-    (fs/create-dirs (fs/parent file))
-    (spit (str file)
-          (str "id: " id "\n"
-               "status: pending\n"
-               "created_at: " (.format java.time.format.DateTimeFormatter/ISO_INSTANT
-                                       (java.time.Instant/now)) "\n"
-               "\n"
-               text
-               (when-not (str/ends-with? text "\n") "\n")))
-    id))
+(defn write-chat-request!
+  ([root text]
+   (write-chat-request! root text {}))
+  ([root text {:keys [request_id thread_id source proposal_id clarification_id]}]
+   (let [id (or request_id (fresh-chat-id root))
+         text (str/trimr (or text ""))
+         file (fs/path (chat-pending-dir root) (str id ".request"))]
+     (atomic-write-chat-record!
+      file
+      {:id id
+       :status "pending"
+       :created_at (iso-now)
+       :thread_id thread_id
+       :source source
+       :proposal_id proposal_id
+       :clarification_id clarification_id
+       :body text})
+     id)))
 
 (defn dashboard-state [root]
-  (let [master (master-role root)]
+  (let [master (master-role root)
+        chat (list-chat root)]
     {:master_role master
      :master_display (display-name-for-role master)
      :lanes (lanes root)
@@ -887,7 +1652,8 @@
      :approvals (approvals root)
      :resolved_approvals (resolved-approvals root)
      :work_in_flight (work-in-flight root)
-     :chat (list-chat root)
+     :chat chat
+     :clarification_attention (clarification-attention chat)
      :clarifications (list-clarifications root)}))
 
 (defn tagged [project items]
@@ -940,7 +1706,7 @@
         (:task (edn/read-string (slurp (str file))))
         (catch Exception _ nil)))))
 
-(defn completed-duration [root project-name line]
+(defn completed-card [root project-name line]
   (let [[name lane created updated task-id] (str/split line #"\t" -1)
         task-id (or (not-empty task-id) name)]
     (when (and (not (str/blank? name))
@@ -949,18 +1715,26 @@
       (let [activation (activation-record root task-id)
             start (if (:present activation)
                     (:activated-at activation)
-                    created)]
-        (duration-seconds start updated)))))
+                    created)
+            duration (duration-seconds start updated)]
+        {:project project-name
+         :task_id task-id
+         :active_seconds duration}))))
 
-(defn completion-durations [root]
+(defn completion-cards [root]
   (let [file (fs/path root ".swarmforge" "board" "tasks.tsv")
         project-name (project-task-name root)]
     (if (fs/regular-file? file)
       (->> (str/split-lines (slurp (str file)))
            (remove str/blank?)
-           (keep #(completed-duration root project-name %))
+           (keep #(completed-card root project-name %))
            vec)
       [])))
+
+(defn completion-durations [root]
+  (->> (completion-cards root)
+       (keep :active_seconds)
+       vec))
 
 (defn rounded-mean [values]
   (Math/round (double (/ (reduce + 0 values) (count values)))))
@@ -975,51 +1749,62 @@
                                (nth sorted middle))
                             2.0))))))
 
-(defn completion-stats [root]
-  (let [durations (try
-                    (completion-durations root)
-                    (catch Exception _ []))]
-    (if (seq durations)
-      {:completed_cards (count durations)
-       :median_seconds (long (median-seconds durations))
-       :mean_seconds (long (rounded-mean durations))
-       :min_seconds (long (reduce min durations))
-       :max_seconds (long (reduce max durations))}
-      {:completed_cards 0
-       :median_seconds nil
-       :mean_seconds nil
-       :min_seconds nil
-       :max_seconds nil})))
+(defn completion-stats
+  ([root] (completion-stats root nil))
+  ([root reports]
+   (state-cached
+    :completion-stat-builds [::completion-stats (str root)]
+    (fn []
+      (let [project-name (project-task-name root)
+            reported-identities (completed-card-report/reported-identities reports)
+            current (->> (completion-cards root)
+                         (remove #(contains? reported-identities
+                                             [(:project %) (:task_id %)]))
+                         (keep :active_seconds))
+            historical (if (and (seq reports) project-name)
+                         (completed-card-report/verified-durations reports project-name)
+                         [])
+            durations (try
+                        (vec (concat historical current))
+                        (catch Exception _ []))]
+        (if (seq durations)
+          {:completed_cards (count durations)
+           :median_seconds (long (median-seconds durations))
+           :mean_seconds (long (rounded-mean durations))
+           :min_seconds (long (reduce min durations))
+           :max_seconds (long (reduce max durations))}
+          {:completed_cards 0
+           :median_seconds nil
+           :mean_seconds nil
+           :min_seconds nil
+           :max_seconds nil}))))))
 
-(defn project-slice [forge name]
-  (let [root (open-project-root forge name)
-        stats (completion-stats root)]
-    (try
-      {:name name
-       :open true
-       :single_agent (single-agent-project? root)
-       :active_card (active-single-agent-card root)
-       :idle (project-idle? root)
-       :dashboard_url (project-dashboard-url root)
-       :lanes (lanes root)
-       :tasks (tagged name (tasks root))
-       :work_in_flight (tagged name (work-in-flight root))
-       :completion_stats stats}
-      (catch Exception _
-        {:name name
-         :open true
-         :single_agent (single-agent-project? root)
-         :active_card nil
-         :idle (project-idle? root)
-         :dashboard_url (project-dashboard-url root)
-         :lanes []
-         :tasks []
-         :work_in_flight []
-         :completion_stats stats}))))
+(defn project-slice
+  ([forge name] (project-slice forge name nil))
+  ([forge name reports]
+   (let [root (open-project-root forge name)
+         stats (completion-stats root reports)
+         chat (list-chat root)]
+     {:name name
+      :open true
+      :single_agent (single-agent-project? root)
+      :active_card (active-single-agent-card root)
+      :idle (project-idle? root)
+      :dashboard_url (project-dashboard-url root)
+      :lanes (lanes root)
+      :tasks (tagged name (tasks root))
+      :work_in_flight (tagged name (work-in-flight root))
+      :clarification_attention (clarification-attention chat)
+      :completion_stats stats})))
 
 (defn forge-dashboard-state [root]
   (let [open (forge/read-open-projects root)
-        projects (mapv #(project-slice root %) open)]
+        reports (try
+                  (completed-card-report/history-records root)
+                  (catch Exception _ []))
+        projects (bounded-pmap dashboard-project-workers
+                               #(project-slice root % reports)
+                               open)]
     {:forge true
      :master_role "lieutenant"
      :master_display "Lieutenant"
@@ -1045,14 +1830,192 @@
                                   open))
      :chat (list-chat root)
      :lieutenant_status (pane-status-lines-for root "lieutenant")
+     :lieutenant_activity (lieutenant-activity-snapshot root)
      :lanes []
      :tasks []
      :work_in_flight (vec (mapcat :work_in_flight projects))}))
 
 (defn api-state [root]
-  (if (forge/forge? root)
-    (forge-dashboard-state root)
-    (dashboard-state root)))
+  (if *state-cache*
+    (if (forge/forge? root)
+      (forge-dashboard-state root)
+      (dashboard-state root))
+    (binding [*state-cache* (atom {})]
+      (if (forge/forge? root)
+        (forge-dashboard-state root)
+        (dashboard-state root)))))
+
+(defn health-response []
+  {:status 200
+   :headers {"Content-Type" "application/json"}
+   :body "{\"ok\":true,\"live\":true}"})
+
+(def chat-page-default-limit 40)
+(def chat-page-max-limit 100)
+(def chat-page-source "app.lieutenant-chat")
+
+(defn chat-page-error! [message]
+  (throw (ex-info message {:http-status 400})))
+
+(defn query-parameters [uri]
+  (try
+    (let [query (second (str/split (or uri "") #"\?" 2))
+          pairs (if (str/blank? query)
+                  []
+                  (map (fn [pair]
+                         (let [[key value] (str/split pair #"=" 2)]
+                           [(java.net.URLDecoder/decode (or key "") "UTF-8")
+                            (java.net.URLDecoder/decode (or value "") "UTF-8")]))
+                       (str/split query #"&")))]
+      (when (some #(str/blank? (first %)) pairs)
+        (chat-page-error! "Chat pagination query is malformed."))
+      (when-not (= (count pairs) (count (distinct (map first pairs))))
+        (chat-page-error! "Chat pagination query repeats a parameter."))
+      (into {} pairs))
+    (catch clojure.lang.ExceptionInfo e
+      (throw e))
+    (catch Exception _
+      (chat-page-error! "Chat pagination query is malformed."))))
+
+(defn chat-page-parameters [uri]
+  (let [params (query-parameters uri)
+        pagination-keys (filter #(str/starts-with? % "chat_") (keys params))
+        supported #{"chat_thread_id" "chat_limit" "chat_cursor"}
+        unsupported (remove supported pagination-keys)]
+    (when (seq unsupported)
+      (chat-page-error! "Unsupported chat pagination parameter."))
+    (when (seq pagination-keys)
+      (let [thread-id (some-> (get params "chat_thread_id") str/trim not-empty)
+            limit-text (get params "chat_limit")
+            limit (if (str/blank? limit-text)
+                    chat-page-default-limit
+                    (if (re-matches #"[0-9]{1,3}" limit-text)
+                      (Long/parseLong limit-text)
+                      -1))
+            cursor (some-> (get params "chat_cursor") str/trim not-empty)]
+        (when-not (and thread-id (re-matches chat-thread-id-re thread-id))
+          (chat-page-error! "Chat conversation id is invalid."))
+        (when-not (<= 1 limit chat-page-max-limit)
+          (chat-page-error! "Chat page limit must be between 1 and 100."))
+        {:thread_id thread-id :limit limit :cursor cursor}))))
+
+(defn sha256-hex [value]
+  (let [digest (java.security.MessageDigest/getInstance "SHA-256")]
+    (apply str
+           (map #(format "%02x" %)
+                (.digest digest (.getBytes (str value) "UTF-8"))))))
+
+(defn chat-cursor-payload [thread-id turn]
+  {:version 1
+   :thread_id thread-id
+   :created_at (:created_at turn)
+   :id (:id turn)})
+
+(defn encode-chat-cursor [thread-id turn]
+  (let [payload (chat-cursor-payload thread-id turn)
+        checked (assoc payload :checksum (sha256-hex (pr-str payload)))]
+    (-> (java.util.Base64/getUrlEncoder)
+        (.withoutPadding)
+        (.encodeToString (.getBytes (pr-str checked) "UTF-8")))))
+
+(defn decode-chat-cursor [thread-id value]
+  (try
+    (let [decoded (String. (.decode (java.util.Base64/getUrlDecoder)
+                                    (str value))
+                           "UTF-8")
+          cursor (edn/read-string decoded)
+          payload (dissoc cursor :checksum)]
+      (when-not (and (map? cursor)
+                     (= #{:version :thread_id :created_at :id :checksum}
+                        (set (keys cursor)))
+                     (= 1 (:version cursor))
+                     (= thread-id (:thread_id cursor))
+                     (= (:checksum cursor)
+                        (sha256-hex (pr-str payload)))
+                     (string? (:created_at cursor))
+                     (not (str/blank? (:created_at cursor)))
+                     (string? (:id cursor))
+                     (re-matches chat-request-id-re (:id cursor)))
+        (chat-page-error! "Chat page cursor is invalid."))
+      {:created_at (:created_at cursor) :id (:id cursor)})
+    (catch clojure.lang.ExceptionInfo e
+      (throw e))
+    (catch Exception _
+      (chat-page-error! "Chat page cursor is malformed."))))
+
+(defn general-chat-turn? [turn]
+  (and (= chat-page-source (:source turn))
+       (nil? (:proposal_id turn))
+       (some? (:thread_id turn))))
+
+(defn chat-order [turn]
+  [(str (:created_at turn)) (str (:id turn))])
+
+(defn ordered-general-chat [root]
+  (let [turns (filter general-chat-turn? (list-chat root))
+        invalid (some #(when (or (str/blank? (str (:id %)))
+                                 (str/blank? (str (:created_at %))))
+                         %)
+                      turns)]
+    (when invalid
+      (throw (ex-info "Chat history contains a malformed general turn."
+                      {:http-status 502})))
+    (sort-by chat-order turns)))
+
+(defn chat-conversation-summary [thread-id turns]
+  (let [ordered (sort-by chat-order turns)
+        latest (last ordered)]
+    {:thread_id thread-id
+     :turn_count (count ordered)
+     :pending_count (count (filter #(= "pending" (:status %)) ordered))
+     :latest (when latest
+               (select-keys latest [:id :status :created_at :updated_at]))}))
+
+(defn chat-conversation-summaries [turns]
+  (->> (group-by :thread_id turns)
+       (map (fn [[thread-id thread-turns]]
+              (chat-conversation-summary thread-id thread-turns)))
+       (sort-by :thread_id)
+       vec))
+
+(defn paged-chat-state [root pagination]
+  (let [thread-id (:thread_id pagination)
+        limit (:limit pagination)
+        boundary (when-let [cursor (:cursor pagination)]
+                   (decode-chat-cursor thread-id cursor))
+        all-general (vec (ordered-general-chat root))
+        thread-turns (filter #(= thread-id (:thread_id %)) all-general)
+        eligible (if boundary
+                   (filter #(neg? (compare (chat-order %)
+                                           (chat-order boundary)))
+                           thread-turns)
+                   thread-turns)
+        page (vec (take-last limit eligible))
+        has-more (> (count eligible) limit)
+        next-cursor (when has-more
+                      (encode-chat-cursor thread-id (first page)))
+        page-ids (set (map :id page))
+        pending (->> thread-turns
+                     (filter #(= "pending" (:status %)))
+                     (remove #(contains? page-ids (:id %)))
+                     (sort-by chat-order)
+                     vec)
+        summary (chat-conversation-summary thread-id thread-turns)
+        base (api-state root)]
+    (assoc base
+           :chat page
+           :chat_conversations (chat-conversation-summaries all-general)
+           :chat_page {:thread_id thread-id
+                       :limit limit
+                       :has_more has-more
+                       :next_cursor next-cursor
+                       :conversation summary
+                       :pending_turns pending})))
+
+(defn api-state-with-chat-page [root uri]
+  (if-let [pagination (chat-page-parameters uri)]
+    (paged-chat-state root pagination)
+    (api-state root)))
 
 (defn require-root! [root]
   (when (str/blank? root)
@@ -1256,14 +2219,134 @@
       (catch Exception e
         (http-error (or (:http-status (ex-data e)) 400) (.getMessage e))))))
 
+(defn parse-chat-request-body [body]
+  (try
+    (let [value (json/parse-string (or body "{}") true)]
+      (when-not (map? value)
+        (chat-request-invalid! "Chat request body must be an object."))
+      value)
+    (catch clojure.lang.ExceptionInfo e
+      (throw e))
+    (catch Exception _
+      (chat-request-invalid! "Chat request body is invalid."))))
+
+(defn same-chat-content?
+  ([entry text thread-id source proposal-id]
+   (same-chat-content? entry text thread-id source proposal-id nil))
+  ([entry text thread-id source proposal-id clarification-id]
+   (and (= (str/trimr (or (:body entry) ""))
+           (str/trimr (or text "")))
+        (= thread-id (:thread_id entry))
+        (= source (:source entry))
+        (= proposal-id (:proposal_id entry))
+        (= clarification-id (:clarification_id entry)))))
+
+(declare json-ok-data)
+
 (defn post-chat [root body]
-  (let [{:keys [text]} (json/parse-string (or body "{}") true)
-        text (or text "")]
-    (when-not (str/blank? text)
-      (let [id (write-chat-request! root text)]
-        (when-not (single-agent-project? root)
-          (inject-master! root (chat-wake id text)))))
-    (json-ok)))
+  (let [request (parse-chat-request-body body)
+        text (or (:text request) "")
+        metadata? (some #(contains? request %)
+                        [:request_id :thread_id :source :proposal_id
+                         :clarification_id])
+        request-id (when (contains? request :request_id)
+                     (supplied-chat-id (:request_id request)
+                                       "Request id"
+                                       chat-request-id-re))
+        thread-id (when (contains? request :thread_id)
+                    (supplied-chat-id (:thread_id request)
+                                      "Thread id"
+                                      chat-thread-id-re))
+        source (when (contains? request :source)
+                 (supplied-chat-id (:source request)
+                                   "Request source"
+                                   chat-source-re))
+        proposal-id (when (contains? request :proposal_id)
+                      (supplied-chat-id (:proposal_id request)
+                                        "Proposal id"
+                                        chat-proposal-id-re))
+        clarification-id (when (contains? request :clarification_id)
+                           (supplied-chat-id (:clarification_id request)
+                                             "Clarification id"
+                                             clarification-id-re))]
+    (when (and metadata? (str/blank? text))
+      (chat-request-invalid! "Chat text is required when request metadata is supplied."))
+    (if (str/blank? text)
+      (json-ok)
+      (let [result
+            (with-chat-request-lock
+              root
+              (fn []
+                (let [id (or request-id (fresh-chat-id root))
+                      existing (existing-chat-request root id)]
+                  (if existing
+                    (if (same-chat-content? (:entry existing) text thread-id source
+                                            proposal-id clarification-id)
+                      (do
+                        (when clarification-id
+                          (let [clarification
+                                (find-clarification-record root clarification-id)]
+                            (when (and clarification
+                                       (= "open"
+                                          (get-in clarification
+                                                  [:entry :lifecycle])))
+                              (change-open-clarification!
+                               clarification clarification-id
+                               (fn [entry now]
+                                 (assoc entry
+                                        :status "answered"
+                                        :lifecycle "answered"
+                                        :answered_at now
+                                        :answered_by id
+                                        :updated_at now))))))
+                        {:id id})
+                      (throw (ex-info "Request id was reused with different content."
+                                      {:http-status 409})))
+                    (let [clarification (when clarification-id
+                                          (find-clarification-record
+                                           root clarification-id))
+                          _ (when (and clarification-id
+                                       (not= "open"
+                                             (get-in clarification
+                                                     [:entry :lifecycle])))
+                              (throw
+                               (ex-info
+                                (if clarification
+                                  (str "Clarification is "
+                                       (get-in clarification
+                                               [:entry :lifecycle])
+                                       " and cannot be answered: "
+                                       clarification-id)
+                                  (str "Unknown clarification: "
+                                       clarification-id))
+                                {:http-status (if clarification 409 404)})))
+                          options {:request_id id
+                                   :thread_id thread-id
+                                   :source source
+                                   :proposal_id proposal-id
+                                   :clarification_id clarification-id}
+                          id (write-chat-request! root text options)]
+                      (try
+                        (when-not (single-agent-project? root)
+                          (if metadata?
+                            (inject-master-strict! root (chat-wake id text))
+                            (inject-master! root (chat-wake id text))))
+                        (when clarification-id
+                          (change-open-clarification!
+                           clarification clarification-id
+                           (fn [entry now]
+                             (assoc entry
+                                    :status "answered"
+                                    :lifecycle "answered"
+                                    :answered_at now
+                                    :answered_by id
+                                    :updated_at now))))
+                        {:id id}
+                        (catch Exception error
+                          (fs/delete-if-exists
+                           (chat-request-file root "pending" id))
+                          (throw error))))))))]
+        (json-ok-data {:request_id (:id result)})))))
 
 (defn clar-pending-file [root id]
   (fs/path (clar-pending-dir root) (str id ".request")))
@@ -1295,14 +2378,29 @@
 
 (defn clarification-route [uri]
   (let [path (first (str/split (or uri "") #"\?"))]
-    (when-let [[_ id] (re-matches #"/api/clarifications/([^/]+)/answer" path)]
+    (when-let [[_ id] (re-matches #"/api/clarifications/([^/]+)/(?:answer|seen|withdraw)"
+                                 path)]
       (java.net.URLDecoder/decode id "UTF-8"))))
+
+(defn clarification-action [uri]
+  (let [path (first (str/split (or uri "") #"\?"))]
+    (when-let [[_ _ action]
+               (re-matches #"/api/clarifications/([^/]+)/(answer|seen|withdraw)"
+                           path)]
+      action)))
 
 (defn post-clarification [root uri body]
   (if-let [id (clarification-route uri)]
-    (let [text (or (:text (json/parse-string (or body "{}") true)) "")]
-      (answer-clarification! root id text)
-      (json-ok))
+    (let [text (or (:text (json/parse-string (or body "{}") true)) "")
+          typed (find-clarification-record root id)]
+      (case (clarification-action uri)
+        "seen" (do (mark-chat-clarification-seen! root id) (json-ok))
+        "withdraw" (do (withdraw-chat-clarification! root id) (json-ok))
+        "answer"
+        (if typed
+          (throw (ex-info "Reply to this clarification through project chat."
+                          {:http-status 409}))
+          (do (answer-clarification! root id text) (json-ok)))))
     {:status 404 :body "Not found"}))
 
 (defn pending-file [root id]
@@ -1703,6 +2801,7 @@
     (nth row 2 nil)))
 
 (defn tmux-capture [socket target]
+  (state-metric! :tmux-pane-reads)
   (try
     (let [result (sh "tmux" "-S" socket "capture-pane" "-p" "-t" target
                      "-S" (str "-" pane-capture-lines))]
@@ -1721,6 +2820,16 @@
   (or *pane-text*
       (capture-pane root role)
       (recorded-pane root role)))
+
+(defn state-pane-text [root role row]
+  (state-cached
+   :pane-text-builds [::pane-text (str root) (str role)]
+   (fn []
+     (or *pane-text*
+         (if (state-session-alive? root role row)
+           (or (capture-pane root role)
+               (recorded-pane root role))
+           (recorded-pane root role))))))
 
 (defn pane-files [root role]
   (let [dir (fs/path root ".swarmforge" "sessions" role)]
@@ -1848,7 +2957,8 @@
 (defn find-clar-root [forge id]
   (or (some (fn [name]
               (let [proot (str (forge/project-dir forge name))]
-                (when (fs/regular-file? (clar-pending-file proot id))
+                (when (or (fs/regular-file? (clar-pending-file proot id))
+                          (find-clarification-record proot id))
                   proot)))
             (forge/read-open-projects forge))
       (throw (ex-info (str "Unknown clarification: " id) {:http-status 404}))))
@@ -1860,10 +2970,13 @@
      :headers {"Content-Type" "text/html; charset=utf-8"}
      :body (dashboard-page)}
 
-    (= "/api/state" uri)
+    (= "/api/health" (first (str/split (or uri "") #"\?")))
+    (health-response)
+
+    (= "/api/state" (first (str/split (or uri "") #"\?")))
     {:status 200
      :headers {"Content-Type" "application/json"}
-     :body (json/generate-string (api-state root))}
+     :body (json/generate-string (api-state-with-chat-page root uri))}
 
     (agent-pane-role uri)
     (get-agent-pane (request-project-root root uri) uri)
@@ -2051,6 +3164,14 @@
 (defn test-state! [root]
   (println (:body (handle-request (require-root! root) {:method "GET" :uri "/api/state"}))))
 
+(declare test-http!)
+
+(defn test-state-query! [root query]
+  (test-http! (handle-request
+               (require-root! root)
+               {:method "GET"
+                :uri (str "/api/state?" (or query ""))})))
+
 (defn test-html! []
   (print (:body (handle-request nil {:method "GET" :uri "/"})))
   (flush))
@@ -2103,11 +3224,13 @@
         (println (:body resp)))
       (System/exit 1))))
 
+(declare test-http!)
+
 (defn test-post-chat! [root text]
-  (handle-request (require-root! root)
-                  {:method "POST"
-                   :uri "/api/chat"
-                   :body (json/generate-string {:text (or text "")})}))
+  (test-http! (handle-request (require-root! root)
+                              {:method "POST"
+                               :uri "/api/chat"
+                               :body (json/generate-string {:text (or text "")})})))
 
 (defn test-inject-payload! [name text]
   (println (if (and name text)
@@ -2127,6 +3250,17 @@
     (binding [*out* *err*]
       (println (:body resp)))
     (System/exit 1)))
+
+(defn test-post-chat-json! [root body-json]
+  (test-http! (handle-request (require-root! root)
+                              {:method "POST"
+                               :uri "/api/chat"
+                               :body body-json})))
+
+(defn test-post-chat-file! [root body-file]
+  (when-not (fs/regular-file? body-file)
+    (exit! 1 "Missing chat request body file"))
+  (test-post-chat-json! root (slurp (str body-file))))
 
 (defn test-approval! [root id action]
   (when (str/blank? id)
@@ -2254,6 +3388,126 @@
                                                      true))))]
           (println (json/generate-string {:first first-status :second second-status})))))))
 
+(defn activity-for-test [root context text]
+  (binding [*lieutenant-activity-context* context
+            *pane-text* (or text "")]
+    (:lieutenant_activity (forge-dashboard-state root))))
+
+(defn test-lieutenant-activity! [root alive command text]
+  (require-root! root)
+  (reset! pane-heat {})
+  (reset! lieutenant-activity-history {})
+  (let [context {:alive? (= "alive" alive)
+                 :command (or command "")}
+        activity (activity-for-test root context text)]
+    (println (json/generate-string
+              {:activity activity
+               :fingerprint (activity-fingerprint activity)}))))
+
+(defn test-lieutenant-activity-timeline! [root]
+  (require-root! root)
+  (reset! pane-heat {})
+  (reset! lieutenant-activity-history {})
+  (let [first (activity-for-test
+               root
+               {:alive? true :command "claude"}
+               "I'm reviewing the board.\nesc to interrupt · 2s\n")
+        same (activity-for-test
+              root
+              {:alive? true :command "claude"}
+              "I'm reviewing the board.\nesc to interrupt · 2s\n")
+        changed (activity-for-test
+                 root
+                 {:alive? true :command "claude"}
+                 "I'm reviewing two cards.\nesc to interrupt · 3s\n")
+        idle (activity-for-test
+              root
+              {:alive? true :command "claude"}
+              "I'm ready for your next instruction.\n? for shortcuts\n")
+        stale (do
+                (swap! pane-status-lines
+                       assoc [(str root) "lieutenant"] ["I'm reviewing old work."])
+                (activity-for-test root {:alive? false} ""))]
+    (println (json/generate-string
+              {:first first :same same :changed changed :idle idle :stale stale}))))
+
+(defn elapsed-millis [started]
+  (long (/ (- (System/nanoTime) started) 1000000.0)))
+
+(defn percentile [values fraction]
+  (let [values (vec (sort values))
+        index (min (dec (count values))
+                   (long (Math/ceil (* fraction (count values)))))]
+    (nth values index)))
+
+(defn test-health! []
+  (test-http! (handle-request nil {:method "GET" :uri "/api/health"})))
+
+(defn test-health-metrics! []
+  (let [metrics (atom {})
+        started (System/nanoTime)]
+    (binding [*state-metrics* metrics]
+      (let [response (handle-request nil {:method "GET" :uri "/api/health"})]
+        (println
+         (json/generate-string
+          {:milliseconds (elapsed-millis started)
+           :bytes (count (:body response))
+           :body (json/parse-string (:body response) true)
+           :metrics @metrics}))))))
+
+(defn test-health-during-slow-state! [root]
+  (require-root! root)
+  (let [metrics (atom {})]
+    (with-redefs [api-state (fn [_]
+                              (Thread/sleep 650)
+                              {:slow_state true})]
+      (binding [*state-metrics* metrics]
+        (let [state-job (future
+                          (handle-request root {:method "GET" :uri "/api/state"}))
+              _ (Thread/sleep 50)
+              started (System/nanoTime)
+              health (handle-request nil {:method "GET" :uri "/api/health"})
+              health-ms (elapsed-millis started)
+              state-pending? (not (future-done? state-job))
+              state-response @state-job]
+          (println
+           (json/generate-string
+            {:health_ms health-ms
+             :health_body (json/parse-string (:body health) true)
+             :state_pending_at_health state-pending?
+             :state_body (json/parse-string (:body state-response) true)
+             :metrics @metrics})))))))
+
+(defn test-dashboard-benchmark! [root iterations]
+  (require-root! root)
+  (let [iterations (max 1 (or (parse-long (str iterations)) 7))
+        metrics (atom {})
+        state-ms (atom [])
+        state-bytes (atom [])
+        health-ms (atom [])]
+    (binding [*state-metrics* metrics]
+      (dotimes [_ iterations]
+        (reset! metrics {})
+        (let [started (System/nanoTime)
+              response (handle-request root {:method "GET" :uri "/api/state"})]
+          (json/parse-string (:body response) true)
+          (swap! state-ms conj (elapsed-millis started))
+          (swap! state-bytes conj (count (:body response))))
+        (let [started (System/nanoTime)
+              response (handle-request nil {:method "GET" :uri "/api/health"})]
+          (json/parse-string (:body response) true)
+          (swap! health-ms conj (elapsed-millis started)))))
+    (println
+     (json/generate-string
+      {:iterations iterations
+       :state_ms @state-ms
+       :state_p95_ms (percentile @state-ms 0.95)
+       :state_max_ms (apply max @state-ms)
+       :state_bytes @state-bytes
+       :health_ms @health-ms
+       :health_p95_ms (percentile @health-ms 0.95)
+       :metrics @metrics}))))
+
 (defn test-answer-clarification! [root id text]
   (when (str/blank? id)
     (exit! 1 "Missing clarification id"))
@@ -2261,6 +3515,32 @@
                               {:method "POST"
                                :uri (str "/api/clarifications/" id "/answer")
                                :body (json/generate-string {:text (or text "")})})))
+
+(defn test-create-chat-clarification!
+  [root id body-file reference-id]
+  (when (str/blank? id)
+    (exit! 1 "Missing clarification id"))
+  (when-not (fs/regular-file? body-file)
+    (exit! 1 "Missing clarification body file"))
+  (println
+   (json/generate-string
+    (merge {:ok true}
+           (create-chat-clarification!
+            (require-root! root) id (slurp (str body-file)) reference-id)))))
+
+(defn test-mark-chat-clarification-seen! [root id]
+  (when (str/blank? id)
+    (exit! 1 "Missing clarification id"))
+  (test-http! (handle-request (require-root! root)
+                              {:method "POST"
+                               :uri (str "/api/clarifications/" id "/seen")})))
+
+(defn test-withdraw-chat-clarification! [root id]
+  (when (str/blank? id)
+    (exit! 1 "Missing clarification id"))
+  (test-http! (handle-request (require-root! root)
+                              {:method "POST"
+                               :uri (str "/api/clarifications/" id "/withdraw")})))
 
 (defn test-task! [root name]
   (when (str/blank? name)
