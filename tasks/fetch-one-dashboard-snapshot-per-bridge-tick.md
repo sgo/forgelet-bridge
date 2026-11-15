@@ -92,7 +92,24 @@ and pushed. Deployment follows the required deploy gate.
 
 ## Verification
 
-Pending implementation and gates.
+- `code`, `clean`, `architect`, `harden` and `clean-final` pass on the reviewed
+  tree. Hardening reports zero Go survivors and zero Gherkin survivors.
+- The full `qa` gate passes 212 scenario runs, including the snapshot, phone,
+  restart, removal, ordering and isolation suites.
+- The required `e2e` gate passes all four snapshot executions through the
+  executable Gherkin pipeline and the fixed synthetic measurement.
+- The fixed measurement uses 32 ticks and two 1 MiB dashboards. It records
+  128 requests and 134,256,768 bytes before versus 64 requests and 67,128,384
+  bytes after: 50% fewer requests and bytes. Repeated runs measured bridge CPU
+  at 3.281s before and 1.813s after (44.7% less); the latest e2e run measured
+  2.881s before and 1.493s after (48.2% less).
+- `docs` passes its executable examples. `README.md` gained the per-tick
+  dashboard guarantee. `docs/manual.md` documents snapshot sharing, failure,
+  no-retry and tick-scope semantics plus the measurement.
+  `ARCHITECTURE.md` records the forge-root/dashboard-identity boundary.
+  `docs/manual-contract.edn` owns executable examples for both snapshot APIs.
+- The required deployed-bridge check and operator acceptance remain pending
+  until the reviewed tree is committed, pushed and deployed.
 
 ## Operator acceptance
 
