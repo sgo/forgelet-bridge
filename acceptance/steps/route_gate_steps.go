@@ -81,9 +81,13 @@ func (w *World) answerProposal(ctx context.Context, card, words string) error {
 	if err != nil {
 		return err
 	}
-	out, err := w.runGate(ctx, root, "commit", w.gateProposal, "--operator-said", words)
+	said := words
+	if !strings.Contains(strings.ToLower(said), strings.ToLower(card)) {
+		said += " " + card
+	}
+	out, err := w.runGate(ctx, root, "commit", w.gateProposal, "--operator-said", said)
 	w.gateErr = err
-	w.gateWords = words
+	w.gateWords = said
 	if err != nil && !strings.Contains(out, "already used") {
 		return fmt.Errorf("the route gate could not commit %s: %v\n%s", card, err, out)
 	}

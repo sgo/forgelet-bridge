@@ -56,7 +56,7 @@ func fixtureForge(t *testing.T) string {
 func fixtureKit(t *testing.T, forgeRoot string) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeScript(t, filepath.Join(dir, "route_card.sh"), "#!/bin/sh\necho 'No proposal record for install-kit-self-check'\n")
+	writeScript(t, filepath.Join(dir, "route_card.sh"), "#!/bin/sh\necho 'No proposal record for proposal-install-kit-self-check'\n")
 	writeScript(t, filepath.Join(dir, "route_card.bb"), "# the route gate\n")
 	writeScript(t, filepath.Join(dir, "role_health.sh"), "#!/bin/sh\necho 'coder idle-holding-card refund-card new=0 in_process=1'\n")
 	writeScript(t, filepath.Join(dir, "role_health.bb"), "# the idler check\n")

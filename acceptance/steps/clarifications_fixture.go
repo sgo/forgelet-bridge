@@ -109,17 +109,23 @@ func blockedRoleWoken(_ context.Context, world any, captures []string) error {
 		return fmt.Errorf("the fixture forge root %s does not have its dashboard running", root)
 	}
 	role, answer := captures[1], captures[2]
-	// The dashboard writes the wake into the pane through its tmux stub, which
-	// records the arguments of the call: the answer is one line of it.
-	typed := "Answer:\\n" + answer
 	return waitFor(ctx, fmt.Sprintf("the blocked role %s was never woken with the answer %q", role, answer), func() (bool, error) {
 		lines, err := running.Typed()
 		if err != nil {
 			return false, err
 		}
-		for _, line := range lines {
-			if strings.Contains(line, "Clarification requested from: "+role) && strings.Contains(line, typed) {
-				return true, nil
+		// A pasted wake carries its text over tmux's stdin buffer, which the
+		// stub records line by line. Look ahead from the blocked role to the
+		// answer block the dashboard writes for it.
+		for index, line := range lines {
+			if !strings.Contains(line, "Clarification requested from: "+role) {
+				continue
+			}
+			for next := index + 1; next+1 < len(lines); next++ {
+				if strings.TrimSpace(lines[next]) == "Answer:" &&
+					strings.TrimSpace(lines[next+1]) == answer {
+					return true, nil
+				}
 			}
 		}
 		return false, nil

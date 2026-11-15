@@ -20,7 +20,7 @@ func selfChecks(report *Report, scripts, forgeRoot string) {
 
 // selfCheckProposal is the proposal the gate is asked about: one this forge
 // does not hold.
-const selfCheckProposal = "install-kit-self-check"
+const selfCheckProposal = "proposal-install-kit-self-check"
 
 // The two requests the doorbell's clause self-check rings, and the clauses their
 // rings have to carry: an approval the operator forwarded is the operator's
@@ -95,32 +95,50 @@ func idlerNothingStarted(scripts, forgeRoot string) (string, bool) {
 // or, when none proved it, every project whose pane could not be proved, which
 // is not a fault - nothing is up there, and a later run can prove it.
 func idlerProjectsRead(scripts, forgeRoot string, projects []string) (string, bool) {
-	var unproved []string
-	var first string
+	var readings idlerReadings
 	for _, project := range projects {
 		line, proved, skipped := idlerProjectRead(scripts, forgeRoot, project)
-		if skipped {
-			unproved = append(unproved, project)
-			continue
-		}
-		if proved {
+		if readings.add(project, line, proved, skipped) {
 			return line, true
 		}
-		if first == "" {
-			first = line
-		}
 	}
+	return readings.finish(forgeRoot)
+}
+
+// idlerReadings accumulates what a pass learned about each project.
+type idlerReadings struct {
+	first    string
+	unproved []string
+}
+
+// add records one project's reading and reports whether it proved the pass.
+func (readings *idlerReadings) add(project, line string, proved, skipped bool) bool {
+	if skipped {
+		readings.unproved = append(readings.unproved, project)
+		return false
+	}
+	if proved {
+		return true
+	}
+	if readings.first == "" {
+		readings.first = line
+	}
+	return false
+}
+
+// finish returns the pass's result when no project proved a reading.
+func (readings idlerReadings) finish(forgeRoot string) (string, bool) {
 	// A project the tool could not read at all is a fault when no project proved
 	// a reading, whatever quiet projects sit beside it: a pane that is not up is
 	// the only reading excused. Nothing to read and nothing unread is not a
 	// shape a forge has, and it does not pass as one.
-	if first != "" {
-		return first, false
+	if readings.first != "" {
+		return readings.first, false
 	}
-	if len(unproved) == 0 {
+	if len(readings.unproved) == 0 {
 		return "", false
 	}
-	return idlerUnprovedSummary(forgeRoot, unproved), true
+	return idlerUnprovedSummary(forgeRoot, readings.unproved), true
 }
 
 // idlerUnstartedRead is what the check says about a forge that has been
@@ -344,5 +362,5 @@ func doorbellRead(out string) string {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-26T18:46:29+02:00","module_hash":"1b01658dd4395d3ff389cc2f4e368f69cbe5faf19fc5c42e8709464ae4927608","functions":[{"id":"func/selfChecks","name":"selfChecks","line":13,"end_line":19,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":46,"end_line":58,"hash":"4e0abca726ae840a692d39b48eba1e3a40805c310db4e30814659550593e4355"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":69,"end_line":75,"hash":"5ded6d084da208e4911ab7cb2c54234f8bf73c70952483d430214c527fea87c0"},{"id":"func/idlerNothingStarted","name":"idlerNothingStarted","line":83,"end_line":91,"hash":"4fd54e5463585af41d1f7f40400c09382722e54c5392f987c8bb9ebc7ed2c38e"},{"id":"func/idlerProjectsRead","name":"idlerProjectsRead","line":97,"end_line":124,"hash":"e3bd834d36c03e8503270b07595c324dccdc74bd22b691ec4f40571d1d4d4333"},{"id":"func/idlerUnstartedRead","name":"idlerUnstartedRead","line":131,"end_line":141,"hash":"435b92f0953e24ee237a55d2ee5952c48d83a5cbbd16cc2491e0d327d65a2bce"},{"id":"func/projectsRead","name":"projectsRead","line":145,"end_line":150,"hash":"b6240d6e5a516fd14781cd28d8fc28bba0485bb45da4c5c44829aa163ed40341"},{"id":"func/plural","name":"plural","line":153,"end_line":158,"hash":"9e69b96fbd931b64063f7d8152a7700ae8f043bce14b2f7121c4df62270cbb65"},{"id":"func/idlerProjectRead","name":"idlerProjectRead","line":164,"end_line":176,"hash":"4795cb1006101abb3045316ee06ab7564e1c3c7421c22af76c56f86ae27889f2"},{"id":"func/idlerUnprovedSummary","name":"idlerUnprovedSummary","line":181,"end_line":185,"hash":"1dfeb139a94f5b979af1b697dbd84f46a3f156fde6d99094a26619757ceffd7a"},{"id":"func/allSessionsGone","name":"allSessionsGone","line":189,"end_line":196,"hash":"77d7bb47ccd76367f8c088752a0c84dd09c4e03229e24cfaf348e2bc3e652066"},{"id":"func/panePath","name":"panePath","line":200,"end_line":207,"hash":"7422b4755c59d8535f04bb2d8ae2b2e58e0b580543ef0c14aecf48b1fdca62ff"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":212,"end_line":220,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/doorbellSelfCheck","name":"doorbellSelfCheck","line":234,"end_line":258,"hash":"a6bd6df4b182f22ea824eabe035c10632535bb22c733445c115670dd8169f62b"},{"id":"func/clauses","name":"clauses","line":271,"end_line":276,"hash":"e24e77394a1e9c370203d46cdd6c8f6f8a38659b14a76520016cbf4ea20c9538"},{"id":"func/doorbellClauseRead","name":"doorbellClauseRead","line":283,"end_line":298,"hash":"9c300f8957c5dca2ee04c6890d98d1cad75bc32bf756f4500b657339ef024a76"},{"id":"func/quotedWords","name":"quotedWords","line":301,"end_line":307,"hash":"5d012175d6df61335f9cd394236819e442b6510c65ab1bb04fe8c224d56bf8b8"},{"id":"func/answered","name":"answered","line":312,"end_line":317,"hash":"314e8b572f0c8ab4da8cefb1f9522e0e297304a15877714ebf603e629b130934"},{"id":"func/doorbellRang","name":"doorbellRang","line":320,"end_line":333,"hash":"f3a49277529cc51598dba6042ef9222e25299cfa5945ed1fff3ce04835dd7732"},{"id":"func/doorbellRead","name":"doorbellRead","line":337,"end_line":344,"hash":"441093ea34681efcb6c72418a22d812498bb637aac4d855bd71342f3242eb018"}]}
+// {"version":1,"tested_at":"2026-11-15T00:41:18+01:00","module_hash":"934a0c698d8df22a754cc9a2b7c9eee8c4465d3becafa8b27c7f421498510c99","functions":[{"id":"func/selfChecks","name":"selfChecks","line":13,"end_line":19,"hash":"3d50ddfbf8fa4d850cb4bc024e9212c0ed9d9da9038346672db495b0ad253e60"},{"id":"func/gateSelfCheck","name":"gateSelfCheck","line":46,"end_line":58,"hash":"4e0abca726ae840a692d39b48eba1e3a40805c310db4e30814659550593e4355"},{"id":"func/idlerSelfCheck","name":"idlerSelfCheck","line":69,"end_line":75,"hash":"5ded6d084da208e4911ab7cb2c54234f8bf73c70952483d430214c527fea87c0"},{"id":"func/idlerNothingStarted","name":"idlerNothingStarted","line":83,"end_line":91,"hash":"4fd54e5463585af41d1f7f40400c09382722e54c5392f987c8bb9ebc7ed2c38e"},{"id":"func/idlerProjectsRead","name":"idlerProjectsRead","line":97,"end_line":106,"hash":"e3339e8eb0e0de52af3e646d6c9630b91b082b8c93e6afa0fee9d7d65354624e"},{"id":"func/idlerReadings.add","name":"idlerReadings.add","line":115,"end_line":127,"hash":"e95e864a208b4d1321c6dcb131c9251f773f4b83343bca231fe5675b3c5e807c"},{"id":"func/idlerReadings.finish","name":"idlerReadings.finish","line":130,"end_line":142,"hash":"822c2728e4992e8f71d1741517eb42eaa6218b31884161318c63dc67a59aecf8"},{"id":"func/idlerUnstartedRead","name":"idlerUnstartedRead","line":149,"end_line":159,"hash":"435b92f0953e24ee237a55d2ee5952c48d83a5cbbd16cc2491e0d327d65a2bce"},{"id":"func/projectsRead","name":"projectsRead","line":163,"end_line":168,"hash":"b6240d6e5a516fd14781cd28d8fc28bba0485bb45da4c5c44829aa163ed40341"},{"id":"func/plural","name":"plural","line":171,"end_line":176,"hash":"9e69b96fbd931b64063f7d8152a7700ae8f043bce14b2f7121c4df62270cbb65"},{"id":"func/idlerProjectRead","name":"idlerProjectRead","line":182,"end_line":194,"hash":"4795cb1006101abb3045316ee06ab7564e1c3c7421c22af76c56f86ae27889f2"},{"id":"func/idlerUnprovedSummary","name":"idlerUnprovedSummary","line":199,"end_line":203,"hash":"1dfeb139a94f5b979af1b697dbd84f46a3f156fde6d99094a26619757ceffd7a"},{"id":"func/allSessionsGone","name":"allSessionsGone","line":207,"end_line":214,"hash":"77d7bb47ccd76367f8c088752a0c84dd09c4e03229e24cfaf348e2bc3e652066"},{"id":"func/panePath","name":"panePath","line":218,"end_line":225,"hash":"7422b4755c59d8535f04bb2d8ae2b2e58e0b580543ef0c14aecf48b1fdca62ff"},{"id":"func/watchSelfCheck","name":"watchSelfCheck","line":230,"end_line":238,"hash":"fcc24096c9e693c1344e2f84fa45870c3e4a78594ead6186d5a2fc3b32103762"},{"id":"func/doorbellSelfCheck","name":"doorbellSelfCheck","line":252,"end_line":276,"hash":"a6bd6df4b182f22ea824eabe035c10632535bb22c733445c115670dd8169f62b"},{"id":"func/clauses","name":"clauses","line":289,"end_line":294,"hash":"e24e77394a1e9c370203d46cdd6c8f6f8a38659b14a76520016cbf4ea20c9538"},{"id":"func/doorbellClauseRead","name":"doorbellClauseRead","line":301,"end_line":316,"hash":"9c300f8957c5dca2ee04c6890d98d1cad75bc32bf756f4500b657339ef024a76"},{"id":"func/quotedWords","name":"quotedWords","line":319,"end_line":325,"hash":"5d012175d6df61335f9cd394236819e442b6510c65ab1bb04fe8c224d56bf8b8"},{"id":"func/answered","name":"answered","line":330,"end_line":335,"hash":"314e8b572f0c8ab4da8cefb1f9522e0e297304a15877714ebf603e629b130934"},{"id":"func/doorbellRang","name":"doorbellRang","line":338,"end_line":351,"hash":"f3a49277529cc51598dba6042ef9222e25299cfa5945ed1fff3ce04835dd7732"},{"id":"func/doorbellRead","name":"doorbellRead","line":355,"end_line":362,"hash":"441093ea34681efcb6c72418a22d812498bb637aac4d855bd71342f3242eb018"}]}
 // mutate4go-manifest-end
