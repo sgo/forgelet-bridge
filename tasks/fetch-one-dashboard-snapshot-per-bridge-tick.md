@@ -108,8 +108,12 @@ and pushed. Deployment follows the required deploy gate.
   no-retry and tick-scope semantics plus the measurement.
   `ARCHITECTURE.md` records the forge-root/dashboard-identity boundary.
   `docs/manual-contract.edn` owns executable examples for both snapshot APIs.
-- The required deployed-bridge check and operator acceptance remain pending
-  until the reviewed tree is committed, pushed and deployed.
+- The required `deploy` gate passes after the reviewed tree was committed and
+  pushed. The restarted live bridge reports Forgelet, Saibill, Innersource and
+  Ledgerhall reached, no unavailable forges and zero owed items. A 30-second
+  sample advanced from tick 5 to tick 11 using 0.83 seconds of bridge CPU
+  (2.8% of one core).
+- Operator acceptance remains pending.
 
 ## Operator acceptance
 
