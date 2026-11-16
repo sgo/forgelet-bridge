@@ -18,6 +18,7 @@ type FakeDashboard struct {
 
 	mu            sync.Mutex
 	state         dashboard.AutomationState
+	fullState     dashboard.State
 	fail          bool
 	malformed     bool
 	unsupported   bool
@@ -54,6 +55,23 @@ func (f *FakeDashboard) SetState(state dashboard.AutomationState) {
 	f.state = state
 	f.malformed = false
 	f.unsupported = false
+}
+
+// SetFullState replaces the bounded full-state response used by dashboards
+// that have not yet rolled out the current automation projection.
+func (f *FakeDashboard) SetFullState(state dashboard.State) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fullState = state
+}
+
+// SetUnsupportedWithFullState switches the automation endpoint to unsupported
+// and supplies its compatibility state in the same update.
+func (f *FakeDashboard) SetUnsupportedWithFullState(state dashboard.State) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unsupported = true
+	f.fullState = state
 }
 
 // UpdateState changes the current state while preserving fields the caller
@@ -167,9 +185,10 @@ func (f *FakeDashboard) serveAutomation(writer http.ResponseWriter) {
 func (f *FakeDashboard) serveFullState(writer http.ResponseWriter) {
 	f.mu.Lock()
 	f.stateRequests++
+	state := f.fullState
 	f.mu.Unlock()
 	writer.Header().Set("Content-Type", "application/json")
-	_, _ = writer.Write([]byte(`{"approvals":[],"resolved_approvals":[],"clarifications":[]}`))
+	_ = json.NewEncoder(writer).Encode(state)
 }
 
 func (f *FakeDashboard) countFailure() {

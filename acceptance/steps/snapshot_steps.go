@@ -114,6 +114,26 @@ func fakeDoesNotSupportAutomation(_ context.Context, world any, captures []strin
 	return nil
 }
 
+func fakeUnsupportedWithCompatibilityState(_ context.Context, world any, captures []string) error {
+	fake, err := fakeDashboard(world.(*World), captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetUnsupportedWithFullState(dashboard.State{
+		Approvals: []dashboard.ApprovalRequest{{
+			ID: "card-b", Project: "forgelet-bridge", Card: "card-b", Gate: "coder → refactorer",
+		}},
+		ResolvedApprovals: []dashboard.ResolvedApprovalRequest{{
+			ID: "approval-card-a", Project: "forgelet-bridge", Resolution: relay.ResolutionApproved,
+		}},
+		Clarifications: []dashboard.ClarificationRequest{{
+			ID: "clarification-compatibility", Status: "pending", Project: "forgelet-bridge",
+			Role: "coder", Body: "which stage is next?",
+		}},
+	})
+	return nil
+}
+
 func fakeFailsStateReads(_ context.Context, world any, captures []string) error {
 	fake, err := fakeDashboard(world.(*World), captures[1])
 	if err != nil {
@@ -313,6 +333,18 @@ func bridgeLastErrorSaysUnsupported(_ context.Context, world any, _ []string) er
 	}
 	if !strings.Contains(strings.ToLower(status.LastError), "automation projection is unsupported") {
 		return fmt.Errorf("the bridge's last error does not say the automation projection is unsupported: %q", status.LastError)
+	}
+	return nil
+}
+
+func statusReportsProjectionFallback(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	status, err := readStatus(filepath.Join(w.stateDir, bridge.StatusName))
+	if err != nil {
+		return err
+	}
+	if !fixtures.Contains(status.ProjectionFallbacks, captures[1]) {
+		return fmt.Errorf("projection fallbacks = %v, want %s", status.ProjectionFallbacks, captures[1])
 	}
 	return nil
 }

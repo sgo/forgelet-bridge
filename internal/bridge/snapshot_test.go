@@ -267,7 +267,7 @@ func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
 		identity: projectRoot + "/dashboard",
 		snapshot: relay.DashboardSnapshot{Clarifications: []relay.Clarification{
 			clarificationOf("agent", "clar-1", "coder", "which stage is next?"),
-		}},
+		}, ProjectionFallback: true},
 	}
 	project.Clarifications = fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: source}
 	rooms := &fakeRooms{}
@@ -275,12 +275,15 @@ func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
 	room := projectRoom("!space-forge-a", "!project-agent-forge-a")
 	seen := roomEvents{messages: map[string][]relay.RoomEvent{}, reactions: map[string][]relay.Reaction{}}
 
-	carriedOut, err := built.carryOutProjectClarifications(context.Background(), project, room, seen, snapshotCache{})
+	carriedOut, err := built.carryOutProjectClarifications(context.Background(), root, project, room, seen, snapshotCache{})
 	if err != nil {
 		t.Fatalf("carryOutProjectClarifications: %v", err)
 	}
 	if carriedOut == 0 || lastMessageIn(rooms, room.RoomID) == nil {
 		t.Errorf("carried out = %d, sent = %+v, want the project clarification", carriedOut, rooms.sentMessages())
+	}
+	if !built.compatibilityFallbacks[root] {
+		t.Error("project compatibility fallback was not reported for its Family")
 	}
 }
 
@@ -296,7 +299,7 @@ func TestProjectClarificationSnapshotFailureCarriesNoWork(t *testing.T) {
 	}
 	built := &Bridge{}
 	carriedOut, err := built.carryOutProjectClarifications(
-		context.Background(), project, Room{ClarificationsRoomID: "!project"}, roomEvents{}, snapshotCache{})
+		context.Background(), "/forges/forge-a", project, Room{ClarificationsRoomID: "!project"}, roomEvents{}, snapshotCache{})
 	if err == nil {
 		t.Fatal("carryOutProjectClarifications accepted a failed snapshot")
 	}

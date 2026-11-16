@@ -50,9 +50,11 @@ inside it, invites the configured operator, and then:
 On each bridge tick the bridge requests `/api/automation-state` once from each
 configured dashboard. Pending approvals, exact desk resolutions, legacy
 clarifications and project board activity are all derived from that bounded
-`automation-v1` response. A malformed or unsupported projection leaves its
-dependent consumers unserved for that tick; a later tick performs a fresh read
-instead of reusing stale state or silently falling back to the full state.
+`automation-v1` response. During controlled dashboard rollout, an older
+dashboard may use one 2 MiB-bounded `/api/state` compatibility read, and the
+bridge reports that fallback in its status. Other malformed projections leave
+their dependent consumers unserved for that tick; a later tick performs a fresh
+read instead of reusing stale state or fabricating empty state.
 
 The app prefix is presentation metadata, not impersonation: the event remains
 under the bridge's Matrix account and keeps a normal thread root for the

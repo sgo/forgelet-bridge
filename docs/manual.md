@@ -68,12 +68,19 @@ therefore share one response. The cache is discarded when the tick ends, so a
 later tick never sees an earlier response. Two different forge roots never
 share a dashboard result.
 
-If the request fails, is unsupported, has the wrong projection header, or lacks
-a required bounded field, every consumer that needs that snapshot fails for the
-tick. The bridge does not retry in the same tick, read `/api/state` instead,
-substitute an earlier response or manufacture empty data. Chat relay continues
-because it does not depend on the projection. The dashboard's approval,
-send-back, clarification-answer and chat endpoints are unchanged.
+If the request fails, has the wrong projection header, or lacks a required
+bounded field, every consumer that needs that snapshot fails for the tick. The
+bridge does not retry in the same tick, substitute an earlier response or
+manufacture empty data. Chat relay continues because it does not depend on the
+projection. During controlled dashboard rollout, two older forms use a
+temporary compatibility read: HTTP 404/501, or the immediately preceding
+`automation-v1` shape whose resolved-approval rows have no `resolution` field.
+That path reads `/api/state` once under a 2 MiB bound, derives the same safe
+consumer fields, uses the independent board adapter, and names the affected
+Family in `projection_fallbacks` in bridge status. Unknown resolutions and every
+other malformed shape still fail closed. The fallback is removed after the
+controlled dashboard rollout. The dashboard's approval, send-back,
+clarification-answer and chat endpoints are unchanged.
 
 Resolved approvals retain the exact bounded value. Manual `approved` selects
 the ➡ mark, manual `sent_back` selects ⬅, and the automatic endings

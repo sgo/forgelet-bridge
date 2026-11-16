@@ -21,7 +21,7 @@ func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Proj
 		return 0, fmt.Errorf("read dashboard requests for %s: %w", project.Root, err)
 	}
 	carriedOut = b.carryOutChat(ctx, forgeRoot, project.Name, project.Store, room, seen, requests)
-	clarifications, err := b.carryOutProjectClarifications(ctx, project, room, seen, snapshots)
+	clarifications, err := b.carryOutProjectClarifications(ctx, forgeRoot, project, room, seen, snapshots)
 	if err != nil {
 		return carriedOut, err
 	}
@@ -30,7 +30,7 @@ func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Proj
 
 // carryOutProjectClarifications reads the project dashboard once when it
 // supports snapshots, then carries its clarification work.
-func (b *Bridge) carryOutProjectClarifications(ctx context.Context, project Project, room Room, seen roomEvents, snapshots snapshotCache) (carriedOut int, err error) {
+func (b *Bridge) carryOutProjectClarifications(ctx context.Context, forgeRoot string, project Project, room Room, seen roomEvents, snapshots snapshotCache) (carriedOut int, err error) {
 	source, snapshotsEnabled := project.Clarifications.(SnapshotStore)
 	if !snapshotsEnabled {
 		return b.carryOutClarifications(
@@ -40,6 +40,9 @@ func (b *Bridge) carryOutProjectClarifications(ctx context.Context, project Proj
 	snapshot, err := b.snapshotFrom(ctx, snapshots, source)
 	if err != nil {
 		return
+	}
+	if snapshot.ProjectionFallback {
+		b.compatibilityFallbacks[forgeRoot] = true
 	}
 	return b.carryOutClarifications(
 		ctx, project.Root, project.Clarifications, room,
@@ -112,5 +115,5 @@ func projectRoom(spaceID, roomID string) Room {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-14T23:40:22+01:00","module_hash":"6907679d0295526f3f1239cd7de039c077df02898969a3715ef937aeb929e03c","functions":[{"id":"func/Bridge.tickProject","name":"Bridge.tickProject","line":14,"end_line":29,"hash":"9f981093786eac5a7e7e51d5e28872eafabc4dac87026d691c05cc69e77f0998"},{"id":"func/Bridge.carryOutProjectClarifications","name":"Bridge.carryOutProjectClarifications","line":33,"end_line":47,"hash":"7953938654336e79341565c3e44b1efae33a2cead9c2252da954d34d7770f752"},{"id":"func/Bridge.projectRoomFor","name":"Bridge.projectRoomFor","line":52,"end_line":61,"hash":"21c6b7fc803665b6ef275d3ebc3aaaabe8562959e65cecfa8744ff185cbf105b"},{"id":"func/Bridge.projectForge","name":"Bridge.projectForge","line":65,"end_line":77,"hash":"a4cbd6d0fa459d357bd30844058b067a024446423f398b3acc34ec84f55616b3"},{"id":"func/Bridge.refreshProjectRoom","name":"Bridge.refreshProjectRoom","line":80,"end_line":87,"hash":"3e375a5ac248e1bba15983c6ab854d7c002a4b67c0681ac146ddde9fa7736289"},{"id":"func/Bridge.createProjectRoom","name":"Bridge.createProjectRoom","line":90,"end_line":104,"hash":"d7ef531616645f47012271c55dc63cbecdb6009242cc1cca7776b026000c1ff2"},{"id":"func/projectRoom","name":"projectRoom","line":106,"end_line":112,"hash":"bee1819d85260f11665850ff25dd2eb2a12906dd4b5cba05845505eb85ca4d5c"}]}
+// {"version":1,"tested_at":"2026-11-16T17:32:27+01:00","module_hash":"6b906dd656831bf338bfed489feb66904e7e817b2892e5ad085f016314a2d0fd","functions":[{"id":"func/Bridge.tickProject","name":"Bridge.tickProject","line":14,"end_line":29,"hash":"801a1358646ee588e5c0cbd56b05b26e249f063e898517e91f64b45daa6b5508"},{"id":"func/Bridge.carryOutProjectClarifications","name":"Bridge.carryOutProjectClarifications","line":33,"end_line":50,"hash":"892d25a02df58ae3d364f9b445adf7b5015c89eea3c75b59b284b507b76879f2"},{"id":"func/Bridge.projectRoomFor","name":"Bridge.projectRoomFor","line":55,"end_line":64,"hash":"21c6b7fc803665b6ef275d3ebc3aaaabe8562959e65cecfa8744ff185cbf105b"},{"id":"func/Bridge.projectForge","name":"Bridge.projectForge","line":68,"end_line":80,"hash":"a4cbd6d0fa459d357bd30844058b067a024446423f398b3acc34ec84f55616b3"},{"id":"func/Bridge.refreshProjectRoom","name":"Bridge.refreshProjectRoom","line":83,"end_line":90,"hash":"3e375a5ac248e1bba15983c6ab854d7c002a4b67c0681ac146ddde9fa7736289"},{"id":"func/Bridge.createProjectRoom","name":"Bridge.createProjectRoom","line":93,"end_line":107,"hash":"d7ef531616645f47012271c55dc63cbecdb6009242cc1cca7776b026000c1ff2"},{"id":"func/projectRoom","name":"projectRoom","line":109,"end_line":115,"hash":"bee1819d85260f11665850ff25dd2eb2a12906dd4b5cba05845505eb85ca4d5c"}]}
 // mutate4go-manifest-end

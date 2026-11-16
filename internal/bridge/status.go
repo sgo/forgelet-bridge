@@ -32,8 +32,9 @@ type Status struct {
 	// forge. Being reached says the bridge got to the forge - configured, its
 	// rooms created - and a queue behind it is a separate, visible fact rather
 	// than proof that reaching it failed.
-	Owed      []ForgeOwed `json:"owed,omitempty"`
-	LastError string      `json:"last_error,omitempty"`
+	Owed                []ForgeOwed `json:"owed,omitempty"`
+	ProjectionFallbacks []string    `json:"projection_fallbacks,omitempty"`
+	LastError           string      `json:"last_error,omitempty"`
 }
 
 // ForgeOwed is one forge and the work the bridge has taken from it and not yet

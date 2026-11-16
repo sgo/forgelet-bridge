@@ -1,11 +1,27 @@
 package dashboard
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
+
+func TestLegacyProjectionErrorIdentifiesTheResolvedApprovalRolloutGap(t *testing.T) {
+	state := testAutomationState()
+	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
+		ID: "old", Project: "project",
+	}})
+	err := validateAutomationState(state)
+	var legacy LegacyProjectionError
+	if !errors.As(err, &legacy) {
+		t.Fatalf("error = %v, want LegacyProjectionError", err)
+	}
+	if !strings.Contains(legacy.Error(), "resolved-approval resolutions") {
+		t.Errorf("error = %q, want the rollout gap", legacy.Error())
+	}
+}
 
 func TestAutomationValidationRejectsEveryWrongField(t *testing.T) {
 	question := "question?"
@@ -78,6 +94,17 @@ func TestAutomationValidationRejectsEveryWrongField(t *testing.T) {
 			state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
 				ID: "id", Project: "p", Resolution: "guessed",
 			}})
+		}, wantError: true},
+		{name: "resolved approval legacy shape", change: func(state *AutomationState) {
+			state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
+				ID: "id", Project: "p",
+			}})
+		}, wantError: true},
+		{name: "resolved approval mixed legacy and current shape", change: func(state *AutomationState) {
+			state.ResolvedApprovals = testSection([]AutomationResolvedApproval{
+				{ID: "old", Project: "p"},
+				{ID: "new", Project: "p", Resolution: relay.ResolutionApproved},
+			})
 		}, wantError: true},
 		{name: "project name", change: func(state *AutomationState) {
 			state.Projects = testSection([]AutomationProject{validationProject("")})

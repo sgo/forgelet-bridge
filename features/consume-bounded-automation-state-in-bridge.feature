@@ -3,8 +3,9 @@ Feature: Consume bounded automation state in the bridge
   # The bridge reads one bounded automation projection per dashboard in a tick.
   # Approvals, resolutions, clarifications and board activity all come from that
   # one response. The projection is checked before any consumer uses it, and a
-  # malformed or unsupported projection leaves the dependent consumers unserved
-  # until a later healthy tick rather than inventing state.
+  # malformed projection leaves the dependent consumers unserved until a later
+  # healthy tick rather than inventing state. An older dashboard may use the
+  # temporary bounded full-state compatibility path during controlled rollout.
 
   Background:
     And the bridge checks once every second
@@ -60,14 +61,17 @@ Feature: Consume bounded automation state in the bridge
     And the approvals room holds 2 approval messages
     And the clarifications room holds exactly 1 clarification messages
 
-  Scenario: an unsupported automation endpoint is reported without fabricated state
+  Scenario: an unsupported automation endpoint reports bounded compatibility
     Given the fake dashboard forge-a is available
+    And the fake dashboard forge-a first serves the pending approval for the card card-a in the project forgelet-bridge
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org
-    And the fake dashboard forge-a does not support automation state
     And the bridge is started
     And the bridge has caught up with the forge
-    Then the bridge's status names the forge forge-a as one it did not reach
-    And the bridge's last error says the automation projection is unsupported
-    And the approvals room holds 0 approval messages
-    And the clarifications room holds exactly 0 clarification messages
+    When the fake dashboard forge-a does not support automation state and serves bounded compatibility state with every waiting category
+    And the bridge has caught up with the forge
+    Then the bridge's status names the forge forge-a as one it reached
+    And the bridge's status reports a projection fallback for the forge forge-a
+    And the approvals room holds 2 approval messages
+    And the clarifications room holds exactly 1 clarification messages
+    And the approval for the card card-a carries ➡
 

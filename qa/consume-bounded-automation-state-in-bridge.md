@@ -12,7 +12,8 @@ contact an active dashboard, change forge files or use credentials.
 The script first runs the card's executable Gherkin through the real bridge. It
 covers all four authoritative approval endings, a shared projection containing
 approvals, resolutions, legacy and typed clarifications, card activity,
-malformed projection failure and recovery, and an unsupported endpoint.
+malformed projection failure and recovery, and bounded full-state compatibility
+for an unsupported endpoint with explicit projection-fallback status.
 
 It then runs the fixed synthetic measurement over 32 ticks and two 1 MiB full
 state dashboards. It verifies that both paths make one request per dashboard

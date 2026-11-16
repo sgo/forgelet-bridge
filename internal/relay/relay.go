@@ -38,6 +38,9 @@ type DashboardSnapshot struct {
 	// BoardFallback asks activity to use the independent board adapter for a
 	// projection that did not carry usable lanes.
 	BoardFallback bool
+	// ProjectionFallback records that this snapshot came through the temporary
+	// bounded full-state compatibility path during dashboard rollout.
+	ProjectionFallback bool
 }
 
 // RoomEvent is one message the bridge has seen in the chat room. Body is the

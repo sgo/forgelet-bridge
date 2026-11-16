@@ -160,6 +160,110 @@ func TestSnapshotReportsAnUnsupportedAutomationEndpoint(t *testing.T) {
 	}
 }
 
+func TestSnapshotUsesBoundedStateForLegacyAutomationProjection(t *testing.T) {
+	state := testAutomationState()
+	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
+		ID: "approval-old", Project: "project-a", Card: "old-card",
+	}})
+	requests := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests[request.URL.Path]++
+		switch request.URL.Path {
+		case "/api/automation-state":
+			writer.Header().Set("X-SwarmForge-Projection", AutomationProjection)
+			_ = json.NewEncoder(writer).Encode(state)
+		case "/api/state":
+			_ = json.NewEncoder(writer).Encode(State{
+				Approvals: []ApprovalRequest{{
+					ID: "approval-1", Project: "project-a", Card: "new-card", Gate: "coder → refactorer",
+				}},
+				ResolvedApprovals: []ResolvedApprovalRequest{{
+					ID: "approval-old", Project: "project-a", Resolution: relay.ResolutionSentBack,
+				}},
+				Clarifications: []ClarificationRequest{{
+					ID: "clarification-1", Status: "pending", Role: "coder", Body: testText,
+				}},
+			})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	snapshot, err := (SnapshotSource{
+		Root: "/forges/project-a", ConfiguredURL: server.URL, Project: "project-a",
+	}).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if requests["/api/automation-state"] != 1 || requests["/api/state"] != 1 {
+		t.Fatalf("requests = %v, want one legacy projection and one bounded state read", requests)
+	}
+	if got := snapshot.ResolvedApprovals["/forges/project-a/project-a/approval-old"]; got != relay.ResolutionSentBack {
+		t.Errorf("resolved approval = %q, want sent_back", got)
+	}
+	if len(snapshot.Clarifications) != 1 || snapshot.Clarifications[0].Project != "project-a" {
+		t.Errorf("clarifications = %+v, want the source project", snapshot.Clarifications)
+	}
+	if !snapshot.BoardFallback || !snapshot.ProjectionFallback || snapshot.Boards != nil {
+		t.Errorf("boards = %+v, board fallback = %t, projection fallback = %t, want the compatibility path",
+			snapshot.Boards, snapshot.BoardFallback, snapshot.ProjectionFallback)
+	}
+}
+
+func TestSnapshotUsesBoundedStateWhenAutomationIsUnsupported(t *testing.T) {
+	requests := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests[request.URL.Path]++
+		if request.URL.Path == "/api/automation-state" {
+			http.Error(writer, "Not found", http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(State{
+			Approvals: []ApprovalRequest{{ID: "approval-1", Project: "forge-a", Card: "card"}},
+		})
+	}))
+	defer server.Close()
+
+	snapshot, err := (SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if requests["/api/automation-state"] != 1 || requests["/api/state"] != 1 {
+		t.Fatalf("requests = %v, want one unsupported projection and one bounded state read", requests)
+	}
+	if len(snapshot.Approvals) != 1 {
+		t.Errorf("approvals = %+v, want the bounded state approval", snapshot.Approvals)
+	}
+	if !snapshot.ProjectionFallback {
+		t.Error("unsupported automation did not report its compatibility path")
+	}
+}
+
+func TestSnapshotDoesNotFallbackForAnUnknownResolution(t *testing.T) {
+	state := testAutomationState()
+	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
+		ID: "approval-1", Project: "project-a", Resolution: "guessed",
+	}})
+	stateRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/state" {
+			stateRequests++
+			return
+		}
+		writer.Header().Set("X-SwarmForge-Projection", AutomationProjection)
+		_ = json.NewEncoder(writer).Encode(state)
+	}))
+	defer server.Close()
+
+	if _, err := (SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}).Snapshot(context.Background()); err == nil {
+		t.Fatal("Snapshot accepted an unknown resolution")
+	}
+	if stateRequests != 0 {
+		t.Fatalf("state requests = %d, want malformed projection to fail without fallback", stateRequests)
+	}
+}
+
 func TestAutomationClarificationIdentityFailsClosed(t *testing.T) {
 	question := "question?"
 	valid := AutomationClarification{

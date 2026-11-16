@@ -67,9 +67,13 @@ project/card fields from the same snapshot instead of reading the board files
 again.
 
 The existing independent stores remain the fallback for adapters and tests that
-do not provide snapshots. An unsupported or malformed automation endpoint is
-reported as an unavailable dashboard: this card does not silently fall back to
-`/api/state`, retry in the same tick, or invent empty data.
+do not provide snapshots. During the controlled dashboard rollout, a dashboard
+that returns 404/501 or the immediately preceding `automation-v1` shape without
+resolved-approval resolutions is read once more from a 2 MiB-bounded
+`/api/state` response so its Family keeps working. That compatibility path uses
+the same authoritative `resolution` field and board-file fallback. Unknown
+resolutions and every other malformed shape still fail closed: the bridge does
+not invent empty data.
 
 The bridge will preserve the exact resolved ending. Only manual `approved` and
 `sent_back` select a manual ➡/⬅ reaction; `automatic_spec_approval` and
@@ -80,8 +84,8 @@ The bridge will preserve the exact resolved ending. Only manual `approved` and
 All four authoritative approval endings are Scenario Outline examples.
 Approval, resolved approval, legacy clarification, typed clarification and card
 activity sharing one projection is a plain boolean scenario. Malformed
-projection failure with recovery and unsupported-endpoint refusal are plain
-boolean scenarios with no mutable example cells.
+projection failure with recovery and unsupported-endpoint compatibility are
+plain boolean scenarios with no mutable example cells.
 
 ## Measurement
 
@@ -114,19 +118,21 @@ procedure uses fixture roots only and requires no operator-supplied secrets.
   adapter-started bridge.
 - The card E2E runs all seven executable scenarios: every authoritative
   resolution, shared approval/resolution/clarification/activity delivery,
-  malformed projection failure and recovery, and unsupported endpoint
-  reporting.
+  malformed projection failure and recovery, and bounded full-state
+  compatibility for an unsupported endpoint, with the shared consumers and
+  explicit `projection_fallbacks` status verified.
 - The fixed 32-tick workload uses two 1 MiB full-state dashboards. Requests
   remain 64 before and after (one per dashboard per tick). Response bytes fall
   from 67,114,048 to 1,424,096 (97.88%), while measured CPU falls from
-  1.179486s to 0.161461s (86.31%).
+  1.265821s to 0.184664s (85.41%).
 - `README.md` records the projection as the bridge state source.
   `docs/manual.md` owns the endpoint/header/shape, exact resolution policy,
   bounded clarification and typed-row handoff rules, failure behavior and
   measurement. `ARCHITECTURE.md` records the validation and tick snapshot
-  boundary. `docs/manual-contract.edn` links the projection and measurement
-  examples; all documentation examples pass.
-- Deployment is pending the reviewed tree being committed and pushed.
+  boundary and compatibility fallback. `docs/manual-contract.edn` links the
+  projection and measurement examples; all documentation examples pass.
+- Deployment and live verification are pending the reviewed compatibility tree
+  being committed and pushed.
 
 ## Operator acceptance
 

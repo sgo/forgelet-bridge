@@ -45,6 +45,7 @@ func register(registry *runtime.Registry) error {
 		{`^the fake dashboard (\S+) next serves a bounded automation projection with every waiting category$`, fakeNextServesEveryCategory},
 		{`^the fake dashboard (\S+) serves a malformed automation projection$`, fakeServesMalformedAutomation},
 		{`^the fake dashboard (\S+) does not support automation state$`, fakeDoesNotSupportAutomation},
+		{`^the fake dashboard (\S+) does not support automation state and serves bounded compatibility state with every waiting category$`, fakeUnsupportedWithCompatibilityState},
 		{`^the fake dashboard (\S+) next serves (.+)$`, fakeNextServesState},
 		{`^the fake dashboard (\S+) fails its state reads$`, fakeFailsStateReads},
 		{`^the fake dashboard (\S+) for the forge root (\S+) serves a pending clarification from the role (\S+) asking "(.+)"$`, fakeProjectServesClarification},
@@ -137,6 +138,7 @@ func register(registry *runtime.Registry) error {
 		{`^the bridge's status names every configured forge as reached$`, statusNamesEveryConfiguredForgeAsReached},
 		{`^the bridge's status names the forge (\S+) as one it reached$`, statusNamesTheForgeAsReached},
 		{`^the bridge's status names the forge (\S+) as one it did not reach$`, statusNamesTheForgeAsUnreached},
+		{`^the bridge's status reports a projection fallback for the forge (\S+)$`, statusReportsProjectionFallback},
 		{`^the bridge's last error says the automation projection is unsupported$`, bridgeLastErrorSaysUnsupported},
 
 		{`^the fixture forge root (\S+) holds the project (\S+)$`, forgeHoldsProject},

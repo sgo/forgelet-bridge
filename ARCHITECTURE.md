@@ -66,7 +66,10 @@ commands and `build/acceptance/bin` output remain the contract.
   forge-root/dashboard identity per `Bridge.Tick`; the validated
   `automation-v1` snapshot supplies approvals, resolutions, legacy
   clarifications and board activity and cannot cross a tick or dashboard
-  identity.
+  identity. A temporary rollout compatibility path may then read one
+  `/api/state` response bounded to 2 MiB for a 404/501 endpoint or the
+  immediately preceding projection without resolution fields; bridge status
+  reports affected Families in `projection_fallbacks`.
 - `scripts/check-architecture.sh` executes `go vet` and rejects either
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs

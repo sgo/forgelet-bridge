@@ -137,6 +137,9 @@ type Bridge struct {
 	// unhappy is why each forge could not be served in the tick now running,
 	// so one sick forge is named while the rest keep their rooms.
 	unhappy map[string]string
+	// compatibilityFallbacks names Families whose root or project dashboard
+	// needed the bounded full-state rollout compatibility path this tick.
+	compatibilityFallbacks map[string]bool
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -151,22 +154,23 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		return nil, err
 	}
 	return &Bridge{
-		cfg:                   cfg,
-		rooms:                 rooms,
-		stores:                stores,
-		approvals:             approvals,
-		clarifications:        clarifications,
-		snapshots:             snapshotStores(approvals),
-		boards:                boards,
-		statePath:             statePath,
-		statusDir:             cfg.StateDir,
-		state:                 loaded,
-		log:                   log,
-		provisioned:           map[string]Room{},
-		pending:               map[string]*pendingChat{},
-		pendingApprovals:      map[string]*pendingApprovals{},
-		pendingClarifications: map[string]*pendingClarifications{},
-		unhappy:               map[string]string{},
+		cfg:                    cfg,
+		rooms:                  rooms,
+		stores:                 stores,
+		approvals:              approvals,
+		clarifications:         clarifications,
+		snapshots:              snapshotStores(approvals),
+		boards:                 boards,
+		statePath:              statePath,
+		statusDir:              cfg.StateDir,
+		state:                  loaded,
+		log:                    log,
+		provisioned:            map[string]Room{},
+		pending:                map[string]*pendingChat{},
+		pendingApprovals:       map[string]*pendingApprovals{},
+		pendingClarifications:  map[string]*pendingClarifications{},
+		unhappy:                map[string]string{},
+		compatibilityFallbacks: map[string]bool{},
 	}, nil
 }
 
@@ -258,6 +262,7 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	snapshots := snapshotCache{}
 
 	b.unhappy = map[string]string{}
+	b.compatibilityFallbacks = map[string]bool{}
 	carriedOut := b.tickConfiguredForges(ctx, seen, snapshots)
 	b.tick++
 	return b.writeTickStatus(carriedOut)
@@ -331,6 +336,7 @@ func (b *Bridge) writeTickStatus(carriedOut int) error {
 	}
 	status.ReachedForges, status.UnhappyForges, status.LastError = b.forgeReport()
 	status.Owed = b.owedReport()
+	status.ProjectionFallbacks = b.projectionFallbackReport()
 	if b.tick == 1 {
 		// What the bridge carries is the first thing an operator or a script
 		// adding a forge wants to know, so it is said out loud once, at
@@ -452,6 +458,9 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, sn
 	if err != nil {
 		b.refuse(err, root)
 	} else {
+		if snapshot.ProjectionFallback {
+			b.compatibilityFallbacks[root] = true
+		}
 		carriedOut += stateWork
 		activity, activityErr := b.activityFrom(ctx, root, room, snapshot, fromSnapshot)
 		if activityErr != nil {
@@ -462,6 +471,18 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, sn
 	}
 
 	return carriedOut, nil
+}
+
+// projectionFallbackReport names the configured Families that used the
+// bounded full-state compatibility path this tick, in configuration order.
+func (b *Bridge) projectionFallbackReport() []string {
+	var fallbacks []string
+	for _, forge := range b.cfg.Forges {
+		if b.compatibilityFallbacks[forge.Root] {
+			fallbacks = append(fallbacks, b.cfg.ForgeName(forge.Root))
+		}
+	}
+	return fallbacks
 }
 
 // forgeTickInputs reads the room and dashboard queue one forge needs before
@@ -566,5 +587,5 @@ func (b *Bridge) carryOut(ctx context.Context, root, project string, store Forge
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-16T15:15:05+01:00","module_hash":"3c37b4bb12834e02ffd117b9eb25fd28ea909d193ce6599bb4b26e9d96d1b60e","functions":[{"id":"func/New","name":"New","line":144,"end_line":171,"hash":"f07fb878396714e70abaf86cbddc098f2cffa9c3d5f4a3c9e976e5690030e279"},{"id":"func/loadBridgeState","name":"loadBridgeState","line":174,"end_line":180,"hash":"3af36a0c01e53921f684edbc2cc0e7f6549f682fc7d208ac7a60ec80b8d7c9d2"},{"id":"func/snapshotStores","name":"snapshotStores","line":185,"end_line":193,"hash":"d58459d5645da3fdf440e91b006e008095fe054e16f45d35f84c29eee994ad2c"},{"id":"func/Bridge.SetProjectSource","name":"Bridge.SetProjectSource","line":198,"end_line":200,"hash":"81cceca900d1598467e463637cdaa435545ec6b05d6b3d2cc5e04ceb31f71d06"},{"id":"func/Bridge.SetSnapshotSources","name":"Bridge.SetSnapshotSources","line":204,"end_line":206,"hash":"4dac8d7a533f0beb0ae0c129b8e3fef340ad9842b73a8206bb31ae942214d694"},{"id":"func/Bridge.State","name":"Bridge.State","line":209,"end_line":211,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":214,"end_line":232,"hash":"4c794a9bf882c89a9285371a77b07a4ebdb83e767a88bce6c694c76c363c494a"},{"id":"func/Bridge.runTick","name":"Bridge.runTick","line":235,"end_line":242,"hash":"a9bcaa6d9f1f172c20ac37dcf91b794f30cd0030a6ac6e67b8c4335ec9645ab2"},{"id":"func/backOff","name":"backOff","line":247,"end_line":249,"hash":"f79b36ff71b470c2d08648b1816e8ead1da7c3aca5887a2cb0cc7424bf6a7090"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":253,"end_line":264,"hash":"a32a60d148c284154e5a82ff4d4f7b9873d56d1bf54b93a372367d5e0f43d1d2"},{"id":"func/Bridge.tickConfiguredForges","name":"Bridge.tickConfiguredForges","line":268,"end_line":274,"hash":"5b427af14ba4f9c4ef4e6da52aba02dff492f507a7e51eed2e92cc300690f513"},{"id":"func/Bridge.tickForgeAndProjects","name":"Bridge.tickForgeAndProjects","line":278,"end_line":287,"hash":"6b5571a0eda85e6c6446b1847559874226323d7896c433496bbd5e00063f7f53"},{"id":"func/Bridge.tickProjects","name":"Bridge.tickProjects","line":290,"end_line":305,"hash":"a5a27217d534cd6d8c4d99540f1c079d7a06775a389bc71e03fa29c75fe8d6ed"},{"id":"func/Bridge.tickProjectIfOpen","name":"Bridge.tickProjectIfOpen","line":309,"end_line":321,"hash":"c1df7287938b576ac0ad17ece9420e773e201c42ad26607149e73a215247066f"},{"id":"func/Bridge.writeTickStatus","name":"Bridge.writeTickStatus","line":324,"end_line":341,"hash":"f6c96efddb0332abec2d9d151694ffd5c40a5dfaea81d7ef90e8ab737b151747"},{"id":"func/Bridge.forgeReport","name":"Bridge.forgeReport","line":346,"end_line":357,"hash":"ae1f631af0f579c29587141c1cc92631d2f0a11dce543cf99bb4a3464505a046"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":360,"end_line":362,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.owedReport","name":"Bridge.owedReport","line":366,"end_line":372,"hash":"9fba61b71ca397e843f6642fb1f4102a576086811147030152f04749cd2c2a9a"},{"id":"func/Bridge.owedFor","name":"Bridge.owedFor","line":376,"end_line":380,"hash":"0fc7db7e7230a2e5b8b8db380f8ed44932819fe4cedb25d27be537d6d388d104"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":383,"end_line":385,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":389,"end_line":391,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":396,"end_line":404,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":409,"end_line":412,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":422,"end_line":440,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":444,"end_line":465,"hash":"6ee01653ee980ac5e1316c801757a94bc5d3dda95ce4e1d39a03bcdf835d9ea2"},{"id":"func/Bridge.forgeTickInputs","name":"Bridge.forgeTickInputs","line":469,"end_line":483,"hash":"4787f4356a9734b593311f0f6ecfaf900efb30fdbc5b307551c27faf97d199b8"},{"id":"func/Bridge.carryOutStateConsumers","name":"Bridge.carryOutStateConsumers","line":488,"end_line":517,"hash":"4b7520d7bc3d90666ea8b7ce5c09dd1c5b670709429c676da5792e3f557bd469"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":522,"end_line":546,"hash":"248d1f49bef5a99de88b154b21af4f14835e0fcbdee451364ad5a59ff002e68b"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":548,"end_line":553,"hash":"eae760be9fe3e2d404da7f84cb87961a48db887e2a0149e422bc625ec61b3700"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":556,"end_line":566,"hash":"aecb68109dc127d8cb20847827edd650d29c8c215e1fbddda6ba39560649b0a8"}]}
+// {"version":1,"tested_at":"2026-11-16T17:31:47+01:00","module_hash":"6d6eb9302cc0269935b89ce09ca750a403168fa2461303fff3f3cdc48fb731d7","functions":[{"id":"func/New","name":"New","line":147,"end_line":175,"hash":"619135f6ef9d3db65cc895ca8f60ed2c34aa380cea8934b20774345ce98c4392"},{"id":"func/loadBridgeState","name":"loadBridgeState","line":178,"end_line":184,"hash":"3af36a0c01e53921f684edbc2cc0e7f6549f682fc7d208ac7a60ec80b8d7c9d2"},{"id":"func/snapshotStores","name":"snapshotStores","line":189,"end_line":197,"hash":"d58459d5645da3fdf440e91b006e008095fe054e16f45d35f84c29eee994ad2c"},{"id":"func/Bridge.SetProjectSource","name":"Bridge.SetProjectSource","line":202,"end_line":204,"hash":"81cceca900d1598467e463637cdaa435545ec6b05d6b3d2cc5e04ceb31f71d06"},{"id":"func/Bridge.SetSnapshotSources","name":"Bridge.SetSnapshotSources","line":208,"end_line":210,"hash":"4dac8d7a533f0beb0ae0c129b8e3fef340ad9842b73a8206bb31ae942214d694"},{"id":"func/Bridge.State","name":"Bridge.State","line":213,"end_line":215,"hash":"bf410b1bb8d53a98c0174a9807b8510a29bc02200bb47d241ad7e9f14ff2f7aa"},{"id":"func/Bridge.Run","name":"Bridge.Run","line":218,"end_line":236,"hash":"4c794a9bf882c89a9285371a77b07a4ebdb83e767a88bce6c694c76c363c494a"},{"id":"func/Bridge.runTick","name":"Bridge.runTick","line":239,"end_line":246,"hash":"a9bcaa6d9f1f172c20ac37dcf91b794f30cd0030a6ac6e67b8c4335ec9645ab2"},{"id":"func/backOff","name":"backOff","line":251,"end_line":253,"hash":"f79b36ff71b470c2d08648b1816e8ead1da7c3aca5887a2cb0cc7424bf6a7090"},{"id":"func/Bridge.Tick","name":"Bridge.Tick","line":257,"end_line":269,"hash":"0285ff85964086948fd8ad79176454a2c2985873b3f4fc24008cadbd3ec2adf3"},{"id":"func/Bridge.tickConfiguredForges","name":"Bridge.tickConfiguredForges","line":273,"end_line":279,"hash":"5b427af14ba4f9c4ef4e6da52aba02dff492f507a7e51eed2e92cc300690f513"},{"id":"func/Bridge.tickForgeAndProjects","name":"Bridge.tickForgeAndProjects","line":283,"end_line":292,"hash":"6b5571a0eda85e6c6446b1847559874226323d7896c433496bbd5e00063f7f53"},{"id":"func/Bridge.tickProjects","name":"Bridge.tickProjects","line":295,"end_line":310,"hash":"a5a27217d534cd6d8c4d99540f1c079d7a06775a389bc71e03fa29c75fe8d6ed"},{"id":"func/Bridge.tickProjectIfOpen","name":"Bridge.tickProjectIfOpen","line":314,"end_line":326,"hash":"c1df7287938b576ac0ad17ece9420e773e201c42ad26607149e73a215247066f"},{"id":"func/Bridge.writeTickStatus","name":"Bridge.writeTickStatus","line":329,"end_line":347,"hash":"96d7772cabebd05134cafdf2a53048fcf16f31ad25bf8c54f3fd61be7fed0d5f"},{"id":"func/Bridge.forgeReport","name":"Bridge.forgeReport","line":352,"end_line":363,"hash":"ae1f631af0f579c29587141c1cc92631d2f0a11dce543cf99bb4a3464505a046"},{"id":"func/Bridge.pendingFor","name":"Bridge.pendingFor","line":366,"end_line":368,"hash":"92da8d17577eeedf6d82d5e3448f73896c18792e1a1d1c764c309f563e248b23"},{"id":"func/Bridge.owedReport","name":"Bridge.owedReport","line":372,"end_line":378,"hash":"9fba61b71ca397e843f6642fb1f4102a576086811147030152f04749cd2c2a9a"},{"id":"func/Bridge.owedFor","name":"Bridge.owedFor","line":382,"end_line":386,"hash":"0fc7db7e7230a2e5b8b8db380f8ed44932819fe4cedb25d27be537d6d388d104"},{"id":"func/Bridge.pendingApprovalsFor","name":"Bridge.pendingApprovalsFor","line":389,"end_line":391,"hash":"2b132b7f8b2d48d3dcf9b00f10c4d7582f2b4ee4a27b84383d6d05729ee9cb49"},{"id":"func/Bridge.pendingClarificationsFor","name":"Bridge.pendingClarificationsFor","line":395,"end_line":397,"hash":"dc933f20516563b5e8e5df0e708ac8c1e65ed054aad25810e3a5a19876bac975"},{"id":"func/scopedToRoom","name":"scopedToRoom","line":402,"end_line":410,"hash":"445da93034eadfdfe3a704a206e2fe52d35da11888e1e72fd0b2b30b2e5363a5"},{"id":"func/Bridge.refuse","name":"Bridge.refuse","line":415,"end_line":418,"hash":"a0000892d59676cca2151216c141d9666955fe0db459f8f469d62ef1d96cffa2"},{"id":"func/Bridge.drainRooms","name":"Bridge.drainRooms","line":428,"end_line":446,"hash":"9bb5f3184873715385e70794087854cbdd08c8af11843ecd660f1b8902e100dd"},{"id":"func/Bridge.tickForge","name":"Bridge.tickForge","line":450,"end_line":474,"hash":"2c014508444236c529619b50914aaf155ab296070cb53fcfceefafa63d99a899"},{"id":"func/Bridge.projectionFallbackReport","name":"Bridge.projectionFallbackReport","line":478,"end_line":486,"hash":"32d7a0930052274c1a53ee3ef0e22ac924cf7403ce8e3cbe452349fc5766d53c"},{"id":"func/Bridge.forgeTickInputs","name":"Bridge.forgeTickInputs","line":490,"end_line":504,"hash":"4787f4356a9734b593311f0f6ecfaf900efb30fdbc5b307551c27faf97d199b8"},{"id":"func/Bridge.carryOutStateConsumers","name":"Bridge.carryOutStateConsumers","line":509,"end_line":538,"hash":"4b7520d7bc3d90666ea8b7ce5c09dd1c5b670709429c676da5792e3f557bd469"},{"id":"func/Bridge.carryOutChat","name":"Bridge.carryOutChat","line":543,"end_line":567,"hash":"248d1f49bef5a99de88b154b21af4f14835e0fcbdee451364ad5a59ff002e68b"},{"id":"func/Bridge.apply","name":"Bridge.apply","line":569,"end_line":574,"hash":"eae760be9fe3e2d404da7f84cb87961a48db887e2a0149e422bc625ec61b3700"},{"id":"func/Bridge.carryOut","name":"Bridge.carryOut","line":577,"end_line":587,"hash":"aecb68109dc127d8cb20847827edd650d29c8c215e1fbddda6ba39560649b0a8"}]}
 // mutate4go-manifest-end

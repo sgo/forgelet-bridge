@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
@@ -46,6 +47,30 @@ func TestFakeDashboardCountsFailedStateReads(t *testing.T) {
 	counts := fake.Counts()
 	if counts.Requests != 1 || counts.Failed != 1 || counts.Bytes != 0 {
 		t.Errorf("counts = %+v, want one failed read and no body", counts)
+	}
+}
+
+func TestFakeDashboardServesUnsupportedCompatibilityState(t *testing.T) {
+	fake := StartFakeDashboard()
+	defer fake.Close()
+	fake.SetUnsupportedWithFullState(dashboard.State{
+		ResolvedApprovals: []dashboard.ResolvedApprovalRequest{{
+			ID: "card-a", Project: "project-a", Resolution: "approved",
+		}},
+	})
+
+	response, err := http.Get(fake.URL() + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var state dashboard.State
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.ResolvedApprovals) != 1 ||
+		state.ResolvedApprovals[0].Resolution != "approved" {
+		t.Errorf("resolved approvals = %+v, want the compatibility resolution", state.ResolvedApprovals)
 	}
 }
 
