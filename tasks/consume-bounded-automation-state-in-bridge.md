@@ -131,8 +131,14 @@ procedure uses fixture roots only and requires no operator-supplied secrets.
   measurement. `ARCHITECTURE.md` records the validation and tick snapshot
   boundary and compatibility fallback. `docs/manual-contract.edn` links the
   projection and measurement examples; all documentation examples pass.
-- Deployment and live verification are pending the reviewed compatibility tree
-  being committed and pushed.
+- Compatibility remediation `a7bafea` is committed and pushed. The deploy gate
+  rebuilt and restarted the bridge from that tree. A fresh live tick reported
+  `idle: true`, reached Forgelet, Saibill, Innersource and Ledgerhall, and owed
+  zero items for every Family. `projection_fallbacks` named all four Families:
+  Forgelet's Family dashboard uses `automation-v1` while its project dashboards
+  still need rollout, and the other Families currently use the bounded
+  compatibility path. No Family was unavailable and no stale or invented state
+  was reported.
 
 ## Operator acceptance
 
