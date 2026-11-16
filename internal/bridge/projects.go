@@ -44,13 +44,19 @@ func (b *Bridge) carryOutProjectClarifications(ctx context.Context, forgeRoot st
 	if snapshot.ProjectionFallback {
 		b.compatibilityFallbacks[forgeRoot] = true
 	}
-	// A Family dashboard already projects every open project's typed
-	// clarifications into the Family Clarifications room. Consuming the same
-	// row again from its project dashboard would create a second notice.
-	snapshot.TypedClarifications = nil
+	if typedClarificationsHandledByFamily(forgeRoot, project) {
+		snapshot.TypedClarifications = nil
+	}
 	return b.carryOutClarifications(
 		ctx, project.Root, project.Clarifications, room,
 		seen.messages[room.ClarificationsRoomID], snapshot, true)
+}
+
+// typedClarificationsHandledByFamily reports whether the forge-level snapshot
+// owns the project's typed notifications. A nested project satisfies this; a
+// project configured as the forge root is served by the forge-level tick.
+func typedClarificationsHandledByFamily(forgeRoot string, project Project) bool {
+	return forgeRoot != project.Root
 }
 
 // projectRoomFor returns the project's room inside its forge's space, creating
@@ -119,5 +125,5 @@ func projectRoom(spaceID, roomID string) Room {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-16T17:32:27+01:00","module_hash":"6b906dd656831bf338bfed489feb66904e7e817b2892e5ad085f016314a2d0fd","functions":[{"id":"func/Bridge.tickProject","name":"Bridge.tickProject","line":14,"end_line":29,"hash":"801a1358646ee588e5c0cbd56b05b26e249f063e898517e91f64b45daa6b5508"},{"id":"func/Bridge.carryOutProjectClarifications","name":"Bridge.carryOutProjectClarifications","line":33,"end_line":50,"hash":"892d25a02df58ae3d364f9b445adf7b5015c89eea3c75b59b284b507b76879f2"},{"id":"func/Bridge.projectRoomFor","name":"Bridge.projectRoomFor","line":55,"end_line":64,"hash":"21c6b7fc803665b6ef275d3ebc3aaaabe8562959e65cecfa8744ff185cbf105b"},{"id":"func/Bridge.projectForge","name":"Bridge.projectForge","line":68,"end_line":80,"hash":"a4cbd6d0fa459d357bd30844058b067a024446423f398b3acc34ec84f55616b3"},{"id":"func/Bridge.refreshProjectRoom","name":"Bridge.refreshProjectRoom","line":83,"end_line":90,"hash":"3e375a5ac248e1bba15983c6ab854d7c002a4b67c0681ac146ddde9fa7736289"},{"id":"func/Bridge.createProjectRoom","name":"Bridge.createProjectRoom","line":93,"end_line":107,"hash":"d7ef531616645f47012271c55dc63cbecdb6009242cc1cca7776b026000c1ff2"},{"id":"func/projectRoom","name":"projectRoom","line":109,"end_line":115,"hash":"bee1819d85260f11665850ff25dd2eb2a12906dd4b5cba05845505eb85ca4d5c"}]}
+// {"version":1,"tested_at":"2026-11-16T18:26:38+01:00","module_hash":"a33a476d49d0d1deee5fbb7f693ad924afa58d14260d4f15fd00495cbcc16ac4","functions":[{"id":"func/Bridge.tickProject","name":"Bridge.tickProject","line":14,"end_line":29,"hash":"801a1358646ee588e5c0cbd56b05b26e249f063e898517e91f64b45daa6b5508"},{"id":"func/Bridge.carryOutProjectClarifications","name":"Bridge.carryOutProjectClarifications","line":33,"end_line":53,"hash":"e78803543727e3cdcf0676131df144c6c76ed148af7bed7f2a03af50363188e9"},{"id":"func/typedClarificationsHandledByFamily","name":"typedClarificationsHandledByFamily","line":58,"end_line":60,"hash":"a8d15efbd63bc3a2bad5e24da06b7fd9e8dd9bf57d87ab9a78a1ae56b284cfd5"},{"id":"func/Bridge.projectRoomFor","name":"Bridge.projectRoomFor","line":65,"end_line":74,"hash":"21c6b7fc803665b6ef275d3ebc3aaaabe8562959e65cecfa8744ff185cbf105b"},{"id":"func/Bridge.projectForge","name":"Bridge.projectForge","line":78,"end_line":90,"hash":"a4cbd6d0fa459d357bd30844058b067a024446423f398b3acc34ec84f55616b3"},{"id":"func/Bridge.refreshProjectRoom","name":"Bridge.refreshProjectRoom","line":93,"end_line":100,"hash":"3e375a5ac248e1bba15983c6ab854d7c002a4b67c0681ac146ddde9fa7736289"},{"id":"func/Bridge.createProjectRoom","name":"Bridge.createProjectRoom","line":103,"end_line":117,"hash":"d7ef531616645f47012271c55dc63cbecdb6009242cc1cca7776b026000c1ff2"},{"id":"func/projectRoom","name":"projectRoom","line":119,"end_line":125,"hash":"bee1819d85260f11665850ff25dd2eb2a12906dd4b5cba05845505eb85ca4d5c"}]}
 // mutate4go-manifest-end

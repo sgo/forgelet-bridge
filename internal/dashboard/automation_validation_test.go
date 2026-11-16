@@ -38,6 +38,7 @@ func TestAutomationValidationRejectsEveryWrongField(t *testing.T) {
 		{name: "approvals missing", change: func(state *AutomationState) { state.Approvals = nil }, wantError: true},
 		{name: "resolved approvals missing", change: func(state *AutomationState) { state.ResolvedApprovals = nil }, wantError: true},
 		{name: "projects missing", change: func(state *AutomationState) { state.Projects = nil }, wantError: true},
+		{name: "clarifications missing", change: func(state *AutomationState) { state.Clarifications = nil }, wantError: true},
 		{name: "legacy clarifications missing", change: func(state *AutomationState) { state.Clarifications.Legacy = nil }, wantError: true},
 		{name: "typed clarifications missing", change: func(state *AutomationState) { state.Clarifications.Typed = nil }, wantError: true},
 		{name: "legacy pending id", change: func(state *AutomationState) {
@@ -220,6 +221,24 @@ func TestAutomationQuestionIsBoundedAndNonBlank(t *testing.T) {
 				t.Errorf("validQuestionExcerpt = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestAutomationValidationAcceptsEveryTypedLifecycleAndAttention(t *testing.T) {
+	question := "which stage?"
+	for _, lifecycle := range []string{"open", "answered", "withdrawn"} {
+		for _, attention := range []string{"unseen", "seen"} {
+			t.Run(lifecycle+"/"+attention, func(t *testing.T) {
+				state := testAutomationState()
+				state.Clarifications.Typed = testSection([]AutomationClarification{{
+					ID: "request-1", ClarificationID: "clar-1", Project: "project",
+					Status: lifecycle, Attention: attention, QuestionExcerpt: &question,
+				}})
+				if err := validateAutomationState(state); err != nil {
+					t.Fatalf("validateAutomationState: %v", err)
+				}
+			})
+		}
 	}
 }
 

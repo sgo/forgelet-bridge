@@ -3,6 +3,8 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -364,6 +366,54 @@ func TestTypedSeenClarificationDoesNotPostANewNotice(t *testing.T) {
 	}
 }
 
+func TestLegacyInputPathDoesNotReconcileTypedSnapshotState(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	typed := typedClarificationOf(
+		"project-alpha", "clar-kept", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+	built.State().Relay.Clarifications[typed.Key] = relay.ClarificationState{
+		ForgeRoot: root, RoomID: "!clarifications-forge-a", MessageID: "$message",
+		Source: relay.ClarificationSourceTyped,
+	}
+
+	if _, err := built.clarificationInputsForTick(
+		context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+		relay.DashboardSnapshot{}, false); err != nil {
+		t.Fatal(err)
+	}
+	if state := built.State().Relay.Clarifications[typed.Key]; state.MessageID == "" {
+		t.Fatal("the independent-store path reconciled snapshot-only state")
+	}
+}
+
+func TestTypedReconciliationDoesNotSaveWhenNothingIsStale(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	notDirectory := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(notDirectory, []byte("file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	built.statePath = filepath.Join(notDirectory, "bridge-state.json")
+	open := typedClarificationOf(
+		"project-alpha", "clar-open", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+	built.State().Relay.Clarifications[open.Key] = relay.ClarificationState{
+		ForgeRoot: root, RoomID: "!clarifications-forge-a", MessageID: "$message",
+		Source: relay.ClarificationSourceTyped,
+	}
+	if err := built.reconcileTypedClarifications(
+		root, Room{ClarificationsRoomID: "!clarifications-forge-a"}, []relay.Clarification{open}); err != nil {
+		t.Fatalf("an unchanged typed snapshot tried to save state: %v", err)
+	}
+}
+
 func TestTypedAnsweredAndWithdrawnClarificationsClearTheRecord(t *testing.T) {
 	for _, lifecycle := range []string{"answered", "withdrawn"} {
 		t.Run(lifecycle, func(t *testing.T) {
@@ -425,6 +475,13 @@ func TestTypedClarificationMissingFromAHealthySnapshotClearsTheRecord(t *testing
 	if state := built.State().Relay.Clarifications[typed.Key]; state.MessageID != "" || state.Source != "" {
 		t.Fatalf("state = %+v, want the stale typed record cleared", state)
 	}
+	reloaded, err := state.Load(built.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record := reloaded.Relay.Clarifications[typed.Key]; record.MessageID != "" {
+		t.Fatalf("persisted state = %+v, want the stale record cleared", record)
+	}
 }
 
 func TestTypedReplyUsesTheTypedProjectChatPath(t *testing.T) {
@@ -461,6 +518,32 @@ func TestTypedReplyUsesTheTypedProjectChatPath(t *testing.T) {
 	}
 	if legacy := store.answered(); len(legacy) != 0 {
 		t.Fatalf("legacy answers = %+v, want no legacy endpoint use", legacy)
+	}
+}
+
+func TestTypedAnswerFailureRetainsNoAnsweredRecord(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	typed := typedClarificationOf(
+		"project-alpha", "clar-failed", "coder", "which stage?", relay.ClarificationOpen, "seen")
+	store := &fakeClarifications{errors: map[string]error{
+		"project-alpha/clar-failed": fmt.Errorf("project chat is unavailable"),
+	}}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	built.State().Relay.Clarifications[typed.Key] = relay.ClarificationState{
+		ForgeRoot: root, RoomID: "!clarifications-forge-a", MessageID: "$message",
+		Source: relay.ClarificationSourceTyped,
+	}
+	err := built.answerClarification(context.Background(), root, store, relay.ClarificationAction{
+		Kind: relay.AnswerClarification, Key: typed.Key, Clarification: typed, Answer: "run qa",
+	})
+	if err == nil {
+		t.Fatal("answerClarification accepted a failed typed answer")
+	}
+	if state := built.State().Relay.Clarifications[typed.Key]; state.Answer != "" {
+		t.Fatalf("state = %+v, want no answered record after failure", state)
 	}
 }
 

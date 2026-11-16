@@ -287,6 +287,50 @@ func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestProjectSnapshotLeavesFamilyOwnedTypedClarificationsToTheForgeTick(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	project := Project{
+		Name:  "agent",
+		Root:  root + "/projects/agent",
+		Store: &fakeStore{},
+		Clarifications: fakeSnapshotClarifications{
+			fakeClarifications: &fakeClarifications{},
+			source: &fakeSnapshotSource{
+				identity: "project-dashboard",
+				snapshot: relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{
+					typedClarificationOf(
+						"agent", "clar-typed", "agent", "which stage?", relay.ClarificationOpen, "unseen"),
+				}},
+			},
+		},
+	}
+	built, _ := newTestBridgeWithStores(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: &fakeApprovals{}},
+		map[string]BoardStore{root: &fakeBoard{}}, root)
+	built.SetProjectSource(fakeProjectSource{projects: []Project{project}})
+
+	if _, err := built.carryOutProjectClarifications(
+		context.Background(), root, project, Room{ClarificationsRoomID: "!project"}, roomEvents{},
+		snapshotCache{}); err != nil {
+		t.Fatal(err)
+	}
+	if messages := rooms.sentMessages(); len(messages) != 0 {
+		t.Fatalf("messages = %+v, want no duplicate project-room typed notice", messages)
+	}
+}
+
+func TestFamilyOwnsTypedClarificationsOnlyForNestedProjects(t *testing.T) {
+	root := "/forges/forge-a"
+	if !typedClarificationsHandledByFamily(root, Project{Root: root + "/projects/agent"}) {
+		t.Error("a nested project's typed row was not left to the Family tick")
+	}
+	if typedClarificationsHandledByFamily(root, Project{Root: root}) {
+		t.Error("a project configured as the forge root lost its typed row")
+	}
+}
+
 func TestProjectClarificationSnapshotFailureCarriesNoWork(t *testing.T) {
 	source := &fakeSnapshotSource{identity: "project-dashboard", err: errors.New("unavailable"), callLimit: 1}
 	project := Project{

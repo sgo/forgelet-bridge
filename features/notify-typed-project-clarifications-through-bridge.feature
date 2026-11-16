@@ -14,6 +14,7 @@ Feature: Notify Typed Project Clarifications Through The Bridge
     When the fake dashboard forge-a next serves the typed clarification clarification-shared in the project project-alpha with lifecycle <lifecycle> and attention <attention>
     And the bridge has caught up with the forge
     Then the clarifications room holds exactly <notices> clarification messages
+    And the bridge's status names the forge forge-a as one it reached
 
     Examples:
       | lifecycle | attention | notices |

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
@@ -102,6 +103,32 @@ func TestSnapshotPreservesEveryAuthoritativeResolution(t *testing.T) {
 	}
 }
 
+func TestTypedNotificationDependsOnBothOpenAndUnseen(t *testing.T) {
+	question := "which stage?"
+	for _, lifecycle := range []string{"open", "answered", "withdrawn"} {
+		for _, attention := range []string{"unseen", "seen"} {
+			t.Run(lifecycle+"/"+attention, func(t *testing.T) {
+				sections := &AutomationClarifications{
+					Legacy: testSection([]AutomationClarification{}),
+					Typed: testSection([]AutomationClarification{{
+						ID: "request-1", ClarificationID: "clar-1", Project: "project",
+						Role: "coder", Status: lifecycle, Attention: attention, QuestionExcerpt: &question,
+					}}),
+				}
+				sets, err := automationClarifications("/forge", sections, "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := sets.typed[0].Notify
+				want := lifecycle == relay.ClarificationOpen && attention == "unseen"
+				if got != want {
+					t.Fatalf("Notify = %t, want %t", got, want)
+				}
+			})
+		}
+	}
+}
+
 func TestSnapshotNamesTheProjectWhenTheProjectionDoesNot(t *testing.T) {
 	state := projectAutomationState()
 	question := "next?"
@@ -145,6 +172,32 @@ func TestSnapshotRejectsMalformedProjections(t *testing.T) {
 			defer server.Close()
 			if _, err := (SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}).Snapshot(context.Background()); err == nil {
 				t.Fatal("Snapshot accepted a malformed projection")
+			}
+		})
+	}
+}
+
+func TestAutomationResponseKeepsReadAndDecodeFailuresDistinct(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantErr string
+	}{
+		{name: "read", status: http.StatusServiceUnavailable, body: "unavailable", wantErr: "read automation state"},
+		{name: "decode", status: http.StatusOK, body: "{", wantErr: "decode automation projection"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("X-SwarmForge-Projection", AutomationProjection)
+				writer.WriteHeader(test.status)
+				_, _ = writer.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			_, err := NewAPI(server.URL).AutomationState(context.Background())
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want %q", err, test.wantErr)
 			}
 		})
 	}
@@ -337,6 +390,24 @@ func TestAutomationClarificationsRejectDuplicateAndMalformedTypedRows(t *testing
 	}})
 	if _, err := automationClarifications("/forge", sections, ""); err == nil {
 		t.Fatal("typed clarification with no project was accepted")
+	}
+}
+
+func TestAutomationClarificationsIgnoresTerminalLegacyRows(t *testing.T) {
+	question := "already answered"
+	sections := &AutomationClarifications{
+		Legacy: testSection([]AutomationClarification{{
+			ID: "legacy-old", Status: "done", Project: "project",
+			Role: "coder", QuestionExcerpt: &question,
+		}}),
+		Typed: testSection([]AutomationClarification{}),
+	}
+	sets, err := automationClarifications("/forge", sections, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets.legacy) != 0 {
+		t.Fatalf("legacy terminal rows = %+v, want none", sets.legacy)
 	}
 }
 

@@ -81,7 +81,13 @@ func (c Clarifications) typedProject(project string) (string, string, error) {
 }
 
 func validClarificationProject(project string) error {
-	if project == "" || filepath.Base(project) != project || strings.ContainsAny(project, `/\`) {
+	if project == "" {
+		return fmt.Errorf("typed clarification has an invalid project %q", project)
+	}
+	if filepath.Base(project) != project {
+		return fmt.Errorf("typed clarification has an invalid project %q", project)
+	}
+	if strings.ContainsAny(project, `/\`) {
 		return fmt.Errorf("typed clarification has an invalid project %q", project)
 	}
 	return nil
@@ -179,5 +185,5 @@ func (a *API) AnswerClarification(ctx context.Context, project, id, answer strin
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-14T23:43:17+01:00","module_hash":"d8c4a44ce8cd5e665579bbde19a887167140d3b1311ebc36f81cac497d4ef8c1","functions":[{"id":"func/Clarifications.Pending","name":"Clarifications.Pending","line":24,"end_line":39,"hash":"3d59f2037ea31827414df5a5a4e8132745c3396254e3c40135eae6bfc094af11"},{"id":"func/Clarifications.Answer","name":"Clarifications.Answer","line":43,"end_line":49,"hash":"d0164fc07e33793682064d65c168210257c720d6ef19c9bc797582bf0512e7bb"},{"id":"func/Clarifications.client","name":"Clarifications.client","line":53,"end_line":59,"hash":"4f7063d0149b103a239a33acc268240d8e63cd577326e7a515545701ffeb5546"},{"id":"func/API.Clarifications","name":"API.Clarifications","line":71,"end_line":77,"hash":"5948c65df4496ab36d0a5f7cda9d943ff4a48fe54d8a7c5ac68c8c351a279512"},{"id":"func/API.clarifications","name":"API.clarifications","line":81,"end_line":96,"hash":"696c0e7de92a24ca3d3cd3bd995caa2e3b060ac691c2b5e74d53251167183d6a"},{"id":"func/API.AnswerClarification","name":"API.AnswerClarification","line":101,"end_line":104,"hash":"286ecaa6aaa5f107300c4fc115d8a525c4c1dae93dd4275284438d1026887a35"}]}
+// {"version":1,"tested_at":"2026-11-16T18:46:19+01:00","module_hash":"a027823ad6b0e65b103e1523109b0c24dba1a3e207dc1bed4ce90dd53b1e34af","functions":[{"id":"func/Clarifications.Pending","name":"Clarifications.Pending","line":27,"end_line":42,"hash":"3d59f2037ea31827414df5a5a4e8132745c3396254e3c40135eae6bfc094af11"},{"id":"func/Clarifications.Answer","name":"Clarifications.Answer","line":46,"end_line":52,"hash":"d0164fc07e33793682064d65c168210257c720d6ef19c9bc797582bf0512e7bb"},{"id":"func/Clarifications.AnswerTyped","name":"Clarifications.AnswerTyped","line":57,"end_line":67,"hash":"240143ee6c8c9c533a75fac8b413a53a0cb2ff7f02e0343998c8777c3f52bbf2"},{"id":"func/Clarifications.typedProject","name":"Clarifications.typedProject","line":69,"end_line":81,"hash":"171b861966d978307f23bd69ee5d635e47ce10d0c806303333fbd14f5e08bc4a"},{"id":"func/validClarificationProject","name":"validClarificationProject","line":83,"end_line":94,"hash":"68e956d6ca5fc8996c159f8618d2bc25ec70ff67955e23ddf6d4736adcae0fc7"},{"id":"func/Clarifications.resolveTypedProject","name":"Clarifications.resolveTypedProject","line":96,"end_line":112,"hash":"75da3bc2502178bc71472c13cb8fb5e8ce044fb6f1755b76bf44b200506c7023"},{"id":"func/Clarifications.requireOpenProject","name":"Clarifications.requireOpenProject","line":114,"end_line":130,"hash":"0067e2d3ca4d4aca0a3a0dd6d6a7f0636677a9f513a8ab970de7ee5de14e63c2"},{"id":"func/Clarifications.client","name":"Clarifications.client","line":134,"end_line":140,"hash":"4f7063d0149b103a239a33acc268240d8e63cd577326e7a515545701ffeb5546"},{"id":"func/API.Clarifications","name":"API.Clarifications","line":152,"end_line":158,"hash":"5948c65df4496ab36d0a5f7cda9d943ff4a48fe54d8a7c5ac68c8c351a279512"},{"id":"func/API.clarifications","name":"API.clarifications","line":162,"end_line":177,"hash":"696c0e7de92a24ca3d3cd3bd995caa2e3b060ac691c2b5e74d53251167183d6a"},{"id":"func/API.AnswerClarification","name":"API.AnswerClarification","line":182,"end_line":185,"hash":"286ecaa6aaa5f107300c4fc115d8a525c4c1dae93dd4275284438d1026887a35"}]}
 // mutate4go-manifest-end

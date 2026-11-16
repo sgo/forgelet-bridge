@@ -98,7 +98,7 @@ func TestTypedClarificationAnswersThroughTheOwningProjectChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "open-projects"),
-		[]byte("project-alpha\n"), 0o644); err != nil {
+		[]byte("project-alpha\nproject-beta\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,6 +163,7 @@ func TestTypedClarificationProjectResolutionFailsClosed(t *testing.T) {
 	}{
 		{name: "empty name", adapter: Clarifications{Root: root}, project: ""},
 		{name: "path separator", adapter: Clarifications{Root: root}, project: "../project"},
+		{name: "backslash separator", adapter: Clarifications{Root: root}, project: `project\child`},
 		{name: "mismatched project adapter", adapter: Clarifications{Root: root, Project: "project-alpha"}, project: "project-beta"},
 		{name: "mismatched current project", adapter: Clarifications{Root: root}, project: "project-alpha"},
 		{name: "missing marked family project", adapter: Clarifications{Root: family}, project: "project-missing"},

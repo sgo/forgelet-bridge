@@ -72,3 +72,21 @@ func TestClarificationFactAsksTheQuestionUnderItsOwnId(t *testing.T) {
 		}
 	}
 }
+
+func TestTypedClarificationFactUsesATypeAndProjectQualifiedKey(t *testing.T) {
+	clarification := clarification()
+	clarification.Source = ClarificationSourceTyped
+	clarification.Project = "project-alpha"
+
+	fact := ClarificationFact(clarification)
+	if fact.Key != "typed:project-alpha:"+clarification.ID {
+		t.Fatalf("typed fact key = %q, want the project-qualified typed id", fact.Key)
+	}
+	for key, want := range map[string]any{
+		"source": ClarificationSourceTyped, "project": "project-alpha",
+	} {
+		if fact.Content[key] != want {
+			t.Errorf("typed fact %s = %v, want %v", key, fact.Content[key], want)
+		}
+	}
+}
