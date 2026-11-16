@@ -111,7 +111,35 @@ project agent wake and cleared app attention. No operator secret is required.
 
 ## Verification
 
-Pending implementation and gates.
+- `code`, `clean`, `architect`, `harden`, `clean-final`, `qa`, `e2e` and
+  `docs` pass on the final reviewed tree. The highest CRAP score is 6.0, at the
+  project ceiling.
+- The card feature passes all 20 examples. It proves lifecycle and attention
+  routing, one notification, restart and repeated-tick deduplication, terminal
+  record clearing, fresh failure recovery, typed project-chat replies,
+  project-qualified identities, Family isolation, legacy coexistence, bounded
+  excerpts and one automation read per dashboard per tick.
+- Differential Go mutation reports zero survivors and zero uncovered sites.
+  Acceptance mutation kills all 21 mutated example cells with zero errors.
+- The full property and Gherkin QA suite passes. The focused older
+  automation-state and snapshot features also pass after keeping their typed
+  fixture row `seen`, which preserves their one-legacy-notice intent while
+  proving seen typed rows create no notice.
+- The real project/Family dashboard E2E creates `clar-e2e`, observes
+  `open/unseen` with a redacted bounded excerpt, answers through normal project
+  chat, observes `answered`, verifies the owning agent's answer request and
+  verifies the app attention marker clears. The record is
+  `docs/evidence/notify-typed-project-clarifications-through-bridge.json`.
+- The live Forgelet `automation-v1` contract at `http://127.0.0.1:50684`
+  returned a 34,998-byte response with a valid projection identity and a typed
+  section count of zero, so the bridge's declared action for the currently
+  empty typed section is a no-op reconciliation.
+- `README.md` documents typed notification and routing; `docs/manual.md`
+  documents lifecycle, attention, identity, failure, restart and reply
+  behavior; `ARCHITECTURE.md` records the Family snapshot authority and
+  project-chat answer boundary; `docs/manual-contract.edn` adds an executable
+  typed-clarification API example. All 21 contract sections and 15 executable
+  documentation examples pass.
 
 ## Operator acceptance
 

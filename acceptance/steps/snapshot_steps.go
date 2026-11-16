@@ -478,7 +478,7 @@ func automationFullState() dashboard.AutomationState {
 	}})
 	state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{{
 		ID: "typed-request", ClarificationID: "clarification-typed", Status: "open",
-		Project: "forgelet-bridge", Attention: "unseen", QuestionExcerpt: &typedQuestion,
+		Project: "forgelet-bridge", Attention: "seen", QuestionExcerpt: &typedQuestion,
 	}})
 	state.Projects = automationSection([]dashboard.AutomationProject{{
 		Name:     "forgelet-bridge",
