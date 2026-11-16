@@ -67,8 +67,8 @@ func (c Clarifications) AnswerTyped(ctx context.Context, project, id, answer str
 }
 
 func (c Clarifications) typedProject(project string) (string, string, error) {
-	if project == "" || filepath.Base(project) != project || strings.ContainsAny(project, `/\`) {
-		return "", "", fmt.Errorf("typed clarification has an invalid project %q", project)
+	if err := validClarificationProject(project); err != nil {
+		return "", "", err
 	}
 	if c.Project != "" {
 		if project != c.Project {
@@ -77,6 +77,17 @@ func (c Clarifications) typedProject(project string) (string, string, error) {
 		}
 		return c.Root, c.ConfiguredURL, nil
 	}
+	return c.resolveTypedProject(project)
+}
+
+func validClarificationProject(project string) error {
+	if project == "" || filepath.Base(project) != project || strings.ContainsAny(project, `/\`) {
+		return fmt.Errorf("typed clarification has an invalid project %q", project)
+	}
+	return nil
+}
+
+func (c Clarifications) resolveTypedProject(project string) (string, string, error) {
 	if _, err := os.Stat(filepath.Join(c.Root, ".swarmforge", "single-agent")); err == nil {
 		if project != filepath.Base(c.Root) {
 			return "", "", fmt.Errorf(

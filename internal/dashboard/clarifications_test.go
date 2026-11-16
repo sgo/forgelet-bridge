@@ -136,6 +136,77 @@ func TestTypedClarificationAnswerFailsClosedOnDuplicateOpenProject(t *testing.T)
 	}
 }
 
+func TestTypedClarificationProjectResolutionFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "single-agent"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "open-projects"),
+		[]byte("project-missing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	family := filepath.Join(root, "family")
+	if err := os.MkdirAll(filepath.Join(family, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(family, ".swarmforge", "open-projects"),
+		[]byte("project-missing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		adapter Clarifications
+		project string
+	}{
+		{name: "empty name", adapter: Clarifications{Root: root}, project: ""},
+		{name: "path separator", adapter: Clarifications{Root: root}, project: "../project"},
+		{name: "mismatched project adapter", adapter: Clarifications{Root: root, Project: "project-alpha"}, project: "project-beta"},
+		{name: "mismatched current project", adapter: Clarifications{Root: root}, project: "project-alpha"},
+		{name: "missing marked family project", adapter: Clarifications{Root: family}, project: "project-missing"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, err := test.adapter.typedProject(test.project); err == nil {
+				t.Fatalf("typedProject accepted %q", test.project)
+			}
+		})
+	}
+}
+
+func TestTypedClarificationUsesAConfiguredProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	configured := "http://project.example"
+	gotRoot, gotURL, err := (Clarifications{
+		Root: root, ConfiguredURL: configured, Project: "project-alpha",
+	}).typedProject("project-alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRoot != root || gotURL != configured {
+		t.Fatalf("typed project = %q/%q, want the configured project", gotRoot, gotURL)
+	}
+}
+
+func TestTypedClarificationUsesACurrentProjectRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project-alpha")
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "single-agent"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gotRoot, gotURL, err := (Clarifications{Root: root}).typedProject("project-alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRoot != root || gotURL != "" {
+		t.Fatalf("typed project = %q/%q, want the current project root", gotRoot, gotURL)
+	}
+}
+
 func TestClarificationsExplainsAForgeWithoutADashboard(t *testing.T) {
 	clarifications := Clarifications{Root: t.TempDir()}
 

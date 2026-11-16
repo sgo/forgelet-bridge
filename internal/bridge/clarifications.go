@@ -26,14 +26,9 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store 
 	if store == nil {
 		return 0, fmt.Errorf("no clarifications configured for forge root %s", root)
 	}
-	pending, err := clarificationInputs(ctx, root, store, snapshot, fromSnapshot)
+	pending, err := b.clarificationInputsForTick(ctx, root, store, room, snapshot, fromSnapshot)
 	if err != nil {
 		return
-	}
-	if fromSnapshot {
-		if err := b.reconcileTypedClarifications(root, room, snapshot.TypedClarifications); err != nil {
-			return carriedOut, err
-		}
 	}
 
 	waiting := b.pendingClarificationsFor(root)
@@ -49,6 +44,19 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store 
 		return carriedOut, err
 	}
 	return carriedOut, nil
+}
+
+// clarificationInputsForTick reads the one authoritative input for this tick
+// and, when it came from a snapshot, first clears typed records it retired.
+func (b *Bridge) clarificationInputsForTick(ctx context.Context, root string, store ClarificationStore, room Room, snapshot relay.DashboardSnapshot, fromSnapshot bool) ([]relay.Clarification, error) {
+	pending, err := clarificationInputs(ctx, root, store, snapshot, fromSnapshot)
+	if err != nil || !fromSnapshot {
+		return pending, err
+	}
+	if err := b.reconcileTypedClarifications(root, room, snapshot.TypedClarifications); err != nil {
+		return nil, err
+	}
+	return pending, nil
 }
 
 // carryOutPendingClarifications performs the clarification actions this tick
@@ -90,18 +98,10 @@ func clarificationInputs(ctx context.Context, root string, store ClarificationSt
 // The snapshot is authoritative for the whole tick, so absence is stale rather
 // than a reason to retain an old notice.
 func (b *Bridge) reconcileTypedClarifications(root string, room Room, typed []relay.Clarification) error {
-	open := make(map[string]bool, len(typed))
-	for _, clarification := range typed {
-		if clarification.Lifecycle == relay.ClarificationOpen {
-			open[clarification.Key] = true
-		}
-	}
+	open := openTypedClarificationKeys(typed)
 	changed := false
 	for key, state := range b.state.Relay.Clarifications {
-		if state.Source != relay.ClarificationSourceTyped ||
-			state.ForgeRoot != root ||
-			state.RoomID != room.ClarificationsRoomID ||
-			open[key] {
+		if !staleTypedClarification(state, root, room, open[key]) {
 			continue
 		}
 		delete(b.state.Relay.Clarifications, key)
@@ -111,6 +111,23 @@ func (b *Bridge) reconcileTypedClarifications(root string, room Room, typed []re
 		return b.state.Save(b.statePath)
 	}
 	return nil
+}
+
+func openTypedClarificationKeys(typed []relay.Clarification) map[string]bool {
+	open := make(map[string]bool, len(typed))
+	for _, clarification := range typed {
+		if clarification.Lifecycle == relay.ClarificationOpen {
+			open[clarification.Key] = true
+		}
+	}
+	return open
+}
+
+func staleTypedClarification(state relay.ClarificationState, root string, room Room, open bool) bool {
+	return state.Source == relay.ClarificationSourceTyped &&
+		state.ForgeRoot == root &&
+		state.RoomID == room.ClarificationsRoomID &&
+		!open
 }
 
 // clarificationFacts is the questions the forge is still waiting on, each as
