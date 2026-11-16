@@ -50,11 +50,17 @@ that triggers the app-relay presentation.
 
 ## Dashboard state snapshots
 
-Each bridge tick reads `/api/state` once from every dashboard it addresses.
-`internal/dashboard.SnapshotSource` decodes the complete response into one
-`internal/relay.DashboardSnapshot`, from which the bridge derives pending
-approvals, desk resolutions, forge clarifications and project clarifications.
-`internal/bridge.SnapshotStore` reads that value once for the tick.
+Each bridge tick reads `/api/automation-state` once from every dashboard it
+addresses. `internal/dashboard.SnapshotSource` requires the
+`X-SwarmForge-Projection: automation-v1` header and the matching projection
+discriminator, validates the bounded shape and decodes one
+`internal/dashboard.AutomationState` into one
+`internal/relay.DashboardSnapshot`. `internal/dashboard.AutomationProjection`
+names the accepted discriminator. `internal/bridge.SnapshotStore` shares that
+value among approvals, resolved approvals, legacy clarifications and project
+board activity in the tick. Typed clarification rows are validated and retained
+in `DashboardSnapshot.TypedClarifications` for the following notification-parity
+card; they are not folded into the legacy Matrix path.
 
 The tick cache is keyed by both the forge root and the resolved dashboard
 address. Forge-level and project-level work that address the same dashboard
@@ -62,22 +68,26 @@ therefore share one response. The cache is discarded when the tick ends, so a
 later tick never sees an earlier response. Two different forge roots never
 share a dashboard result.
 
-If the request fails, every consumer that needs that snapshot fails for the
-tick. The bridge does not retry the state request in the same tick, substitute
-an earlier response, or manufacture empty data. Chat relay and board activity
-continue because they do not depend on the dashboard state response. The
-dashboard's approval, send-back, clarification-answer and chat endpoints are
-unchanged.
+If the request fails, is unsupported, has the wrong projection header, or lacks
+a required bounded field, every consumer that needs that snapshot fails for the
+tick. The bridge does not retry in the same tick, read `/api/state` instead,
+substitute an earlier response or manufacture empty data. Chat relay continues
+because it does not depend on the projection. The dashboard's approval,
+send-back, clarification-answer and chat endpoints are unchanged.
 
-The fixed synthetic comparison in
-`docs/evidence/fetch-one-dashboard-snapshot-per-bridge-tick.json` uses 32 ticks
-and two 1 MiB dashboards. It measures 128 state requests and 134,256,768 bytes
-for the old four-reads-per-tick pattern, versus 64 requests and 67,128,384
-bytes for complete snapshots: a 50% reduction in each. The same run measured
-3.281 seconds of process CPU before and 1.813 seconds after, a 44.7% reduction.
-These synthetic figures isolate payload construction, transfer and decoding;
-the deploy gate and operator acceptance still check the live bridge and Matrix
-delivery.
+Resolved approvals retain the exact bounded value. Manual `approved` selects
+the ➡ mark, manual `sent_back` selects ⬅, and the automatic endings
+`automatic_spec_approval` and `auto_approved` retain their exact value without a
+manual mark. Clarification questions come only from the bounded
+`question_excerpt`; blank excerpts fail the projection closed.
+
+The fixed comparison in
+`docs/evidence/consume-bounded-automation-state-in-bridge.json` uses 32 ticks
+and two 1 MiB full-state dashboards. Both paths make 64 requests, one per
+dashboard per tick. Bytes fall from 67,114,048 to 1,424,096, a 97.9% reduction.
+The measured process CPU in that run fell from 1.513 seconds to 0.187 seconds,
+an 87.6% reduction. These synthetic figures isolate transfer and decoding; the
+deploy gate and operator acceptance check the live bridge and Matrix delivery.
 
 ## Configuration
 

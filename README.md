@@ -47,11 +47,12 @@ inside it, invites the configured operator, and then:
 - messages from anyone but the operator never reach the forge;
 - a restart repeats nothing, in either direction.
 
-On each bridge tick the bridge requests `/api/state` once from each configured
-dashboard. Pending approvals, desk-resolved approvals, clarifications and
-project clarification work are all derived from that one response. A failed
-read leaves only its dependent consumers unserved for that tick; a later tick
-performs a fresh read instead of reusing stale state.
+On each bridge tick the bridge requests `/api/automation-state` once from each
+configured dashboard. Pending approvals, exact desk resolutions, legacy
+clarifications and project board activity are all derived from that bounded
+`automation-v1` response. A malformed or unsupported projection leaves its
+dependent consumers unserved for that tick; a later tick performs a fresh read
+instead of reusing stale state or silently falling back to the full state.
 
 The app prefix is presentation metadata, not impersonation: the event remains
 under the bridge's Matrix account and keeps a normal thread root for the

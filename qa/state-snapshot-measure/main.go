@@ -194,33 +194,50 @@ func measure(ctx context.Context, ticks int, read func() error, counts func() co
 }
 
 func newStateServer(payloadBytes int) (*stateServer, error) {
-	state := map[string]any{
-		"approvals": []map[string]any{{
-			"id":      "approval-1",
-			"project": "project",
-			"task":    "snapshot-card",
-			"gate":    "coder → refactorer",
-		}},
-		"resolved_approvals": []map[string]any{{
-			"id":         "approval-old",
-			"project":    "project",
-			"resolution": "approved",
-		}},
-		"clarifications": []map[string]any{{
-			"id":      "clarification-1",
-			"status":  "pending",
-			"project": "project",
-			"role":    "coder",
-			"body":    strings.Repeat("x", payloadBytes),
-		}},
+	question := "which lane?"
+	automation := dashboard.AutomationState{
+		Projection: dashboard.AutomationProjection,
+		Identity: &dashboard.AutomationIdentity{
+			Kind: "family", Name: "project",
+			AllProjects:  &dashboard.AutomationSection[string]{Count: 1, Items: []string{"project"}},
+			OpenProjects: &dashboard.AutomationSection[string]{Count: 1, Items: []string{"project"}},
+		},
+		Approvals:         &dashboard.AutomationSection[dashboard.AutomationApproval]{Items: []dashboard.AutomationApproval{}},
+		ResolvedApprovals: &dashboard.AutomationSection[dashboard.AutomationResolvedApproval]{Items: []dashboard.AutomationResolvedApproval{}},
+		Clarifications: &dashboard.AutomationClarifications{
+			Legacy: &dashboard.AutomationSection[dashboard.AutomationClarification]{Count: 1, Items: []dashboard.AutomationClarification{{
+				ID: "clarification-1", Status: "pending", Project: "project",
+				Role: "coder", QuestionExcerpt: &question,
+			}}},
+			Typed: &dashboard.AutomationSection[dashboard.AutomationClarification]{Items: []dashboard.AutomationClarification{}},
+		},
+		Projects: &dashboard.AutomationSection[dashboard.AutomationProject]{Items: []dashboard.AutomationProject{}},
 	}
-	body, err := json.Marshal(state)
+	state := struct {
+		dashboard.AutomationState
+		Padding string `json:"padding"`
+	}{AutomationState: automation, Padding: strings.Repeat("x", payloadBytes)}
+	automationBody, err := json.Marshal(state)
 	if err != nil {
 		return nil, err
 	}
+	fullBody, err := json.Marshal(map[string]any{
+		"approvals": []any{}, "resolved_approvals": []any{}, "clarifications": []any{},
+		"padding": strings.Repeat("x", payloadBytes),
+	})
+	if err != nil {
+		return nil, err
+	}
+	target := max(len(fullBody), len(automationBody))
+	fullBody = append(fullBody, bytesOf(' ', target-len(fullBody))...)
+	automationBody = append(automationBody, bytesOf(' ', target-len(automationBody))...)
 	served := &stateServer{}
 	served.server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.URL.Path != "/api/state" {
+		body := fullBody
+		if request.URL.Path == "/api/automation-state" {
+			body = automationBody
+		}
+		if request.Method != http.MethodGet || (request.URL.Path != "/api/state" && request.URL.Path != "/api/automation-state") {
 			http.NotFound(writer, request)
 			return
 		}
@@ -229,9 +246,16 @@ func newStateServer(payloadBytes int) (*stateServer, error) {
 		served.count.Bytes += uint64(len(body))
 		served.mu.Unlock()
 		writer.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/api/automation-state" {
+			writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
+		}
 		_, _ = writer.Write(body)
 	}))
 	return served, nil
+}
+
+func bytesOf(value byte, count int) []byte {
+	return []byte(strings.Repeat(string(value), count))
 }
 
 func (s *stateServer) counts() counters {

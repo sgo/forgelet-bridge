@@ -62,8 +62,11 @@ commands and `build/acceptance/bin` output remain the contract.
   client.
 - Core policy and state packages do not import `internal/bridge` or
   `internal/matrix`.
-- Dashboard state is read at most once per forge-root/dashboard identity per
-  `Bridge.Tick`; a snapshot cannot cross a tick or a dashboard identity.
+- Dashboard automation state is read at most once per
+  forge-root/dashboard identity per `Bridge.Tick`; the validated
+  `automation-v1` snapshot supplies approvals, resolutions, legacy
+  clarifications and board activity and cannot cross a tick or dashboard
+  identity.
 - `scripts/check-architecture.sh` executes `go vet` and rejects either
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs

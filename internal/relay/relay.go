@@ -29,6 +29,12 @@ type DashboardSnapshot struct {
 	Approvals         []Approval
 	ResolvedApprovals map[string]string
 	Clarifications    []Clarification
+	// TypedClarifications are validated project-chat clarifications retained
+	// for the notification-parity consumer. Legacy notification behavior does
+	// not silently absorb them.
+	TypedClarifications []Clarification
+	// Boards are the open project boards carried by the same projection.
+	Boards []Board
 }
 
 // RoomEvent is one message the bridge has seen in the chat room. Body is the

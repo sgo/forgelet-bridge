@@ -51,31 +51,162 @@ func (s SnapshotSource) Identity() (string, error) {
 	return strings.Join([]string{s.Root, url}, "\x00"), nil
 }
 
-// Snapshot reads the complete dashboard state once and derives every waiting
-// consumer from that response.
+// Snapshot reads the bounded automation projection once and derives every
+// waiting consumer from that response.
 func (s SnapshotSource) Snapshot(ctx context.Context) (relay.DashboardSnapshot, error) {
 	url, err := URL(s.Root, s.ConfiguredURL)
 	if err != nil {
 		return relay.DashboardSnapshot{}, fmt.Errorf("find dashboard snapshot for %s: %w", s.Root, err)
 	}
 	api := NewForgeAPI(s.Root, url)
-	state, err := api.State(ctx)
+	state, err := api.AutomationState(ctx)
 	if err != nil {
-		return relay.DashboardSnapshot{}, fmt.Errorf("read dashboard snapshot for %s: %w", s.Root, err)
+		return relay.DashboardSnapshot{}, fmt.Errorf("read automation snapshot for %s: %w", s.Root, err)
 	}
-	clarifications := api.clarifications(state)
-	for index := range clarifications {
-		if clarifications[index].Project == "" {
-			clarifications[index].Project = s.Project
+	return automationSnapshot(api, state, s.Project)
+}
+
+func automationSnapshot(api *API, state AutomationState, project string) (relay.DashboardSnapshot, error) {
+	clarifications, err := automationClarifications(api.root, state.Clarifications, project)
+	if err != nil {
+		return relay.DashboardSnapshot{}, err
+	}
+	snapshot := relay.DashboardSnapshot{
+		Approvals:           automationApprovals(api, state.Approvals.Items),
+		ResolvedApprovals:   automationResolvedApprovals(api.root, state.ResolvedApprovals.Items),
+		Clarifications:      clarifications.legacy,
+		TypedClarifications: clarifications.typed,
+		Boards:              automationBoards(api.root, state.Projects.Items),
+	}
+	return snapshot, nil
+}
+
+func automationApprovals(api *API, items []AutomationApproval) []relay.Approval {
+	approvals := make([]relay.Approval, 0, len(items))
+	for _, item := range items {
+		approvals = append(approvals, api.approval(ApprovalRequest{
+			ID: item.ID, Project: item.Project, Card: item.Card, TaskID: item.TaskID, Gate: item.Gate,
+		}))
+	}
+	return approvals
+}
+
+func automationResolvedApprovals(root string, items []AutomationResolvedApproval) map[string]string {
+	resolved := make(map[string]string, len(items))
+	for _, item := range items {
+		resolved[forgeKey(root, item.Project, item.ID)] = item.Resolution
+	}
+	return resolved
+}
+
+type automationClarificationSets struct {
+	legacy []relay.Clarification
+	typed  []relay.Clarification
+}
+
+func automationClarifications(root string, sections *AutomationClarifications, project string) (automationClarificationSets, error) {
+	sets := automationClarificationSets{}
+	seen := map[string]bool{}
+	var err error
+	if sets.legacy, err = automationClarificationSection(root, "legacy", sections.Legacy.Items, project, "", seen); err != nil {
+		return sets, err
+	}
+	if sets.typed, err = automationClarificationSection(root, "typed", sections.Typed.Items, project, "open", seen); err != nil {
+		return sets, err
+	}
+	return sets, nil
+}
+
+func automationClarificationSection(root, kind string, items []AutomationClarification, fallbackProject, status string, seen map[string]bool) ([]relay.Clarification, error) {
+	var pending []relay.Clarification
+	for _, item := range items {
+		if !clarificationStatusMatches(status, item.Status) {
+			continue
 		}
+		clarification, err := automationClarification(root, kind, item, fallbackProject, seen)
+		if err != nil {
+			return nil, err
+		}
+		pending = append(pending, clarification)
 	}
-	return relay.DashboardSnapshot{
-		Approvals:         api.approvals(state),
-		ResolvedApprovals: api.resolvedApprovals(state),
-		Clarifications:    clarifications,
+	return pending, nil
+}
+
+func clarificationStatusMatches(wanted, status string) bool {
+	if wanted == "" {
+		return status == "pending"
+	}
+	return status == wanted
+}
+
+func automationClarification(root, kind string, item AutomationClarification, fallbackProject string, seen map[string]bool) (relay.Clarification, error) {
+	project, id, ok := clarificationIdentity(kind, item, fallbackProject)
+	if !ok {
+		return relay.Clarification{}, fmt.Errorf("invalid %s clarification in automation projection", kind)
+	}
+	key := forgeKey(root, project, id)
+	if seen[key] {
+		return relay.Clarification{}, fmt.Errorf("duplicate %s clarification in automation projection", kind)
+	}
+	seen[key] = true
+	return relay.Clarification{
+		Key:      key,
+		ID:       id,
+		Project:  project,
+		Role:     clarificationRole(item),
+		Question: strings.TrimSpace(*item.QuestionExcerpt),
 	}, nil
 }
 
+func clarificationIdentity(kind string, item AutomationClarification, fallbackProject string) (string, string, bool) {
+	project := clarificationProject(item.Project, fallbackProject)
+	id := clarificationID(kind, item)
+	if project == "" || id == "" || item.QuestionExcerpt == nil {
+		return "", "", false
+	}
+	return project, id, true
+}
+
+func clarificationProject(project, fallback string) string {
+	if project == "" {
+		return fallback
+	}
+	return project
+}
+
+func clarificationID(kind string, item AutomationClarification) string {
+	if kind == "typed" && item.ClarificationID != "" {
+		return item.ClarificationID
+	}
+	return item.ID
+}
+
+func clarificationRole(item AutomationClarification) string {
+	role := item.Role
+	if role == "" {
+		role = "project-agent"
+	}
+	return role
+}
+
+func automationBoards(root string, projects []AutomationProject) []relay.Board {
+	boards := make([]relay.Board, 0, len(projects))
+	for _, project := range projects {
+		board := relay.Board{Project: project.Name, Lanes: append([]string(nil), project.Lanes.Items...)}
+		for _, card := range project.Cards.Items {
+			board.Cards = append(board.Cards, relay.Card{
+				Key:     forgeKey(root, project.Name, card.Name),
+				Project: project.Name,
+				Name:    card.Name,
+				Lane:    card.Lane,
+				Done:    card.Lane == "done",
+			})
+		}
+		boards = append(boards, board)
+	}
+	return boards
+}
+
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-11-14T23:44:46+01:00","module_hash":"f3454f62ad109ba4044858ceb260114afbe80a43e2b97297c6f14ddbd57a0b5d","functions":[{"id":"func/Approvals.Identity","name":"Approvals.Identity","line":21,"end_line":23,"hash":"ac25347a37520e83449f41b897b3a6f1e69d76c4444179ad173ced8af74f30b9"},{"id":"func/Approvals.Snapshot","name":"Approvals.Snapshot","line":27,"end_line":29,"hash":"4a1e556c2f7e1f1242133b939c337b5ff866287e1f71e198ff7b0222a823a731"},{"id":"func/Clarifications.Identity","name":"Clarifications.Identity","line":33,"end_line":35,"hash":"cb041835b62b4126171f1814ad9250d89f53d87b98f8d999b4de4bbb5bf09eba"},{"id":"func/Clarifications.Snapshot","name":"Clarifications.Snapshot","line":39,"end_line":41,"hash":"c61862f227b035fd0c6ec6b9d4933ae6f507968ee4647ce763264cf65162ffd1"},{"id":"func/SnapshotSource.Identity","name":"SnapshotSource.Identity","line":46,"end_line":52,"hash":"54aa6ed417e42291276c89fbd0c0e85198c1105568e7363c2fba474f5079a55c"},{"id":"func/SnapshotSource.Snapshot","name":"SnapshotSource.Snapshot","line":56,"end_line":77,"hash":"586e4f1ceafb321483120ca90b82a7ce599cea2020a0cac569ba8aac1435c1e0"}]}
+// {"version":1,"tested_at":"2026-11-16T15:17:31+01:00","module_hash":"14fcfb4d49e05a98b1e2f6acfa103979776434cbc7166e24a1e2eb6252c4ae13","functions":[{"id":"func/Approvals.Identity","name":"Approvals.Identity","line":21,"end_line":23,"hash":"ac25347a37520e83449f41b897b3a6f1e69d76c4444179ad173ced8af74f30b9"},{"id":"func/Approvals.Snapshot","name":"Approvals.Snapshot","line":27,"end_line":29,"hash":"4a1e556c2f7e1f1242133b939c337b5ff866287e1f71e198ff7b0222a823a731"},{"id":"func/Clarifications.Identity","name":"Clarifications.Identity","line":33,"end_line":35,"hash":"cb041835b62b4126171f1814ad9250d89f53d87b98f8d999b4de4bbb5bf09eba"},{"id":"func/Clarifications.Snapshot","name":"Clarifications.Snapshot","line":39,"end_line":41,"hash":"c61862f227b035fd0c6ec6b9d4933ae6f507968ee4647ce763264cf65162ffd1"},{"id":"func/SnapshotSource.Identity","name":"SnapshotSource.Identity","line":46,"end_line":52,"hash":"54aa6ed417e42291276c89fbd0c0e85198c1105568e7363c2fba474f5079a55c"},{"id":"func/SnapshotSource.Snapshot","name":"SnapshotSource.Snapshot","line":56,"end_line":67,"hash":"eada54a7af1d6555ee072ef8fdda8c1e4b301aad45d3cb7080faef0e85f1bf6e"},{"id":"func/automationSnapshot","name":"automationSnapshot","line":69,"end_line":82,"hash":"a5e425241d0d9ac28db55521d65157b9969fcfe217bdf97f5341c54b33249925"},{"id":"func/automationApprovals","name":"automationApprovals","line":84,"end_line":92,"hash":"a8ca4edcf3cf41165691fe00d04c52dad3d43d3cb5a775b12b1a3242a024844b"},{"id":"func/automationResolvedApprovals","name":"automationResolvedApprovals","line":94,"end_line":100,"hash":"5e488ebeecc18e0aefde66c8449c64603830db3d5c784c085cf0551ec4bb193e"},{"id":"func/automationClarifications","name":"automationClarifications","line":107,"end_line":118,"hash":"227b52cefd6cd16f34defdb4ad652af7e5bc2f66ac1da671c44c08585b7af9ec"},{"id":"func/automationClarificationSection","name":"automationClarificationSection","line":120,"end_line":133,"hash":"cfbaabf2449e08b589cbd3a7555d6093f9c427808f04de8dd6b8454c686f6a2e"},{"id":"func/clarificationStatusMatches","name":"clarificationStatusMatches","line":135,"end_line":140,"hash":"e6cf970f83ccaa922453c62cb0a6cb975bfdef31428270a0eeaff38efc625857"},{"id":"func/automationClarification","name":"automationClarification","line":142,"end_line":159,"hash":"d42a0f7d1f5f608f191ce38f7de7fb29ee6b800b661132e97a198ab231a9e885"},{"id":"func/clarificationIdentity","name":"clarificationIdentity","line":161,"end_line":168,"hash":"8d9dc2b017815fce18cd4722276f06c56612f1b7eff8e35eb631aee4386d86f4"},{"id":"func/clarificationProject","name":"clarificationProject","line":170,"end_line":175,"hash":"017fe5fb9694256a6c576fcd8e6685fa015a15ebc3ded03915e7736714ac0c71"},{"id":"func/clarificationID","name":"clarificationID","line":177,"end_line":182,"hash":"3c7115a4183f81d309b022450b1bad5696d3ff412b3c265614d44c909644dd7a"},{"id":"func/clarificationRole","name":"clarificationRole","line":184,"end_line":190,"hash":"e7293dde67f3ed0e93060f9fff9a531817c6ebee68683032012bad8cf69317bf"},{"id":"func/automationBoards","name":"automationBoards","line":192,"end_line":208,"hash":"c124f96f4c30628711a318a3b8ff6e95127a6b24b612a2b3fc1779bad6480c75"}]}
 // mutate4go-manifest-end

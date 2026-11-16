@@ -206,7 +206,7 @@ func TestSnapshotFailureCarriesNoStateWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	carriedOut, err := built.carryOutStateConsumers(
+	_, fromSnapshot, carriedOut, err := built.carryOutStateConsumers(
 		context.Background(), root, room,
 		roomEvents{messages: map[string][]relay.RoomEvent{}, reactions: map[string][]relay.Reaction{}},
 		snapshotCache{})
@@ -215,5 +215,31 @@ func TestSnapshotFailureCarriesNoStateWork(t *testing.T) {
 	}
 	if carriedOut != 0 {
 		t.Errorf("carried out = %d, want none from a failed snapshot", carriedOut)
+	}
+	if !fromSnapshot {
+		t.Error("a configured snapshot source was not reported after its read failed")
+	}
+}
+
+func TestSnapshotSuccessReportsThatActivitySharesTheProjection(t *testing.T) {
+	root := "/forges/forge-a"
+	built, _ := newTestBridge(t, &fakeRooms{}, map[string]ForgeStore{root: &fakeStore{}}, root)
+	built.SetSnapshotSources(map[string]SnapshotStore{root: &fakeSnapshotSource{
+		identity: root + "/dashboard",
+		snapshot: relay.DashboardSnapshot{},
+	}})
+	room, err := built.roomFor(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fromSnapshot, _, err := built.carryOutStateConsumers(
+		context.Background(), root, room,
+		roomEvents{messages: map[string][]relay.RoomEvent{}, reactions: map[string][]relay.Reaction{}},
+		snapshotCache{})
+	if err != nil {
+		t.Fatalf("carryOutStateConsumers: %v", err)
+	}
+	if !fromSnapshot {
+		t.Error("a configured snapshot source was not reported after a successful read")
 	}
 }

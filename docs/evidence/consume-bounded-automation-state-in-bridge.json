@@ -1,0 +1,22 @@
+{
+  "ticks": 32,
+  "full_payload_bytes": 1048576,
+  "before": {
+    "requests": 64,
+    "bytes": 67114048,
+    "cpu_seconds": 1.5133712400000001,
+    "wall_seconds": 0.101747208
+  },
+  "after": {
+    "requests": 64,
+    "bytes": 1424096,
+    "cpu_seconds": 0.18700499999999987,
+    "wall_seconds": 0.012156125
+  },
+  "request_delta": 0,
+  "byte_delta": 65689952,
+  "cpu_delta_seconds": 1.3263662400000003,
+  "request_reduction_percent": 0,
+  "byte_reduction_percent": 97.8780955069198,
+  "cpu_reduction_percent": 87.64315092970844
+}

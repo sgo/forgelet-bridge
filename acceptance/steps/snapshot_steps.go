@@ -42,6 +42,7 @@ func startFakeDashboard(w *World, name string) error {
 		return err
 	}
 	fake := fixtures.StartFakeDashboard()
+	fake.SetState(automationState())
 	w.fakeDashboards[name] = fake
 	w.dashboardURLs[store.Root()] = fake.URL()
 	return nil
@@ -53,7 +54,7 @@ func fakeFirstServesPendingApproval(_ context.Context, world any, captures []str
 		return err
 	}
 	fake.SetFailure(false)
-	fake.SetState(fixturesStateWithApproval(captures[2], captures[3]))
+	fake.SetState(automationStateWithApproval(captures[2], captures[3]))
 	return nil
 }
 
@@ -65,12 +66,51 @@ func fakeNextServesState(_ context.Context, world any, captures []string) error 
 	fake.SetFailure(false)
 	switch captures[2] {
 	case "no waiting items":
-		fake.SetState(dashboard.State{})
+		fake.SetState(automationState())
 	case "a pending approval, a resolved approval, and a pending clarification":
-		fake.SetState(fixturesFullState())
+		fake.SetState(automationFullState())
 	default:
 		return fmt.Errorf("the fake dashboard does not know the state %q", captures[2])
 	}
+	return nil
+}
+
+func fakeNextServesResolvedApproval(_ context.Context, world any, captures []string) error {
+	fake, err := fakeDashboard(world.(*World), captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetFailure(false)
+	fake.SetState(automationStateWithResolution(captures[2], captures[3]))
+	return nil
+}
+
+func fakeNextServesEveryCategory(_ context.Context, world any, captures []string) error {
+	fake, err := fakeDashboard(world.(*World), captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetFailure(false)
+	fake.SetState(automationFullState())
+	return nil
+}
+
+func fakeServesMalformedAutomation(_ context.Context, world any, captures []string) error {
+	fake, err := fakeDashboard(world.(*World), captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetFailure(false)
+	fake.SetMalformed(true)
+	return nil
+}
+
+func fakeDoesNotSupportAutomation(_ context.Context, world any, captures []string) error {
+	fake, err := fakeDashboard(world.(*World), captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetUnsupported(true)
 	return nil
 }
 
@@ -102,12 +142,13 @@ func fakeProjectServesClarification(_ context.Context, world any, captures []str
 		return err
 	}
 	fake := fixtures.StartFakeDashboard()
-	fake.SetState(dashboard.State{Clarifications: []dashboard.ClarificationRequest{{
-		ID:     "clarification-" + project,
-		Status: "pending",
-		Role:   captures[3],
-		Body:   captures[4],
-	}}})
+	question := captures[4]
+	fake.SetState(automationStateWithClarification(dashboard.AutomationClarification{
+		ID:      "clarification-" + project,
+		Status:  "pending",
+		Project: project,
+		Role:    captures[3], QuestionExcerpt: &question,
+	}))
 	if err := os.WriteFile(filepath.Join(root, dashboard.URLFile), []byte(fake.URL()+"\n"), 0o644); err != nil {
 		fake.Close()
 		return err
@@ -125,8 +166,8 @@ func fakeForgesNextServeApprovals(_ context.Context, world any, captures []strin
 			return err
 		}
 		card := "card-" + captures[index+1]
-		fake.UpdateState(func(state dashboard.State) dashboard.State {
-			state.Approvals = fixturesStateWithApproval(card, captures[index+1]).Approvals
+		fake.UpdateState(func(state dashboard.AutomationState) dashboard.AutomationState {
+			state.Approvals = automationStateWithApproval(card, captures[index+1]).Approvals
 			return state
 		})
 	}
@@ -141,14 +182,21 @@ func fakeForgesNextServeClarifications(_ context.Context, world any, captures []
 			return err
 		}
 		project := captures[index+1]
-		fake.UpdateState(func(state dashboard.State) dashboard.State {
-			state.Clarifications = []dashboard.ClarificationRequest{{
-				ID:      "clarification-" + project,
-				Status:  "pending",
-				Project: project,
-				Role:    "coder",
-				Body:    "which stage is next?",
-			}}
+		question := "which stage is next?"
+		fake.UpdateState(func(state dashboard.AutomationState) dashboard.AutomationState {
+			if state.Clarifications == nil {
+				state.Clarifications = &dashboard.AutomationClarifications{
+					Legacy: automationSection([]dashboard.AutomationClarification{}),
+					Typed:  automationSection([]dashboard.AutomationClarification{}),
+				}
+			}
+			state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
+				ID:              "clarification-" + project,
+				Status:          "pending",
+				Project:         project,
+				Role:            "coder",
+				QuestionExcerpt: &question,
+			}})
 			return state
 		})
 	}
@@ -192,6 +240,14 @@ func fakeServesAtMostOneStatePerTick(_ context.Context, world any, captures []st
 }
 
 func fakeServesAtMostOneFailedStatePerTick(_ context.Context, world any, captures []string) error {
+	return requireAtMostOne(world.(*World), []string{captures[1]}, true)
+}
+
+func fakeServesAtMostOneAutomationPerTick(_ context.Context, world any, captures []string) error {
+	return requireAtMostOne(world.(*World), []string{captures[1]}, false)
+}
+
+func fakeServesAtMostOneFailedAutomationPerTick(_ context.Context, world any, captures []string) error {
 	return requireAtMostOne(world.(*World), []string{captures[1]}, true)
 }
 
@@ -245,6 +301,18 @@ func requireAtMostOne(w *World, names []string, failed bool) error {
 		if requests > ticks+1 {
 			return fmt.Errorf("the fake dashboard %s served %d state requests over %d ticks", name, requests, ticks)
 		}
+	}
+	return nil
+}
+
+func bridgeLastErrorSaysUnsupported(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	status, err := readStatus(filepath.Join(w.stateDir, bridge.StatusName))
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(strings.ToLower(status.LastError), "automation projection is unsupported") {
+		return fmt.Errorf("the bridge's last error does not say the automation projection is unsupported: %q", status.LastError)
 	}
 	return nil
 }
@@ -334,42 +402,81 @@ func projectRoomCarriesClarification(_ context.Context, world any, captures []st
 	})
 }
 
-func fixturesStateWithApproval(card, project string) dashboard.State {
-	return dashboard.State{Approvals: []dashboard.ApprovalRequest{{
-		ID:      "approval-" + card,
-		Project: project,
-		Card:    card,
-		TaskID:  "task-" + card,
-		Gate:    "coder → refactorer",
-		From:    "coder",
-		To:      "refactorer",
-	}}}
+func automationStateWithApproval(card, project string) dashboard.AutomationState {
+	state := automationState()
+	state.Approvals = automationSection([]dashboard.AutomationApproval{{
+		ID: "approval-" + card, Project: project, Card: card,
+		TaskID: "task-" + card, Gate: "coder → refactorer",
+	}})
+	return state
 }
 
-func fixturesFullState() dashboard.State {
-	return dashboard.State{
-		Approvals: []dashboard.ApprovalRequest{{
-			ID:      "approval-card-snapshot",
-			Project: "forgelet-bridge",
-			Card:    "card-snapshot",
-			TaskID:  "task-card-snapshot",
-			Gate:    "coder → refactorer",
-			From:    "coder",
-			To:      "refactorer",
-		}},
-		ResolvedApprovals: []dashboard.ResolvedApprovalRequest{{
-			ID:         "approval-card-a",
-			Project:    "forgelet-bridge",
-			Resolution: relay.ResolutionApproved,
-		}},
-		Clarifications: []dashboard.ClarificationRequest{{
-			ID:      "clarification-snapshot",
-			Status:  "pending",
-			Project: "forgelet-bridge",
-			Role:    "coder",
-			Body:    "which stage is next?",
-		}},
+func automationStateWithResolution(card, resolution string) dashboard.AutomationState {
+	state := automationState()
+	state.ResolvedApprovals = automationSection([]dashboard.AutomationResolvedApproval{{
+		ID: "approval-" + card, Project: "forgelet-bridge", Card: card, Resolution: resolution,
+	}})
+	return state
+}
+
+func automationStateWithClarification(clarification dashboard.AutomationClarification) dashboard.AutomationState {
+	state := automationState()
+	if clarification.Project == "" {
+		clarification.Project = "forgelet-bridge"
 	}
+	state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{clarification})
+	return state
+}
+
+func automationFullState() dashboard.AutomationState {
+	question := "which stage is next?"
+	typedQuestion := "which typed stage is next?"
+	state := automationState()
+	state.Approvals = automationSection([]dashboard.AutomationApproval{{
+		ID: "approval-card-snapshot", Project: "forgelet-bridge", Card: "card-snapshot",
+		TaskID: "task-card-snapshot", Gate: "coder → refactorer",
+	}})
+	state.ResolvedApprovals = automationSection([]dashboard.AutomationResolvedApproval{{
+		ID: "approval-card-a", Project: "forgelet-bridge", Card: "card-a",
+		Resolution: relay.ResolutionApproved,
+	}})
+	state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
+		ID: "clarification-snapshot", Status: "pending", Project: "forgelet-bridge",
+		Role: "coder", QuestionExcerpt: &question,
+	}})
+	state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{{
+		ID: "typed-request", ClarificationID: "clarification-typed", Status: "open",
+		Project: "forgelet-bridge", Attention: "unseen", QuestionExcerpt: &typedQuestion,
+	}})
+	state.Projects = automationSection([]dashboard.AutomationProject{{
+		Name:     "forgelet-bridge",
+		Lanes:    automationSection([]string{"master", "coder"}),
+		Cards:    automationSection([]dashboard.AutomationCard{{Name: "card-automation", Lane: "coder"}}),
+		Activity: automationSection([]dashboard.AutomationActivity{}),
+	}})
+	return state
+}
+
+func automationState() dashboard.AutomationState {
+	return dashboard.AutomationState{
+		Projection: dashboard.AutomationProjection,
+		Identity: &dashboard.AutomationIdentity{
+			Kind: "family", Name: "forge-a",
+			AllProjects:  automationSection([]string{"forgelet-bridge"}),
+			OpenProjects: automationSection([]string{"forgelet-bridge"}),
+		},
+		Approvals:         automationSection([]dashboard.AutomationApproval{}),
+		ResolvedApprovals: automationSection([]dashboard.AutomationResolvedApproval{}),
+		Clarifications: &dashboard.AutomationClarifications{
+			Legacy: automationSection([]dashboard.AutomationClarification{}),
+			Typed:  automationSection([]dashboard.AutomationClarification{}),
+		},
+		Projects: automationSection([]dashboard.AutomationProject{}),
+	}
+}
+
+func automationSection[T any](items []T) *dashboard.AutomationSection[T] {
+	return &dashboard.AutomationSection[T]{Count: len(items), Items: items}
 }
 
 func fakeDashboard(w *World, name string) (*fixtures.FakeDashboard, error) {

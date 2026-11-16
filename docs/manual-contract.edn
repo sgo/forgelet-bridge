@@ -61,7 +61,7 @@
   {:id "manual-dashboard-snapshots"
    :document "docs/manual.md"
    :heading "## Dashboard state snapshots"
-   :apis ["internal/dashboard.SnapshotSource" "internal/relay.DashboardSnapshot" "internal/bridge.SnapshotStore"]}
+   :apis ["internal/dashboard.SnapshotSource" "internal/dashboard.AutomationState" "internal/dashboard.AutomationProjection" "internal/relay.DashboardSnapshot" "internal/bridge.SnapshotStore"]}
   {:id "manual-configuration"
    :document "docs/manual.md"
    :heading "## Configuration"
@@ -130,12 +130,12 @@
    :expect ["Source string" "app.completed-card-report"]}
   {:id "manual-dashboard-snapshot-api"
    :section "manual-dashboard-snapshots"
-   :command ["bash" "-lc" "go doc ./internal/dashboard SnapshotSource; go doc ./internal/bridge SnapshotStore"]
-   :expect ["type SnapshotSource struct" "func (s SnapshotSource) Snapshot" "type SnapshotStore interface"]}
-  {:id "manual-dashboard-snapshot-measure"
+   :command ["bash" "-lc" "go doc ./internal/dashboard AutomationState; go doc ./internal/dashboard AutomationProjection; go doc ./internal/bridge SnapshotStore"]
+   :expect ["type AutomationState struct" "AutomationProjection = \"automation-v1\"" "type SnapshotStore interface"]}
+  {:id "manual-automation-state-measure"
    :section "manual-dashboard-snapshots"
-   :command ["bash" "-lc" "go run -tags goolm ./qa/state-snapshot-measure --ticks 1 --payload-bytes 1024"]
-   :expect ["\"ticks\": 1" "\"request_delta\": 2" "\"byte_delta\""]}
+   :command ["bash" "-lc" "go run -tags goolm ./qa/automation-state-measure --ticks 1 --full-payload-bytes 65536"]
+   :expect ["\"ticks\": 1" "\"full_payload_bytes\": 65536" "\"byte_delta\""]}
   {:id "manual-config-api"
    :section "manual-configuration"
    :command ["bash" "-lc" "go doc ./internal/config Config"]

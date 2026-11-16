@@ -42,10 +42,12 @@ func (s ApprovalState) Room() string { return s.RoomID }
 
 // Resolutions an approval can end up with.
 const (
-	ResolutionApproved   = "approved"
-	ResolutionSentBack   = "sent_back"
-	ResolutionDesktop    = "desktop"
-	ResolutionSuperseded = "superseded"
+	ResolutionApproved              = "approved"
+	ResolutionSentBack              = "sent_back"
+	ResolutionDesktop               = "desktop"
+	ResolutionSuperseded            = "superseded"
+	ResolutionAutomaticSpecApproval = "automatic_spec_approval"
+	ResolutionAutoApproved          = "auto_approved"
 )
 
 // Reaction is one reaction the bridge has seen, with the event it annotates.
@@ -199,22 +201,41 @@ func textGestures(operator string, st State, pending []Approval, byEvent map[str
 		if message.Sender != operator || OwnWords(message.Body) == "" {
 			continue
 		}
-		if approval, replied := repliedApproval(byEvent, message); replied {
-			if !undecided(st, approval.Key) {
-				continue // already decided: a later reply in its thread says nothing
-			}
-			actions = append(actions, decisionFor(approval, OwnWords(message.Body)))
-			continue
+		result := textGesture(st, pending, byEvent, message)
+		if result.emit {
+			actions = append(actions, result.action)
 		}
-		if key, approval, matched := approvalForText(pending, OwnWords(message.Body)); matched && undecided(st, key) {
-			actions = append(actions, ApprovalAction{
-				Kind: ResolveApproval, Key: key, Approval: approval, Resolution: ResolutionApproved,
-			})
-			continue
-		}
-		actions = append(actions, ApprovalAction{Kind: AnswerGestures})
 	}
 	return actions
+}
+
+type textGestureResult struct {
+	action ApprovalAction
+	emit   bool
+}
+
+func textGesture(st State, pending []Approval, byEvent map[string]Approval, message RoomEvent) textGestureResult {
+	if approval, replied := repliedApproval(byEvent, message); replied {
+		if !undecided(st, approval.Key) {
+			return textGestureResult{}
+		}
+		return textGestureResult{action: decisionFor(approval, OwnWords(message.Body)), emit: true}
+	}
+	action, decided := approvalTextGesture(st, pending, message)
+	if !decided {
+		action = ApprovalAction{Kind: AnswerGestures}
+	}
+	return textGestureResult{action: action, emit: true}
+}
+
+func approvalTextGesture(st State, pending []Approval, message RoomEvent) (ApprovalAction, bool) {
+	key, approval, matched := approvalForText(pending, OwnWords(message.Body))
+	if !matched || !undecided(st, key) {
+		return ApprovalAction{}, false
+	}
+	return ApprovalAction{
+		Kind: ResolveApproval, Key: key, Approval: approval, Resolution: ResolutionApproved,
+	}, true
 }
 
 // repliedApproval is the approval a message replies under, when the room knows
@@ -398,5 +419,5 @@ func undecided(st State, key string) bool {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-10-07T01:10:25+02:00","module_hash":"066c39a41c25292f060e1fb0d37ab999e55f1bfb3b0ae7f83d2fd2161841145b","functions":[{"id":"func/ApprovalState.Room","name":"ApprovalState.Room","line":40,"end_line":40,"hash":"78a56a4cd17adf780b13f46acd4bd490ab233cfa0411043f39688e34a039aa50"},{"id":"func/Approves","name":"Approves","line":85,"end_line":85,"hash":"e9a9c788d3529be59309cc6af6bd3b3f8f19d4fa9790fdfc3bc6e597ef64808b"},{"id":"func/PlanApprovals","name":"PlanApprovals","line":120,"end_line":122,"hash":"9b10b4f7fd7920f4db55d169e3053707ef4d14f61cb837b4c86f814a6600759f"},{"id":"func/PlanApprovalsWithDesk","name":"PlanApprovalsWithDesk","line":136,"end_line":144,"hash":"999a0ad504c9c419edfb09eba5823daef8fa2792ffaf0f11529827db2c72c36f"},{"id":"func/approvalsByEvent","name":"approvalsByEvent","line":151,"end_line":165,"hash":"c5e156c2e90772e9f7671240615169a870eed47c0b666d66a434351b687fce3c"},{"id":"func/approvedByReaction","name":"approvedByReaction","line":168,"end_line":186,"hash":"3326d02da5c6d3b2fa73236ff2426c8c3cffe11c12dd1f9c467edfc9fba0774b"},{"id":"func/textGestures","name":"textGestures","line":194,"end_line":216,"hash":"c2e248aa43fba946b56d226f4cee215e0d0bed86b9fafaa6302b83029918cb4c"},{"id":"func/repliedApproval","name":"repliedApproval","line":222,"end_line":228,"hash":"6adedabbbd3f1b62be31c44011cb3a78bbcc5eca25284961b99b39fcca04c814"},{"id":"func/decisionFor","name":"decisionFor","line":233,"end_line":242,"hash":"d46710175488fee0b70d93ac9583982c6608a5ad479af476c441272e7ba5257e"},{"id":"func/unansweredReactions","name":"unansweredReactions","line":247,"end_line":255,"hash":"24342a0a528b9e7488c3675a19abdf72e7bedcc68b515d86de74dff803330b3c"},{"id":"func/affirmative","name":"affirmative","line":261,"end_line":275,"hash":"09747205691ab6a2d88969c216d979cf77bc1626a2af768c42ab8a93361e22be"},{"id":"func/approvalForText","name":"approvalForText","line":279,"end_line":290,"hash":"4ec4faadd738cba840808b156a1e9c8abb9a94ad5f0ebe9da68542e9f02ce2ca"},{"id":"func/unpostedApprovals","name":"unpostedApprovals","line":294,"end_line":302,"hash":"98ab83a435b4107b8e8437a5cd53e76ed1d11e36779b39bf9eb6505d9a4acd8f"},{"id":"func/resolutionsToReport","name":"resolutionsToReport","line":309,"end_line":318,"hash":"bb81910305926815dc55c1baeb3650e8f8a8bcfa9653523c4352e276fc824956"},{"id":"func/resolutionReport","name":"resolutionReport","line":327,"end_line":351,"hash":"2bfeac6637897fcae596df539e264f6e1e39ea7c1adbd7b99bd6844a8fd1a56c"},{"id":"func/resolutionMark","name":"resolutionMark","line":357,"end_line":366,"hash":"74583fffdb2d28a67096e278c4d86d1e75c0f8c9e0cace181d5ce51052a9ce38"},{"id":"func/unreportedResolution","name":"unreportedResolution","line":371,"end_line":377,"hash":"aedd2ffedfeca6212408439db795c4145a35afb3bf887d288bddd6998f4846ee"},{"id":"func/ApprovalsReply","name":"ApprovalsReply","line":380,"end_line":389,"hash":"b8a277047b4dd09a8e936509d5d2d5a22fe49d0ce688f000755bf029b619a6f5"},{"id":"func/undecided","name":"undecided","line":391,"end_line":394,"hash":"111471b0a984e4e15086380f5923369b9b7103ddc8290f1a7327544dcfd76fd0"}]}
+// {"version":1,"tested_at":"2026-11-16T15:18:22+01:00","module_hash":"119a182d0a768cfb57d5cd8f27a7b8c187b6a48ed3e1fd16cea968bb2ee3ff84","functions":[{"id":"func/ApprovalState.Room","name":"ApprovalState.Room","line":41,"end_line":41,"hash":"78a56a4cd17adf780b13f46acd4bd490ab233cfa0411043f39688e34a039aa50"},{"id":"func/Approves","name":"Approves","line":89,"end_line":89,"hash":"e9a9c788d3529be59309cc6af6bd3b3f8f19d4fa9790fdfc3bc6e597ef64808b"},{"id":"func/PlanApprovals","name":"PlanApprovals","line":124,"end_line":126,"hash":"9b10b4f7fd7920f4db55d169e3053707ef4d14f61cb837b4c86f814a6600759f"},{"id":"func/PlanApprovalsWithDesk","name":"PlanApprovalsWithDesk","line":140,"end_line":148,"hash":"999a0ad504c9c419edfb09eba5823daef8fa2792ffaf0f11529827db2c72c36f"},{"id":"func/approvalsByEvent","name":"approvalsByEvent","line":155,"end_line":169,"hash":"c5e156c2e90772e9f7671240615169a870eed47c0b666d66a434351b687fce3c"},{"id":"func/approvedByReaction","name":"approvedByReaction","line":172,"end_line":190,"hash":"3326d02da5c6d3b2fa73236ff2426c8c3cffe11c12dd1f9c467edfc9fba0774b"},{"id":"func/textGestures","name":"textGestures","line":198,"end_line":210,"hash":"d5ac316e28f21a891611c3ee47efb00f187957bf99b440ccea3929b81d6eb421"},{"id":"func/textGesture","name":"textGesture","line":217,"end_line":229,"hash":"06921f6e68dff05d5d687de54ff2a89481f0da0924e896a953a3e555715ad4ab"},{"id":"func/approvalTextGesture","name":"approvalTextGesture","line":231,"end_line":239,"hash":"d04cb1a008aea0ba1e6cf8177d962daffcf51c09a7208b90d06acf460c611370"},{"id":"func/repliedApproval","name":"repliedApproval","line":245,"end_line":251,"hash":"6adedabbbd3f1b62be31c44011cb3a78bbcc5eca25284961b99b39fcca04c814"},{"id":"func/decisionFor","name":"decisionFor","line":256,"end_line":265,"hash":"d46710175488fee0b70d93ac9583982c6608a5ad479af476c441272e7ba5257e"},{"id":"func/unansweredReactions","name":"unansweredReactions","line":270,"end_line":278,"hash":"24342a0a528b9e7488c3675a19abdf72e7bedcc68b515d86de74dff803330b3c"},{"id":"func/affirmative","name":"affirmative","line":284,"end_line":298,"hash":"09747205691ab6a2d88969c216d979cf77bc1626a2af768c42ab8a93361e22be"},{"id":"func/approvalForText","name":"approvalForText","line":302,"end_line":313,"hash":"4ec4faadd738cba840808b156a1e9c8abb9a94ad5f0ebe9da68542e9f02ce2ca"},{"id":"func/unpostedApprovals","name":"unpostedApprovals","line":317,"end_line":325,"hash":"98ab83a435b4107b8e8437a5cd53e76ed1d11e36779b39bf9eb6505d9a4acd8f"},{"id":"func/resolutionsToReport","name":"resolutionsToReport","line":332,"end_line":341,"hash":"bb81910305926815dc55c1baeb3650e8f8a8bcfa9653523c4352e276fc824956"},{"id":"func/resolutionReport","name":"resolutionReport","line":350,"end_line":374,"hash":"2bfeac6637897fcae596df539e264f6e1e39ea7c1adbd7b99bd6844a8fd1a56c"},{"id":"func/resolutionMark","name":"resolutionMark","line":380,"end_line":389,"hash":"74583fffdb2d28a67096e278c4d86d1e75c0f8c9e0cace181d5ce51052a9ce38"},{"id":"func/unreportedResolution","name":"unreportedResolution","line":394,"end_line":400,"hash":"aedd2ffedfeca6212408439db795c4145a35afb3bf887d288bddd6998f4846ee"},{"id":"func/ApprovalsReply","name":"ApprovalsReply","line":403,"end_line":414,"hash":"0b8627a71c055f3213f1b4bb17526f874ff732d04c67b0742176b30e72afe2cb"},{"id":"func/undecided","name":"undecided","line":416,"end_line":419,"hash":"111471b0a984e4e15086380f5923369b9b7103ddc8290f1a7327544dcfd76fd0"}]}
 // mutate4go-manifest-end

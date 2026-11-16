@@ -344,6 +344,41 @@ func TestApprovalForTextFindsNothingWhenTheTextNamesNoApproval(t *testing.T) {
 	}
 }
 
+func TestTextGestureBranchesDirectly(t *testing.T) {
+	pending := []Approval{approval()}
+	byEvent := map[string]Approval{"$approval-message": approval()}
+	reply := RoomEvent{EventID: "$reply", Sender: operator, Body: "approve", ThreadRoot: "$approval-message"}
+
+	if result := textGesture(posted(), pending, byEvent, reply); !result.emit || result.action.Kind != ResolveApproval {
+		t.Errorf("undecided reply = %+v, want an approval", result)
+	}
+	decided := posted()
+	state := decided.Approvals["forgelet-bridge/approval-1"]
+	state.Resolution = ResolutionApproved
+	decided.Approvals["forgelet-bridge/approval-1"] = state
+	if result := textGesture(decided, pending, byEvent, reply); result.emit {
+		t.Errorf("decided reply = %+v, want no action", result)
+	}
+
+	plain := RoomEvent{EventID: "$plain", Sender: operator, Body: "what now?"}
+	if result := textGesture(posted(), pending, byEvent, plain); !result.emit || result.action.Kind != AnswerGestures {
+		t.Errorf("unmatched text = %+v, want the room's gestures", result)
+	}
+
+	approve := RoomEvent{EventID: "$plain", Sender: operator, Body: card}
+	if action, matched := approvalTextGesture(posted(), pending, approve); !matched || action.Kind != ResolveApproval {
+		t.Errorf("plain approval = %+v/%t, want approval", action, matched)
+	}
+	if _, matched := approvalTextGesture(decided, pending, approve); matched {
+		t.Error("approvalTextGesture decided an already resolved approval")
+	}
+	if _, matched := approvalTextGesture(posted(), pending, RoomEvent{
+		EventID: "$plain", Sender: operator, Body: "nothing matches this",
+	}); matched {
+		t.Error("approvalTextGesture matched text naming no approval")
+	}
+}
+
 func TestPlanApprovalsMarksTheOperatorsApprovalOnItsOwnMessage(t *testing.T) {
 	state := posted()
 	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{

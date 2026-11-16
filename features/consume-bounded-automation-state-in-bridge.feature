@@ -17,7 +17,8 @@ Feature: Consume bounded automation state in the bridge
     And the bridge has caught up with the forge
     When the fake dashboard forge-a next serves a resolved approval for the card card-a ending as <resolution>
     And the bridge has caught up with the forge
-    Then the approval for the card card-a carries <mark>
+    Then the bridge's status names the forge forge-a as one it reached
+    And the approval for the card card-a carries <mark>
     And the fake dashboard forge-a serves at most one automation request per tick over three more ticks
 
     Examples:

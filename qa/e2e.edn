@@ -7,6 +7,10 @@
   {:procedure "qa/fetch-one-dashboard-snapshot-per-bridge-tick.md"
    :script "qa/fetch-one-dashboard-snapshot-per-bridge-tick.sh"
    :required-inputs []}
+  "consume-bounded-automation-state-in-bridge"
+  {:procedure "qa/consume-bounded-automation-state-in-bridge.md"
+   :script "qa/consume-bounded-automation-state-in-bridge.sh"
+   :required-inputs []}
   "prototype-in-memory-matrix-for-bridge-tests"
   {:procedure "qa/prototype-in-memory-matrix-for-bridge-tests.md"
    :script "qa/prototype-in-memory-matrix-for-bridge-tests.sh"

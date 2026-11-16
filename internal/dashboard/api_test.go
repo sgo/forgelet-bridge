@@ -196,3 +196,35 @@ func TestCallsReportWhatTheDashboardAnswered(t *testing.T) {
 		t.Fatalf("error = %v, want the dashboard's answer", err)
 	}
 }
+
+func TestResponseBoundsReadOneBytePastTheLimit(t *testing.T) {
+	response := &http.Response{Body: io.NopCloser(strings.NewReader("abcdef"))}
+	data, err := io.ReadAll(limitedReader(response, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "abcd" {
+		t.Errorf("bounded read = %q, want the limit plus one byte", data)
+	}
+
+	unbounded, err := io.ReadAll(limitedReader(
+		&http.Response{Body: io.NopCloser(strings.NewReader("abcdef"))}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(unbounded) != "abcdef" {
+		t.Errorf("unbounded read = %q, want the whole body", unbounded)
+	}
+}
+
+func TestResponseSizeErrorAllowsTheLimitAndNoLimit(t *testing.T) {
+	if err := responseSizeError("GET", "/api/automation-state", 0, 2); err != nil {
+		t.Errorf("unlimited response failed: %v", err)
+	}
+	if err := responseSizeError("GET", "/api/automation-state", 3, 3); err != nil {
+		t.Errorf("response at the limit failed: %v", err)
+	}
+	if err := responseSizeError("GET", "/api/automation-state", 3, 4); err == nil {
+		t.Error("response over the limit was accepted")
+	}
+}

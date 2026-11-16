@@ -10,25 +10,29 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
-// FakeDashboard is a deterministic dashboard endpoint for state-read and
-// failure scenarios. It counts the complete state responses the real bridge
-// requests without building the production dashboard's expensive payload.
+// FakeDashboard is a deterministic dashboard endpoint for automation-state
+// scenarios. It counts the projection responses the real bridge requests
+// without building the production dashboard's expensive payload.
 type FakeDashboard struct {
 	server *httptest.Server
 
-	mu       sync.Mutex
-	state    dashboard.State
-	fail     bool
-	requests uint64
-	failed   uint64
-	bytes    uint64
+	mu            sync.Mutex
+	state         dashboard.AutomationState
+	fail          bool
+	malformed     bool
+	unsupported   bool
+	requests      uint64
+	stateRequests uint64
+	failed        uint64
+	bytes         uint64
 }
 
 // FakeDashboardCounts is what one fake dashboard has served.
 type FakeDashboardCounts struct {
-	Requests uint64
-	Failed   uint64
-	Bytes    uint64
+	Requests      uint64
+	StateRequests uint64
+	Failed        uint64
+	Bytes         uint64
 }
 
 // StartFakeDashboard starts a fake dashboard on a loopback address.
@@ -43,16 +47,18 @@ func (f *FakeDashboard) URL() string {
 	return strings.TrimRight(f.server.URL, "/")
 }
 
-// SetState replaces the complete state the next reads return.
-func (f *FakeDashboard) SetState(state dashboard.State) {
+// SetState replaces the automation projection the next reads return.
+func (f *FakeDashboard) SetState(state dashboard.AutomationState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.state = state
+	f.malformed = false
+	f.unsupported = false
 }
 
 // UpdateState changes the current state while preserving fields the caller
 // does not replace.
-func (f *FakeDashboard) UpdateState(update func(dashboard.State) dashboard.State) {
+func (f *FakeDashboard) UpdateState(update func(dashboard.AutomationState) dashboard.AutomationState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.state = update(f.state)
@@ -66,11 +72,29 @@ func (f *FakeDashboard) SetFailure(fail bool) {
 	f.fail = fail
 }
 
-// Counts reads the request, failure and state-body byte totals.
+// SetMalformed makes the next automation reads return a malformed projection.
+func (f *FakeDashboard) SetMalformed(malformed bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.malformed = malformed
+}
+
+// SetUnsupported makes the automation endpoint answer 404.
+func (f *FakeDashboard) SetUnsupported(unsupported bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unsupported = unsupported
+}
+
+// Counts reads the projection request, full-state request, failure and byte
+// totals.
 func (f *FakeDashboard) Counts() FakeDashboardCounts {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return FakeDashboardCounts{Requests: f.requests, Failed: f.failed, Bytes: f.bytes}
+	return FakeDashboardCounts{
+		Requests: f.requests, StateRequests: f.stateRequests,
+		Failed: f.failed, Bytes: f.bytes,
+	}
 }
 
 // Close stops the fake dashboard.
@@ -81,8 +105,12 @@ func (f *FakeDashboard) Close() {
 }
 
 func (f *FakeDashboard) serve(writer http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet && request.URL.Path == "/api/automation-state" {
+		f.serveAutomation(writer)
+		return
+	}
 	if request.Method == http.MethodGet && request.URL.Path == "/api/state" {
-		f.serveState(writer)
+		f.serveFullState(writer)
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/api/") {
@@ -93,24 +121,59 @@ func (f *FakeDashboard) serve(writer http.ResponseWriter, request *http.Request)
 	http.NotFound(writer, request)
 }
 
-func (f *FakeDashboard) serveState(writer http.ResponseWriter) {
+func (f *FakeDashboard) serveAutomation(writer http.ResponseWriter) {
 	f.mu.Lock()
 	f.requests++
+	if f.unsupported {
+		f.failed++
+		f.mu.Unlock()
+		http.Error(writer, "automation state unsupported", http.StatusNotFound)
+		return
+	}
 	if f.fail {
 		f.failed++
 		f.mu.Unlock()
-		http.Error(writer, "fake dashboard state unavailable", http.StatusServiceUnavailable)
+		http.Error(writer, "fake dashboard automation state unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	body, err := json.Marshal(f.state)
-	if err == nil {
-		f.bytes += uint64(len(body))
-	}
+	state := f.state
+	malformed := f.malformed
 	f.mu.Unlock()
+	if malformed {
+		f.countFailure()
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
+		_, _ = writer.Write([]byte(`{"projection":"automation-v1","identity":{"kind":"family"}}`))
+		return
+	}
+	if state.Projection == "" {
+		state.Projection = dashboard.AutomationProjection
+	}
+	body, err := json.Marshal(state)
+	if err == nil {
+		f.mu.Lock()
+		f.bytes += uint64(len(body))
+		f.mu.Unlock()
+	}
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
 	_, _ = writer.Write(body)
+}
+
+func (f *FakeDashboard) serveFullState(writer http.ResponseWriter) {
+	f.mu.Lock()
+	f.stateRequests++
+	f.mu.Unlock()
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = writer.Write([]byte(`{"approvals":[],"resolved_approvals":[],"clarifications":[]}`))
+}
+
+func (f *FakeDashboard) countFailure() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failed++
 }
