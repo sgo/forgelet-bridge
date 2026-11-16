@@ -68,13 +68,17 @@ Feature: Notify Typed Project Clarifications Through The Bridge
   Scenario: a Matrix reply follows the owning project chat path
     Given the fake dashboard forge-a is available
     And the fake dashboard project-alpha for the forge root forge-a serves an unresolved typed clarification clarification-answer asking "which stage should run next?"
+    And the fake dashboard forge-a next serves the typed clarification clarification-answer in the project project-alpha with lifecycle open and attention unseen
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org
     And the bridge is started
     And the bridge has caught up with the forge
-    Then the project room alpha carries the typed clarification for the project project-alpha with the question "which stage should run next?"
+    Then the clarification message for the project project-alpha names the project project-alpha, the blocked role coder, and the question "which stage should run next?"
     When the operator replies "run qa" in the typed clarification message's thread for the project project-alpha
     And the bridge has caught up with the forge
     Then the fake dashboard project-alpha records the typed answer "run qa" for clarification clarification-answer
+    When the fake dashboard forge-a next serves the typed clarification clarification-answer in the project project-alpha with lifecycle answered and attention seen
+    And the bridge has caught up with the forge
+    Then the bridge state holds no typed clarification record for the project project-alpha
     And the clarifications room shows no unread typed clarification for the project project-alpha
 
   Scenario: malformed typed rows fail closed without notifications
@@ -93,6 +97,7 @@ Feature: Notify Typed Project Clarifications Through The Bridge
       | a missing clarification id    |
       | a blank question excerpt      |
       | duplicate ids in one project  |
+      | a legacy collision            |
       | a truncated typed section     |
 
   Scenario: the same clarification id in two projects has two identities
