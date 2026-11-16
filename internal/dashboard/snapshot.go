@@ -158,7 +158,7 @@ func automationClarifications(root string, sections *AutomationClarifications, p
 	if sets.legacy, err = automationClarificationSection(root, "legacy", sections.Legacy.Items, project, "", seen); err != nil {
 		return sets, err
 	}
-	if sets.typed, err = automationClarificationSection(root, "typed", sections.Typed.Items, project, "open", seen); err != nil {
+	if sets.typed, err = automationClarificationSection(root, "typed", sections.Typed.Items, project, "*", seen); err != nil {
 		return sets, err
 	}
 	return sets, nil
@@ -180,10 +180,14 @@ func automationClarificationSection(root, kind string, items []AutomationClarifi
 }
 
 func clarificationStatusMatches(wanted, status string) bool {
-	if wanted == "" {
+	switch wanted {
+	case "":
 		return status == "pending"
+	case "*":
+		return true
+	default:
+		return status == wanted
 	}
-	return status == wanted
 }
 
 func automationClarification(root, kind string, item AutomationClarification, fallbackProject string, seen map[string]bool) (relay.Clarification, error) {
@@ -191,18 +195,26 @@ func automationClarification(root, kind string, item AutomationClarification, fa
 	if !ok {
 		return relay.Clarification{}, fmt.Errorf("invalid %s clarification in automation projection", kind)
 	}
-	key := forgeKey(root, project, id)
-	if seen[key] {
-		return relay.Clarification{}, fmt.Errorf("duplicate %s clarification in automation projection", kind)
+	identity := project + "\x00" + id
+	if seen[identity] {
+		return relay.Clarification{}, fmt.Errorf("duplicate or colliding clarification in automation projection")
 	}
-	seen[key] = true
-	return relay.Clarification{
-		Key:      key,
-		ID:       id,
-		Project:  project,
-		Role:     clarificationRole(item),
-		Question: strings.TrimSpace(*item.QuestionExcerpt),
-	}, nil
+	seen[identity] = true
+	clarification := relay.Clarification{
+		Key:       forgeKey(root, project, id),
+		ID:        id,
+		Project:   project,
+		Role:      clarificationRole(item),
+		Question:  strings.TrimSpace(*item.QuestionExcerpt),
+		Lifecycle: item.Status,
+		Attention: item.Attention,
+	}
+	if kind == relay.ClarificationSourceTyped {
+		clarification.Key = typedClarificationKey(root, project, id)
+		clarification.Source = relay.ClarificationSourceTyped
+		clarification.Notify = item.Status == relay.ClarificationOpen && item.Attention == "unseen"
+	}
+	return clarification, nil
 }
 
 func clarificationIdentity(kind string, item AutomationClarification, fallbackProject string) (string, string, bool) {
@@ -222,10 +234,14 @@ func clarificationProject(project, fallback string) string {
 }
 
 func clarificationID(kind string, item AutomationClarification) string {
-	if kind == "typed" && item.ClarificationID != "" {
+	if kind == relay.ClarificationSourceTyped && item.ClarificationID != "" {
 		return item.ClarificationID
 	}
 	return item.ID
+}
+
+func typedClarificationKey(root, project, id string) string {
+	return root + "/" + relay.ClarificationSourceTyped + "/" + project + "/" + id
 }
 
 func clarificationRole(item AutomationClarification) string {

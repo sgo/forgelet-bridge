@@ -1,5 +1,15 @@
 package relay
 
+const (
+	// ClarificationSourceTyped marks a clarification from project chat. The
+	// empty source is the legacy clarification store.
+	ClarificationSourceTyped = "typed"
+	// ClarificationOpen is a typed clarification awaiting an answer.
+	ClarificationOpen = "open"
+	// ClarificationSeen is an open typed clarification the operator has seen.
+	ClarificationSeen = "seen"
+)
+
 // Clarification is one question a forge's agent is blocked on, as the forge's
 // dashboard holds it.
 type Clarification struct {
@@ -8,6 +18,14 @@ type Clarification struct {
 	Project  string
 	Role     string
 	Question string
+	// Source is empty for the legacy store and "typed" for project chat.
+	Source string
+	// Lifecycle and Attention preserve the authoritative typed row fields.
+	Lifecycle string
+	Attention string
+	// Notify is set only for an open, unseen typed clarification. Legacy rows
+	// leave it false and keep their existing post-on-every-pending behavior.
+	Notify bool
 }
 
 // ClarificationState is what the bridge remembers about one clarification.
@@ -32,6 +50,8 @@ type ClarificationState struct {
 	// ReactionID is the bridge's own reaction on the clarification's message,
 	// when the answer was reported that way rather than in the thread.
 	ReactionID string `json:"reaction_id,omitempty"`
+	// Source keeps typed notification records distinct from legacy records.
+	Source string `json:"source,omitempty"`
 }
 
 // Room is the room this clarification's message is in.
@@ -140,7 +160,8 @@ func awaitingAnswer(st State, key string) bool {
 func unpostedClarifications(st State, pending []Clarification) []ClarificationAction {
 	var actions []ClarificationAction
 	for _, clarification := range pending {
-		if st.Clarifications[clarification.Key].MessageID == "" {
+		unseen := clarification.Source != ClarificationSourceTyped || clarification.Notify
+		if unseen && st.Clarifications[clarification.Key].MessageID == "" {
 			actions = append(actions, ClarificationAction{Kind: PostClarification, Key: clarification.Key, Clarification: clarification})
 		}
 	}
@@ -187,7 +208,8 @@ func answerReport(key string, state ClarificationState) ClarificationAction {
 // needs its answer reported: it is no longer one the forge waits for, and the
 // room has not been told yet, by a thread reply or a reaction.
 func unreportedAnswer(state ClarificationState, key string, byKey map[string]Clarification) bool {
-	if state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
+	if state.Source == ClarificationSourceTyped ||
+		state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
 		return false
 	}
 	_, stillWaiting := byKey[key]

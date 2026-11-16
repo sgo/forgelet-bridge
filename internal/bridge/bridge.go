@@ -60,6 +60,12 @@ type ClarificationStore interface {
 	Answer(ctx context.Context, project, id, answer string) error
 }
 
+// TypedClarificationAnswerer lets a dashboard accept a Matrix answer through
+// the project's ordinary chat endpoint while preserving its clarification id.
+type TypedClarificationAnswerer interface {
+	AnswerTyped(ctx context.Context, project, id, answer string) error
+}
+
 // SnapshotStore reads all the waiting work one dashboard reports in one
 // request. Identity names the dashboard so the same response can serve every
 // consumer that addresses it in one tick.

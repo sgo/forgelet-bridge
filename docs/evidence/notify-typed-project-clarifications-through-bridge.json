@@ -1,0 +1,9 @@
+{
+  "clarification_id": "clar-e2e",
+  "project": "project-alpha",
+  "initial_lifecycle": "open",
+  "initial_attention": "unseen",
+  "final_lifecycle": "answered",
+  "project_agent_woken": true,
+  "attention_cleared": true
+}

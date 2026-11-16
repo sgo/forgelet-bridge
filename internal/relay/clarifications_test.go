@@ -32,6 +32,29 @@ func TestPlanClarificationsPostsNothingTheRoomAlreadyHas(t *testing.T) {
 	}
 }
 
+func TestPlanClarificationsDoesNotPostASeenTypedClarification(t *testing.T) {
+	seen := clarification()
+	seen.Source = ClarificationSourceTyped
+	seen.Lifecycle = ClarificationOpen
+	seen.Attention = ClarificationSeen
+
+	if actions := PlanClarifications(operator, State{}, []Clarification{seen}, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want no new notice for a seen typed clarification", actions)
+	}
+}
+
+func TestPlanClarificationsDoesNotReportATypedDesktopEnding(t *testing.T) {
+	typed := clarification()
+	typed.Source = ClarificationSourceTyped
+	state := State{Clarifications: map[string]ClarificationState{
+		typed.Key: {MessageID: "$message", Source: ClarificationSourceTyped},
+	}}
+
+	if actions := PlanClarifications(operator, state, nil, nil); len(actions) != 0 {
+		t.Errorf("actions = %+v, want the terminal typed row cleared without a Matrix notice", actions)
+	}
+}
+
 func TestPlanClarificationsCarriesTheReplyBackAsTheAnswer(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{"forgelet-bridge/clar-1": {MessageID: "$message"}}}
 	replies := []RoomEvent{{EventID: "$reply", Sender: operator, Body: "yes", ThreadRoot: "$message"}}

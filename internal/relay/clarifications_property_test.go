@@ -129,6 +129,40 @@ func TestPropertyPlanClarificationsNeedsTheOperatorsOwnReply(t *testing.T) {
 	}
 }
 
+// TestPropertyTypedNoticeNeedsOpenAndUnseen keeps the notification decision
+// tied to the authoritative fields: a typed row produces a new Matrix notice
+// exactly when it is open and unseen, never for seen or terminal rows.
+func TestPropertyTypedNoticeNeedsOpenAndUnseen(t *testing.T) {
+	property := func(lifecycle, attention string) bool {
+		clarification := Clarification{
+			Key:       "forge/typed/project/clarification-1",
+			ID:        "clarification-1",
+			Project:   "project",
+			Source:    ClarificationSourceTyped,
+			Lifecycle: lifecycle,
+			Attention: attention,
+			Notify:    lifecycle == ClarificationOpen && attention == "unseen",
+		}
+		actions := PlanClarifications(operator, State{}, []Clarification{clarification}, nil)
+		posted := false
+		for _, action := range actions {
+			posted = posted || action.Kind == PostClarification
+		}
+		return posted == clarification.Notify
+	}
+	if err := quick.Check(property, &quick.Config{
+		MaxCount: 300,
+		Values: func(values []reflect.Value, rnd *rand.Rand) {
+			lifecycles := []string{"open", "answered", "withdrawn", "", "closed"}
+			attentions := []string{"unseen", "seen", "", "unread"}
+			values[0] = reflect.ValueOf(lifecycles[rnd.Intn(len(lifecycles))])
+			values[1] = reflect.ValueOf(attentions[rnd.Intn(len(attentions))])
+		},
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestPropertyOwnWordsKeepsOnlyWhatTheOperatorSaid is the parsing promise the
 // answer rests on: whatever the phone quotes back into the body, and however
 // many lines it covers, the answer is the words the operator wrote, never the

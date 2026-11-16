@@ -154,6 +154,14 @@ func (a *API) Chat(ctx context.Context, text string) error {
 	return a.call(ctx, http.MethodPost, "/api/chat", map[string]string{"text": text}, nil)
 }
 
+// ChatWithClarification answers a typed project-chat clarification through the
+// same endpoint clients use, so the dashboard marks it answered and wakes the
+// owning project agent.
+func (a *API) ChatWithClarification(ctx context.Context, text, clarificationID string) error {
+	body := map[string]string{"text": text, "clarification_id": clarificationID}
+	return a.call(ctx, http.MethodPost, "/api/chat", body, nil)
+}
+
 // Approvals reads the approvals the dashboard is showing.
 func (a *API) Approvals(ctx context.Context) ([]relay.Approval, error) {
 	state, err := a.State(ctx)

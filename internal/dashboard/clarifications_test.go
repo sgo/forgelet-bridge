@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -65,6 +67,72 @@ func TestClarificationsAnswersThroughTheDashboard(t *testing.T) {
 	}
 	if got := <-asked; got != "POST /api/clarifications/clar-1/answer" {
 		t.Errorf("dashboard was asked %q, want the answer endpoint", got)
+	}
+}
+
+func TestTypedClarificationAnswersThroughTheOwningProjectChat(t *testing.T) {
+	var requestBody map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/chat" {
+			t.Errorf("request = %s %s, want the project chat endpoint", request.Method, request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+			t.Errorf("decode chat request: %v", err)
+		}
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	projectRoot := filepath.Join(root, "projects", "project-alpha")
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".swarmforge", "single-agent"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, URLFile), []byte(server.URL+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "open-projects"),
+		[]byte("project-alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	clarifications := Clarifications{Root: root}
+	if err := clarifications.AnswerTyped(
+		context.Background(), "project-alpha", "clar-answer", "run qa"); err != nil {
+		t.Fatalf("AnswerTyped: %v", err)
+	}
+	if requestBody["text"] != "run qa" || requestBody["clarification_id"] != "clar-answer" {
+		t.Errorf("chat request = %+v, want the answer and clarification id", requestBody)
+	}
+}
+
+func TestTypedClarificationAnswerFailsClosedOnProjectMismatch(t *testing.T) {
+	clarifications := Clarifications{Root: t.TempDir(), Project: "project-alpha"}
+	if err := clarifications.AnswerTyped(
+		context.Background(), "project-beta", "clar-answer", "run qa"); err == nil {
+		t.Fatal("AnswerTyped accepted another project's clarification")
+	}
+}
+
+func TestTypedClarificationAnswerFailsClosedOnDuplicateOpenProject(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".swarmforge", "open-projects"),
+		[]byte("project-alpha\nproject-alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clarifications := Clarifications{Root: root}
+	if err := clarifications.AnswerTyped(
+		context.Background(), "project-alpha", "clar-answer", "run qa"); err == nil {
+		t.Fatal("AnswerTyped accepted an ambiguous project owner")
 	}
 }
 

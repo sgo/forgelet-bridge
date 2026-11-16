@@ -66,6 +66,10 @@ func TestSnapshotSourceCarriesEveryConsumerFromOneAutomationRead(t *testing.T) {
 		snapshot.TypedClarifications[0].Question != typed {
 		t.Errorf("typed clarifications = %+v, want the safe typed question", snapshot.TypedClarifications)
 	}
+	if typed := snapshot.TypedClarifications[0]; typed.Source != relay.ClarificationSourceTyped ||
+		typed.Lifecycle != relay.ClarificationOpen || typed.Attention != "unseen" || !typed.Notify {
+		t.Errorf("typed clarification = %+v, want its notification identity and lifecycle", typed)
+	}
 	if len(snapshot.Boards) != 1 || len(snapshot.Boards[0].Cards) != 1 ||
 		snapshot.Boards[0].Cards[0].Key != "/forges/forge-a/forgelet-bridge/snapshot-card" {
 		t.Errorf("boards = %+v, want the projection card", snapshot.Boards)

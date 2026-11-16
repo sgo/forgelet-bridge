@@ -11,6 +11,10 @@
   {:procedure "qa/consume-bounded-automation-state-in-bridge.md"
    :script "qa/consume-bounded-automation-state-in-bridge.sh"
    :required-inputs []}
+  "notify-typed-project-clarifications-through-bridge"
+  {:procedure "qa/notify-typed-project-clarifications-through-bridge.md"
+   :script "qa/notify-typed-project-clarifications-through-bridge.sh"
+   :required-inputs []}
   "prototype-in-memory-matrix-for-bridge-tests"
   {:procedure "qa/prototype-in-memory-matrix-for-bridge-tests.md"
    :script "qa/prototype-in-memory-matrix-for-bridge-tests.sh"

@@ -2,8 +2,11 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/unclebob/forgelet-bridge/internal/relay"
@@ -46,6 +49,67 @@ func (c Clarifications) Answer(ctx context.Context, project, id, answer string) 
 		return err
 	}
 	return api.AnswerClarification(ctx, project, id, answer)
+}
+
+// AnswerTyped answers a project-chat clarification through the owning
+// project's normal chat endpoint. A Family adapter resolves the one marked
+// project below its root; a project adapter accepts only its own project.
+func (c Clarifications) AnswerTyped(ctx context.Context, project, id, answer string) error {
+	root, configuredURL, err := c.typedProject(project)
+	if err != nil {
+		return err
+	}
+	url, err := URL(root, configuredURL)
+	if err != nil {
+		return fmt.Errorf("find the dashboard for project %s: %w", project, err)
+	}
+	return NewForgeAPI(root, url).ChatWithClarification(ctx, answer, id)
+}
+
+func (c Clarifications) typedProject(project string) (string, string, error) {
+	if project == "" || filepath.Base(project) != project || strings.ContainsAny(project, `/\`) {
+		return "", "", fmt.Errorf("typed clarification has an invalid project %q", project)
+	}
+	if c.Project != "" {
+		if project != c.Project {
+			return "", "", fmt.Errorf(
+				"typed clarification for project %s was read from project %s", project, c.Project)
+		}
+		return c.Root, c.ConfiguredURL, nil
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, ".swarmforge", "single-agent")); err == nil {
+		if project != filepath.Base(c.Root) {
+			return "", "", fmt.Errorf(
+				"typed clarification for project %s was read from project %s", project, filepath.Base(c.Root))
+		}
+		return c.Root, c.ConfiguredURL, nil
+	}
+	if err := c.requireOpenProject(project); err != nil {
+		return "", "", err
+	}
+	root := filepath.Join(c.Root, "projects", project)
+	if _, err := os.Stat(filepath.Join(root, ".swarmforge", "single-agent")); err != nil {
+		return "", "", fmt.Errorf("project %s is not one marked project under %s: %w", project, c.Root, err)
+	}
+	return root, "", nil
+}
+
+func (c Clarifications) requireOpenProject(project string) error {
+	data, err := os.ReadFile(filepath.Join(c.Root, ".swarmforge", "open-projects"))
+	if err != nil {
+		return fmt.Errorf("read open projects for %s: %w", c.Root, err)
+	}
+	matches := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == project {
+			matches++
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("typed clarification project %s resolves to %d open projects under %s",
+			project, matches, c.Root)
+	}
+	return nil
 }
 
 // client is the dashboard of this forge, whose address is looked up every time

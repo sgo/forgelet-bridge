@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -71,6 +72,40 @@ func TestFakeDashboardServesUnsupportedCompatibilityState(t *testing.T) {
 	if len(state.ResolvedApprovals) != 1 ||
 		state.ResolvedApprovals[0].Resolution != "approved" {
 		t.Errorf("resolved approvals = %+v, want the compatibility resolution", state.ResolvedApprovals)
+	}
+}
+
+func TestFakeDashboardRecordsAndAnswersTypedClarificationThroughChat(t *testing.T) {
+	fake := StartFakeDashboard()
+	defer fake.Close()
+	question := "which stage?"
+	state := automationState()
+	state.Clarifications.Typed.Items = append(state.Clarifications.Typed.Items,
+		dashboard.AutomationClarification{
+			ID: "clar-answer", ClarificationID: "clar-answer", Project: "project-alpha",
+			Role: "coder", Status: "open", Attention: "unseen", QuestionExcerpt: &question,
+		})
+	state.Clarifications.Typed.Count = 1
+	fake.SetState(state)
+
+	request, err := http.NewRequest(http.MethodPost, fake.URL()+"/api/chat",
+		bytes.NewBufferString(`{"text":"run qa","clarification_id":"clar-answer"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	requests := fake.ChatRequests()
+	if len(requests) != 1 || requests[0].Text != "run qa" || requests[0].ClarificationID != "clar-answer" {
+		t.Fatalf("chat requests = %+v, want the typed answer", requests)
+	}
+	if got := fake.state.Clarifications.Typed.Items[0]; got.Status != "answered" || got.Attention != "seen" {
+		t.Fatalf("typed row = %+v, want the accepted answer to end it", got)
 	}
 }
 

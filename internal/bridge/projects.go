@@ -44,6 +44,10 @@ func (b *Bridge) carryOutProjectClarifications(ctx context.Context, forgeRoot st
 	if snapshot.ProjectionFallback {
 		b.compatibilityFallbacks[forgeRoot] = true
 	}
+	// A Family dashboard already projects every open project's typed
+	// clarifications into the Family Clarifications room. Consuming the same
+	// row again from its project dashboard would create a second notice.
+	snapshot.TypedClarifications = nil
 	return b.carryOutClarifications(
 		ctx, project.Root, project.Clarifications, room,
 		seen.messages[room.ClarificationsRoomID], snapshot, true)

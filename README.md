@@ -49,12 +49,13 @@ inside it, invites the configured operator, and then:
 
 On each bridge tick the bridge requests `/api/automation-state` once from each
 configured dashboard. Pending approvals, exact desk resolutions, legacy
-clarifications and project board activity are all derived from that bounded
-`automation-v1` response. During controlled dashboard rollout, an older
-dashboard may use one 2 MiB-bounded `/api/state` compatibility read, and the
-bridge reports that fallback in its status. Other malformed projections leave
-their dependent consumers unserved for that tick; a later tick performs a fresh
-read instead of reusing stale state or fabricating empty state.
+clarifications, typed project-chat clarifications and project board activity
+are all derived from that bounded `automation-v1` response. During controlled
+dashboard rollout, an older dashboard may use one 2 MiB-bounded `/api/state`
+compatibility read, and the bridge reports that fallback in its status. Other
+malformed projections leave their dependent consumers unserved for that tick; a
+later tick performs a fresh read instead of reusing stale state or fabricating
+empty state.
 
 The app prefix is presentation metadata, not impersonation: the event remains
 under the bridge's Matrix account and keeps a normal thread root for the
@@ -85,6 +86,15 @@ answered. A reply the phone makes by quoting the message counts as a reply as
 well, and the quote the phone writes into the body is not read as the answer. A
 clarification answered from the desktop is marked resolved in the room rather
 than left looking open.
+
+Typed project-chat clarifications follow the same operator path. Only an open,
+unseen row posts a notice, so repeated ticks and restarts do not duplicate it.
+A seen row stays answerable without another notice, while answered or withdrawn
+rows clear the bridge's notification record. A Matrix answer is delivered with
+the clarification id through the owning project's normal `/api/chat` endpoint;
+the dashboard marks it answered and wakes that project agent. Legacy and typed
+questions retain separate identities, and the bridge copies only the bounded
+`question_excerpt` into Matrix.
 
 The activity room is a log to keep quiet: a card appearing, moving to another
 lane, or finishing in one of the forge's open projects arrives as one short

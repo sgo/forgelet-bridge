@@ -68,9 +68,36 @@ func TestAutomationValidationRejectsEveryWrongField(t *testing.T) {
 				ClarificationID: "clar-1", Status: "open",
 			}})
 		}, wantError: true},
-		{name: "answered typed malformed is ignored", change: func(state *AutomationState) {
+		{name: "answered typed malformed", change: func(state *AutomationState) {
 			state.Clarifications.Typed = testSection([]AutomationClarification{{Status: "answered"}})
-		}},
+		}, wantError: true},
+		{name: "typed lifecycle", change: func(state *AutomationState) {
+			state.Clarifications.Typed = testSection([]AutomationClarification{{
+				ClarificationID: "clar-1", Project: "project", Status: "closed",
+				Attention: "seen", QuestionExcerpt: &question,
+			}})
+		}, wantError: true},
+		{name: "typed attention", change: func(state *AutomationState) {
+			state.Clarifications.Typed = testSection([]AutomationClarification{{
+				ClarificationID: "clar-1", Project: "project", Status: "open",
+				Attention: "unread", QuestionExcerpt: &question,
+			}})
+		}, wantError: true},
+		{name: "typed project", change: func(state *AutomationState) {
+			state.Clarifications.Typed = testSection([]AutomationClarification{{
+				ClarificationID: "clar-1", Status: "open",
+				Attention: "unseen", QuestionExcerpt: &question,
+			}})
+		}, wantError: true},
+		{name: "typed truncation", change: func(state *AutomationState) {
+			state.Clarifications.Typed = &AutomationSection[AutomationClarification]{
+				Count: 2, Truncated: true,
+				Items: []AutomationClarification{{
+					ClarificationID: "clar-1", Project: "project", Status: "open",
+					Attention: "unseen", QuestionExcerpt: &question,
+				}},
+			}
+		}, wantError: true},
 		{name: "pending approval id", change: func(state *AutomationState) {
 			state.Approvals = testSection([]AutomationApproval{{Project: "p", Card: "card"}})
 		}, wantError: true},

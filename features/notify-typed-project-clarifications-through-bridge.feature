@@ -72,6 +72,7 @@ Feature: Notify Typed Project Clarifications Through The Bridge
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org
     And the bridge is started
     And the bridge has caught up with the forge
+    Then the clarifications room holds exactly 1 clarification messages
     Then the clarification message for the project project-alpha names the project project-alpha, the blocked role coder, and the question "which stage should run next?"
     When the operator replies "run qa" in the typed clarification message's thread for the project project-alpha
     And the bridge has caught up with the forge

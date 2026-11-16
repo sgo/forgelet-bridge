@@ -60,17 +60,20 @@ Typed clarification rows retain their bounded project, clarification id,
 lifecycle and `unseen|seen` attention. The legacy pending clarification rows
 remain in their current lane.
 
-Typed notification identity is the existing project-qualified key within a
-forge root, while the same id in a different project or Family remains distinct.
-Duplicate ids for the same project, mixed legacy/typed keys, invalid lifecycle,
-invalid attention and truncated typed sections fail the dashboard tick closed.
+Typed notification identity is type-distinct as well as project-qualified
+within a forge root, while the same id in a different project or Family remains
+distinct. Duplicate ids for the same project, mixed legacy/typed keys, invalid
+lifecycle, invalid attention and truncated typed sections fail the dashboard
+tick closed.
 
 The existing Clarifications room and durable clarification notification state
 carry typed notices. A typed row posts only while it is `open` and `unseen`.
 `open` plus `seen` remains answerable without another notice. A missing,
 answered or withdrawn authoritative row clears the typed notification record;
 an unchanged projection failure leaves no new work and cannot create a stale
-notice on recovery.
+notice on recovery. The Family projection is the typed notification authority
+for its open projects, so consuming the same projected row again from a project
+dashboard cannot create a second notice.
 
 Typed answers use the owning project dashboard's normal `POST /api/chat` path
 with `clarification_id`, rather than the legacy clarification answer endpoint.

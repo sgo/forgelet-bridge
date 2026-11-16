@@ -241,6 +241,9 @@ func validateClarificationSections(clarifications *AutomationClarifications) err
 	if err := validateAutomationSection("typed clarifications", clarifications.Typed, maxAutomationClarifications); err != nil {
 		return err
 	}
+	if clarifications.Typed.Truncated {
+		return fmt.Errorf("truncated typed clarifications cannot be reconciled")
+	}
 	return validateClarificationRows(clarifications)
 }
 
@@ -262,8 +265,8 @@ func validateLegacyClarificationRows(items []AutomationClarification) error {
 
 func validateTypedClarificationRows(items []AutomationClarification) error {
 	for _, item := range items {
-		if item.Status == "open" && !validTypedClarification(item) {
-			return fmt.Errorf("invalid open typed clarification in automation projection")
+		if !validTypedClarification(item) {
+			return fmt.Errorf("invalid typed clarification in automation projection")
 		}
 	}
 	return nil
@@ -274,7 +277,19 @@ func validLegacyClarification(item AutomationClarification) bool {
 }
 
 func validTypedClarification(item AutomationClarification) bool {
-	return item.ClarificationID != "" && validQuestionExcerpt(item.QuestionExcerpt)
+	return item.ClarificationID != "" &&
+		item.Project != "" &&
+		validTypedLifecycle(item.Status) &&
+		validTypedAttention(item.Attention) &&
+		validQuestionExcerpt(item.QuestionExcerpt)
+}
+
+func validTypedLifecycle(lifecycle string) bool {
+	return lifecycle == "open" || lifecycle == "answered" || lifecycle == "withdrawn"
+}
+
+func validTypedAttention(attention string) bool {
+	return attention == "unseen" || attention == "seen"
 }
 
 func validQuestionExcerpt(excerpt *string) bool {

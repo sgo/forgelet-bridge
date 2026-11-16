@@ -26,6 +26,7 @@ type FakeDashboard struct {
 	stateRequests uint64
 	failed        uint64
 	bytes         uint64
+	chatRequests  []FakeChatRequest
 }
 
 // FakeDashboardCounts is what one fake dashboard has served.
@@ -34,6 +35,12 @@ type FakeDashboardCounts struct {
 	StateRequests uint64
 	Failed        uint64
 	Bytes         uint64
+}
+
+// FakeChatRequest is one project-chat request a fake dashboard accepted.
+type FakeChatRequest struct {
+	Text            string `json:"text"`
+	ClarificationID string `json:"clarification_id"`
 }
 
 // StartFakeDashboard starts a fake dashboard on a loopback address.
@@ -115,6 +122,13 @@ func (f *FakeDashboard) Counts() FakeDashboardCounts {
 	}
 }
 
+// ChatRequests returns the project-chat requests the fake dashboard accepted.
+func (f *FakeDashboard) ChatRequests() []FakeChatRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]FakeChatRequest(nil), f.chatRequests...)
+}
+
 // Close stops the fake dashboard.
 func (f *FakeDashboard) Close() {
 	if f != nil && f.server != nil {
@@ -131,12 +145,38 @@ func (f *FakeDashboard) serve(writer http.ResponseWriter, request *http.Request)
 		f.serveFullState(writer)
 		return
 	}
+	if request.Method == http.MethodPost && request.URL.Path == "/api/chat" {
+		f.serveChat(writer, request)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/api/") {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{}`))
 		return
 	}
 	http.NotFound(writer, request)
+}
+
+func (f *FakeDashboard) serveChat(writer http.ResponseWriter, request *http.Request) {
+	var chat FakeChatRequest
+	if err := json.NewDecoder(request.Body).Decode(&chat); err != nil {
+		http.Error(writer, err.Error(), http.StatusBadRequest)
+		return
+	}
+	f.mu.Lock()
+	f.chatRequests = append(f.chatRequests, chat)
+	if typed := f.state.Clarifications; typed != nil && typed.Typed != nil {
+		for index := range typed.Typed.Items {
+			item := &typed.Typed.Items[index]
+			if item.ClarificationID == chat.ClarificationID && item.Status == "open" {
+				item.Status = "answered"
+				item.Attention = "seen"
+			}
+		}
+	}
+	f.mu.Unlock()
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = writer.Write([]byte(`{"ok":true}`))
 }
 
 func (f *FakeDashboard) serveAutomation(writer http.ResponseWriter) {

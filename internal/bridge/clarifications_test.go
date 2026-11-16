@@ -17,6 +17,7 @@ type fakeClarifications struct {
 	mu         sync.Mutex
 	pending    []relay.Clarification
 	answers    []answer
+	typed      []answer
 	errors     map[string]error
 	pendingErr error
 }
@@ -54,10 +55,34 @@ func (f *fakeClarifications) Answer(_ context.Context, project, id, text string)
 	return nil
 }
 
+func (f *fakeClarifications) AnswerTyped(_ context.Context, project, id, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := project + "/" + id
+	if err := f.errors[key]; err != nil {
+		return err
+	}
+	f.typed = append(f.typed, answer{project: project, id: id, text: text})
+	kept := f.pending[:0]
+	for _, clarification := range f.pending {
+		if clarification.Key != key {
+			kept = append(kept, clarification)
+		}
+	}
+	f.pending = kept
+	return nil
+}
+
 func (f *fakeClarifications) answered() []answer {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]answer(nil), f.answers...)
+}
+
+func (f *fakeClarifications) typedAnswers() []answer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]answer(nil), f.typed...)
 }
 
 func clarificationOf(project, id, role, question string) relay.Clarification {
@@ -68,6 +93,16 @@ func clarificationOf(project, id, role, question string) relay.Clarification {
 		Role:     role,
 		Question: question,
 	}
+}
+
+func typedClarificationOf(project, id, role, question, lifecycle, attention string) relay.Clarification {
+	clarification := clarificationOf(project, id, role, question)
+	clarification.Key = "/forges/forge-a/typed/" + project + "/" + id
+	clarification.Source = relay.ClarificationSourceTyped
+	clarification.Lifecycle = lifecycle
+	clarification.Attention = attention
+	clarification.Notify = lifecycle == relay.ClarificationOpen && attention == "unseen"
+	return clarification
 }
 
 func TestTickPostsAPendingClarificationWithWhatItTakesToAnswer(t *testing.T) {
@@ -277,6 +312,155 @@ func TestRestartRepeatsNoClarificationWork(t *testing.T) {
 	}
 	if posted == 0 {
 		t.Fatal("the bridge never posted the clarification in the first place")
+	}
+}
+
+func TestTypedUnseenClarificationPostsOnceAndIsRememberedAsTyped(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	typed := typedClarificationOf(
+		"project-alpha", "clar-typed", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+	snapshot := relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{typed}}
+
+	for tick := 0; tick < 2; tick++ {
+		if _, err := built.carryOutClarifications(
+			context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+			nil, snapshot, true); err != nil {
+			t.Fatalf("tick %d: %v", tick, err)
+		}
+	}
+
+	messages := rooms.sentMessages()
+	if len(messages) != 1 || messages[0].roomID != "!clarifications-forge-a" {
+		t.Fatalf("messages = %+v, want one typed notice in the clarifications room", messages)
+	}
+	remembered := built.State().Relay.Clarifications[typed.Key]
+	if remembered.Source != relay.ClarificationSourceTyped || remembered.MessageID == "" {
+		t.Fatalf("state = %+v, want the typed notification record", remembered)
+	}
+}
+
+func TestTypedSeenClarificationDoesNotPostANewNotice(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	typed := typedClarificationOf(
+		"project-alpha", "clar-seen", "coder", "which stage?", relay.ClarificationOpen, "seen")
+
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, store, Room{ClarificationsRoomID: "!clarifications-forge-a"},
+		nil, relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{typed}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if messages := rooms.sentMessages(); len(messages) != 0 {
+		t.Fatalf("messages = %+v, want no notice for a seen clarification", messages)
+	}
+}
+
+func TestTypedAnsweredAndWithdrawnClarificationsClearTheRecord(t *testing.T) {
+	for _, lifecycle := range []string{"answered", "withdrawn"} {
+		t.Run(lifecycle, func(t *testing.T) {
+			root := "/forges/forge-a"
+			rooms := &fakeRooms{}
+			store := &fakeClarifications{}
+			built, _ := newTestBridgeWithClarifications(t, rooms,
+				map[string]ForgeStore{root: &fakeStore{}},
+				map[string]ClarificationStore{root: store}, root)
+			open := typedClarificationOf(
+				"project-alpha", "clar-ending", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+			room := Room{ClarificationsRoomID: "!clarifications-forge-a"}
+			if _, err := built.carryOutClarifications(
+				context.Background(), root, store, room, nil,
+				relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{open}}, true); err != nil {
+				t.Fatal(err)
+			}
+
+			ended := open
+			ended.Lifecycle = lifecycle
+			ended.Attention = "seen"
+			ended.Notify = false
+			if _, err := built.carryOutClarifications(
+				context.Background(), root, store, room, nil,
+				relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{ended}}, true); err != nil {
+				t.Fatal(err)
+			}
+
+			if state := built.State().Relay.Clarifications[open.Key]; state.MessageID != "" || state.Source != "" {
+				t.Fatalf("state = %+v, want the typed record cleared", state)
+			}
+			if messages := rooms.sentMessages(); len(messages) != 1 {
+				t.Fatalf("messages = %+v, want only the original notice", messages)
+			}
+		})
+	}
+}
+
+func TestTypedClarificationMissingFromAHealthySnapshotClearsTheRecord(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	typed := typedClarificationOf(
+		"project-alpha", "clar-stale", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+	room := Room{ClarificationsRoomID: "!clarifications-forge-a"}
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, store, room, nil,
+		relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{typed}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, store, room, nil, relay.DashboardSnapshot{}, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if state := built.State().Relay.Clarifications[typed.Key]; state.MessageID != "" || state.Source != "" {
+		t.Fatalf("state = %+v, want the stale typed record cleared", state)
+	}
+}
+
+func TestTypedReplyUsesTheTypedProjectChatPath(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	store := &fakeClarifications{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: store}, root)
+	typed := typedClarificationOf(
+		"project-alpha", "clar-answer", "coder", "which stage?", relay.ClarificationOpen, "unseen")
+	snapshot := relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{typed}}
+	room := Room{ClarificationsRoomID: "!clarifications-forge-a"}
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, store, room, nil, snapshot, true); err != nil {
+		t.Fatal(err)
+	}
+	messageID := built.State().Relay.Clarifications[typed.Key].MessageID
+	reply := relay.RoomEvent{
+		EventID: "$reply", RoomID: room.ClarificationsRoomID, Sender: operator,
+		Body: "run qa", ThreadRoot: messageID,
+	}
+
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, store, room,
+		[]relay.RoomEvent{reply}, snapshot, true); err != nil {
+		t.Fatal(err)
+	}
+
+	answers := store.typedAnswers()
+	if len(answers) != 1 || answers[0].project != "project-alpha" ||
+		answers[0].id != "clar-answer" || answers[0].text != "run qa" {
+		t.Fatalf("typed answers = %+v, want the project's normal answer", answers)
+	}
+	if legacy := store.answered(); len(legacy) != 0 {
+		t.Fatalf("legacy answers = %+v, want no legacy endpoint use", legacy)
 	}
 }
 

@@ -27,6 +27,13 @@ func configuredForgeAndOperator(_ context.Context, world any, captures []string)
 	return configuredOperator(context.Background(), world, []string{captures[0], captures[2]})
 }
 
+func configuredForgesAndOperator(_ context.Context, world any, captures []string) error {
+	if err := configuredForges(context.Background(), world, []string{captures[0], captures[1]}); err != nil {
+		return err
+	}
+	return configuredOperator(context.Background(), world, []string{captures[0], captures[2]})
+}
+
 func configuredOperator(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	w.operatorID = captures[1]

@@ -30,6 +30,11 @@ func (b *Bridge) carryOutClarifications(ctx context.Context, root string, store 
 	if err != nil {
 		return
 	}
+	if fromSnapshot {
+		if err := b.reconcileTypedClarifications(root, room, snapshot.TypedClarifications); err != nil {
+			return carriedOut, err
+		}
+	}
 
 	waiting := b.pendingClarificationsFor(root)
 	for _, action := range relay.PlanClarifications(b.cfg.Operator, b.clarificationState(room), pending, replies) {
@@ -65,13 +70,47 @@ func (b *Bridge) carryOutPendingClarifications(ctx context.Context, root string,
 // or from the independent fallback store.
 func clarificationInputs(ctx context.Context, root string, store ClarificationStore, snapshot relay.DashboardSnapshot, fromSnapshot bool) ([]relay.Clarification, error) {
 	if fromSnapshot {
-		return snapshot.Clarifications, nil
+		pending := append([]relay.Clarification(nil), snapshot.Clarifications...)
+		for _, clarification := range snapshot.TypedClarifications {
+			if clarification.Lifecycle == relay.ClarificationOpen {
+				pending = append(pending, clarification)
+			}
+		}
+		return pending, nil
 	}
 	pending, err := store.Pending(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read pending clarifications for %s: %w", root, err)
 	}
 	return pending, nil
+}
+
+// reconcileTypedClarifications clears typed notification records the
+// authoritative snapshot says are answered, withdrawn or no longer present.
+// The snapshot is authoritative for the whole tick, so absence is stale rather
+// than a reason to retain an old notice.
+func (b *Bridge) reconcileTypedClarifications(root string, room Room, typed []relay.Clarification) error {
+	open := make(map[string]bool, len(typed))
+	for _, clarification := range typed {
+		if clarification.Lifecycle == relay.ClarificationOpen {
+			open[clarification.Key] = true
+		}
+	}
+	changed := false
+	for key, state := range b.state.Relay.Clarifications {
+		if state.Source != relay.ClarificationSourceTyped ||
+			state.ForgeRoot != root ||
+			state.RoomID != room.ClarificationsRoomID ||
+			open[key] {
+			continue
+		}
+		delete(b.state.Relay.Clarifications, key)
+		changed = true
+	}
+	if changed {
+		return b.state.Save(b.statePath)
+	}
+	return nil
 }
 
 // clarificationFacts is the questions the forge is still waiting on, each as
@@ -140,6 +179,7 @@ func (b *Bridge) postClarification(ctx context.Context, root string, room Room, 
 		return fmt.Errorf("post clarification %s: %w", action.Key, err)
 	}
 	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {
+		state.Source = action.Clarification.Source
 		state.ForgeRoot = root
 		state.RoomID = room.ClarificationsRoomID
 		state.MessageID = eventID
@@ -174,7 +214,16 @@ func (b *Bridge) clarificationState(room Room) relay.State {
 // answerClarification carries the operator's answer back through the forge's
 // dashboard, which is what wakes the blocked role with it.
 func (b *Bridge) answerClarification(ctx context.Context, root string, store ClarificationStore, action relay.ClarificationAction) error {
-	if err := store.Answer(ctx, action.Clarification.Project, action.Clarification.ID, action.Answer); err != nil {
+	if action.Clarification.Source == relay.ClarificationSourceTyped {
+		answerer, ok := store.(TypedClarificationAnswerer)
+		if !ok {
+			return fmt.Errorf("answer typed clarification %s: project chat is unavailable", action.Key)
+		}
+		if err := answerer.AnswerTyped(
+			ctx, action.Clarification.Project, action.Clarification.ID, action.Answer); err != nil {
+			return fmt.Errorf("answer %s through project chat: %w", action.Key, err)
+		}
+	} else if err := store.Answer(ctx, action.Clarification.Project, action.Clarification.ID, action.Answer); err != nil {
 		return fmt.Errorf("answer %s: %w", action.Key, err)
 	}
 	b.recordClarification(root, action.Key, func(state relay.ClarificationState) relay.ClarificationState {

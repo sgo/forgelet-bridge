@@ -58,9 +58,12 @@ discriminator, validates the bounded shape and decodes one
 `internal/relay.DashboardSnapshot`. `internal/dashboard.AutomationProjection`
 names the accepted discriminator. `internal/bridge.SnapshotStore` shares that
 value among approvals, resolved approvals, legacy clarifications and project
-board activity in the tick. Typed clarification rows are validated and retained
-in `DashboardSnapshot.TypedClarifications` for the following notification-parity
-card; they are not folded into the legacy Matrix path.
+board activity in the tick. Typed clarification rows are validated and carried
+in `DashboardSnapshot.TypedClarifications`; `internal/relay.Clarification`
+retains their project, stable clarification id, `open|answered|withdrawn`
+lifecycle and `unseen|seen` attention. A malformed lifecycle, attention value,
+identity, blank excerpt or truncated typed section fails the projection closed
+because a partial sample cannot safely reconcile previously posted notices.
 
 The tick cache is keyed by both the forge root and the resolved dashboard
 address. Forge-level and project-level work that address the same dashboard
@@ -88,6 +91,25 @@ the ➡ mark, manual `sent_back` selects ⬅, and the automatic endings
 manual mark. Clarification questions come only from the bounded
 `question_excerpt`; blank excerpts fail the projection closed.
 
+An open typed clarification posts in the Family Clarifications room only while
+its attention is `unseen`. The notification record has a typed,
+project-qualified identity, so the same clarification id in another project or
+Family remains distinct. The Family projection is the typed authority for its
+open projects; the duplicate project-dashboard row keeps the one automation
+read and Matrix behavior without creating a second notice. Open seen questions
+remain answerable without another post. A later snapshot that reports the row
+as answered or withdrawn, or no longer reports it, removes the typed
+notification record without posting stale work. Repeated ticks and bridge
+restarts therefore cannot duplicate an unseen notice, and a failed projection
+changes no notification record.
+
+`internal/dashboard.Clarifications.AnswerTyped` sends a Matrix answer to the
+owning project's normal `POST /api/chat` endpoint as
+`{"text":"...","clarification_id":"..."}`. It resolves exactly one marked,
+open project beneath the configured Family; an unknown, duplicate, mismatched
+or unmarked project fails the action closed. The legacy
+`/api/clarifications/<id>/answer` path remains unchanged for legacy rows.
+
 The fixed comparison in
 `docs/evidence/consume-bounded-automation-state-in-bridge.json` uses 32 ticks
 and two 1 MiB full-state dashboards. Both paths make 64 requests, one per
@@ -95,6 +117,11 @@ dashboard per tick. Bytes fall from 67,114,048 to 1,424,096, a 97.9% reduction.
 The measured process CPU in that run fell from 1.513 seconds to 0.187 seconds,
 an 87.6% reduction. These synthetic figures isolate transfer and decoding; the
 deploy gate and operator acceptance check the live bridge and Matrix delivery.
+The typed clarification E2E record in
+`docs/evidence/notify-typed-project-clarifications-through-bridge.json`
+creates an unseen question through the real project dashboard, observes its
+bounded redacted projection, answers through the Family adapter, and verifies
+the project answer request and cleared attention marker.
 
 ## Configuration
 

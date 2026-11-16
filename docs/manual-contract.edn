@@ -61,7 +61,7 @@
   {:id "manual-dashboard-snapshots"
    :document "docs/manual.md"
    :heading "## Dashboard state snapshots"
-   :apis ["internal/dashboard.SnapshotSource" "internal/dashboard.AutomationState" "internal/dashboard.AutomationProjection" "internal/relay.DashboardSnapshot" "internal/bridge.SnapshotStore"]}
+   :apis ["internal/dashboard.SnapshotSource" "internal/dashboard.AutomationState" "internal/dashboard.AutomationProjection" "internal/dashboard.Clarifications.AnswerTyped" "internal/relay.DashboardSnapshot" "internal/relay.Clarification" "internal/bridge.SnapshotStore"]}
   {:id "manual-configuration"
    :document "docs/manual.md"
    :heading "## Configuration"
@@ -132,6 +132,10 @@
    :section "manual-dashboard-snapshots"
    :command ["bash" "-lc" "go doc ./internal/dashboard AutomationState; go doc ./internal/dashboard AutomationProjection; go doc ./internal/bridge SnapshotStore"]
    :expect ["type AutomationState struct" "AutomationProjection = \"automation-v1\"" "type SnapshotStore interface"]}
+  {:id "manual-typed-clarification-api"
+   :section "manual-dashboard-snapshots"
+   :command ["bash" "-lc" "go doc ./internal/dashboard Clarifications.AnswerTyped; go doc ./internal/relay Clarification"]
+   :expect ["func (c Clarifications) AnswerTyped" "type Clarification struct" "Lifecycle string"]}
   {:id "manual-automation-state-measure"
    :section "manual-dashboard-snapshots"
    :command ["bash" "-lc" "go run -tags goolm ./qa/automation-state-measure --ticks 1 --full-payload-bytes 65536"]

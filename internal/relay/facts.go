@@ -63,15 +63,22 @@ func ApprovalFact(approval Approval) Fact {
 // belongs to, the blocked role, and the question itself. Its key is the
 // question's own id.
 func ClarificationFact(clarification Clarification) Fact {
+	key := clarification.ID
+	if clarification.Source == ClarificationSourceTyped {
+		key = ClarificationSourceTyped + ":" + clarification.Project + ":" + clarification.ID
+	}
 	return Fact{
 		Type: ClarificationFactType,
-		Key:  clarification.ID,
+		Key:  key,
 		Content: map[string]any{
-			"id":      clarification.ID,
-			"project": clarification.Project,
-			"role":    clarification.Role,
-			"body":    clarification.Question,
-			"status":  ClarificationWaiting,
+			"id":        clarification.ID,
+			"project":   clarification.Project,
+			"role":      clarification.Role,
+			"body":      clarification.Question,
+			"status":    ClarificationWaiting,
+			"source":    clarification.Source,
+			"lifecycle": clarification.Lifecycle,
+			"attention": clarification.Attention,
 		},
 	}
 }
