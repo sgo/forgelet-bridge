@@ -107,7 +107,26 @@ procedure uses fixture roots only and requires no operator-supplied secrets.
 
 ## Verification
 
-Pending implementation and gates.
+- `stage check code`, `clean`, `architect`, `harden`, `clean-final`, `qa`,
+  `e2e` and `docs` pass on the final reviewed tree.
+- The focused project-removal-plan acceptance feature also passes all 12
+  examples after synchronizing its read-only state assertion with the
+  adapter-started bridge.
+- The card E2E runs all seven executable scenarios: every authoritative
+  resolution, shared approval/resolution/clarification/activity delivery,
+  malformed projection failure and recovery, and unsupported endpoint
+  reporting.
+- The fixed 32-tick workload uses two 1 MiB full-state dashboards. Requests
+  remain 64 before and after (one per dashboard per tick). Response bytes fall
+  from 67,114,048 to 1,424,096 (97.88%), while measured CPU falls from
+  1.179486s to 0.161461s (86.31%).
+- `README.md` records the projection as the bridge state source.
+  `docs/manual.md` owns the endpoint/header/shape, exact resolution policy,
+  bounded clarification and typed-row handoff rules, failure behavior and
+  measurement. `ARCHITECTURE.md` records the validation and tick snapshot
+  boundary. `docs/manual-contract.edn` links the projection and measurement
+  examples; all documentation examples pass.
+- Deployment is pending the reviewed tree being committed and pushed.
 
 ## Operator acceptance
 

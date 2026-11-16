@@ -66,6 +66,7 @@
 (def ^:dynamic *sync-teardown?* false)
 (def ^:dynamic *state-cache* nil)
 (def ^:dynamic *state-metrics* nil)
+(def ^:dynamic *dashboard-cache-now-ms* nil)
 (def teardown-delay-ms 250)
 (def pane-capture-lines 2000)
 (def pane-heat (atom {}))
@@ -73,6 +74,23 @@
 (def pane-status-lines (atom {}))
 (def lieutenant-activity-history (atom {}))
 (def ^:dynamic *lieutenant-activity-context* nil)
+(def dashboard-cache-ttl-ms 750)
+(def dashboard-automation-projection "automation-v1")
+(defonce dashboard-state-cache (atom {}))
+(defonce dashboard-state-epochs (atom {}))
+(defonce dashboard-cache-metrics
+  (atom {:projection dashboard-automation-projection
+         :hits 0
+         :misses 0
+         :coalesced 0
+         :requests 0
+         :not_modified 0
+         :builds 0
+         :failures 0
+         :last_build_ms 0
+         :last_response_bytes 0
+         :last_invalidation_reason nil
+         :invalidations {}}))
 
 (defn state-metric! [kind]
   (when *state-metrics*
@@ -865,10 +883,13 @@
   #{"zsh" "bash" "sh" "dash" "ksh" "fish" "tcsh" "csh" "login" "-zsh" "-bash"})
 
 (def activity-working-pattern
-  #"(?im)^\s*(?:[•*]\s*working(?:\s*\([^)\r\n]*\))?|[✻✽✶✳]\s*.*\(esc\s+to\s+interrupt[^)\r\n]*\)|esc\s+to\s+interrupt(?:\s*[·.)-].*)?|waiting\s+for\s+response(?:\s+\d+(?:\.\d+)?s)?)\s*$")
+  #"(?im)^\s*(?:[•*]\s*working(?:\s*\([^)\r\n]*\))?|[✢✻✽✶✳]\s*.*\((?:[^)\r\n]*\bthinking\b[^)\r\n]*|esc\s+to\s+interrupt[^)\r\n]*)\)|esc\s+to\s+interrupt(?:\s*[·.)-].*)?|waiting\s+for\s+response(?:\s+\d+(?:\.\d+)?s)?)\s*$")
 
 (def activity-idle-pattern
   #"(?im)^\s*(?:[›❯]\s+ask (?:codex|claude|copilot) to do anything|\? for shortcuts|enter:send\s+esc:cancel|⏵⏵\s+bypass permissions on[^\r\n]*|ready(?: for (?:the )?next (?:task|card))?[.!]?|idle[.!]?|(?:done|completed|finished)(?: successfully)?[.!]?)\s*$")
+
+(def activity-static-idle-pattern
+  #"(?im)^\s*(?:[›❯]\s+ask (?:codex|claude|copilot) to do anything|\? for shortcuts|enter:send\s+esc:cancel|⏵⏵\s+bypass permissions on[^\r\n]*)\s*$")
 
 (def activity-token-pattern
   #"(?i)\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,})\b")
@@ -905,45 +926,61 @@
           str/trim
           not-empty))
 
-(defn last-pattern-match [pattern text]
+(defn pattern-matches [pattern text]
   (let [matcher (re-matcher pattern text)]
-    (loop [found nil]
+    (loop [found []]
       (if (.find matcher)
-        (recur {:start (.start matcher)
-                :line (str/trim (.group matcher))})
+        (recur (conj found
+                     {:start (.start matcher)
+                      :line (str/trim (.group matcher))}))
         found))))
+
+(defn last-pattern-match [pattern text]
+  (last (pattern-matches pattern text)))
 
 (defn activity-tail-lines-for [text]
   (last-n-lines (pane-sample text nil) activity-tail-lines))
+
+(defn static-idle-marker? [line]
+  (boolean (re-find activity-static-idle-pattern (or line ""))))
 
 (defn activity-marker [text]
   (let [lines (activity-tail-lines-for text)
         tail (str/join "\n" lines)
         working (last-pattern-match activity-working-pattern tail)
         idle (last-pattern-match activity-idle-pattern tail)
-        claude-footer-idle? (and idle
+        decisive-idle (->> (pattern-matches activity-idle-pattern tail)
+                           (remove #(static-idle-marker? (:line %)))
+                           last)
+        selected (cond
+                   (nil? working) (when idle
+                                    {:state "idle" :marker idle})
+                   (nil? idle) {:state "working" :marker working}
+                   (nil? decisive-idle) {:state "working" :marker working}
+                   (>= (:start decisive-idle) (:start working))
+                   {:state "idle" :marker decisive-idle}
+                   :else {:state "working" :marker working})
+        marker (:marker selected)
+        activity-state (:state selected)
+        claude-footer-idle? (and (= activity-state "idle")
                                  (re-find #"(?i)^⏵⏵\s+bypass permissions on"
-                                          (:line idle)))
-        marker (cond
-                 (nil? working) idle
-                 (nil? idle) working
-                 claude-footer-idle? working
-                 (>= (:start idle) (:start working)) idle
-                 :else working)
+                                          (:line marker)))
         line-number (when marker
                       (count (re-seq #"\n"
                                      (subs tail 0 (:start marker)))))]
     (when marker
       (assoc marker
-             :state (if (= marker idle) "idle" "working")
+             :state activity-state
              :line-index (or line-number 0)
-             :kind (if (and (= marker idle)
-                            (re-find #"(?i)ask codex to do anything"
-                                     (:line marker)))
+             :kind (cond
+                     (and (= activity-state "idle")
+                          (re-find #"(?i)ask codex to do anything"
+                                   (:line marker)))
                      :codex-idle-prompt
-                     (if (and (= marker idle) claude-footer-idle?)
-                       :claude-permissions-footer
-                       :generic))))))
+                     claude-footer-idle?
+                     :claude-permissions-footer
+                     :else
+                     :generic)))))
 
 (defn activity-output-state [text]
   (or (:state (activity-marker text)) "unknown"))
@@ -1166,6 +1203,27 @@
     (when-not (str/blank? text)
       (subs text 0 (min maximum (count text))))))
 
+(def reply-action-type "reply")
+(def reply-text-max-chars 200)
+(def reply-unsafe-framing-re #"[`$<>|;&\\]")
+(def reply-control-re #"[\p{Cc}\p{Cf}]")
+(def reply-command-re
+  #"(?i)^(?:sudo\s+)?(?:rm|git|bb|sh|bash|zsh|curl|wget|gh|npm|mvn|java|node|python|ruby|perl|kill|pkill|chmod|chown|mkdir|mv|cp)\b")
+
+(defn chat-reply-text [value]
+  (let [text (str/trim (str (or value "")))]
+    (when (and (not (str/blank? text))
+               (<= (count text) reply-text-max-chars)
+               (not (re-find reply-control-re text))
+               (not (re-find reply-unsafe-framing-re text))
+               (not (re-find reply-command-re text))
+               (not (re-find route-absolute-path-re text))
+               (not (re-find chat-token-re text)))
+      text)))
+
+(defn chat-reply-label [text]
+  (route-action-text (str "Reply: " text) 80))
+
 (defn route-proposal-status [proposal]
   (let [status (some-> (:status proposal) name str/lower-case)]
     (cond
@@ -1242,7 +1300,14 @@
              :available available?))))
 
 (defn chat-action [root headers]
-  (let [stored-status (some-> (get headers "action_status")
+  (let [route-fields? (some #(not (str/blank? (str (or (get headers %) ""))))
+                            ["action_proposal_id" "action_family"
+                             "action_project" "action_task_name"])
+        reply-fields? (not (str/blank? (str (or (get headers
+                                                       "action_reply_text")
+                                                ""))))
+        mixed? (and route-fields? reply-fields?)
+        stored-status (some-> (get headers "action_status")
                               str/trim str/lower-case)
         stored-status (when (contains? #{"pending" "consumed" "invalidated"
                                           "superseded" "unavailable"}
@@ -1255,17 +1320,36 @@
                   (when (and value (re-matches route-action-family-re value)) value))
         task-name (route-action-text (get headers "action_task_name") 256)
         label (route-action-text (get headers "action_label") 80)
-        action (when (and (= route-card-action-type (get headers "action"))
-                          stored-status proposal-id family project task-name label)
-                 {:type route-card-action-type
-                  :proposal_id proposal-id
-                  :family family
-                  :project project
-                  :task_name task-name
-                  :label label
-                  :status stored-status})]
-    (when action
-      (resolve-chat-action root action))))
+        route-action
+        (when (and (= route-card-action-type (get headers "action"))
+                   stored-status proposal-id family project task-name label)
+          {:type route-card-action-type
+           :proposal_id proposal-id
+           :family family
+           :project project
+           :task_name task-name
+           :label label
+           :status stored-status})
+        reply-text (chat-reply-text (get headers "action_reply_text"))
+        reply-label (when reply-text (chat-reply-label reply-text))
+        reply-action
+        (when (and (= reply-action-type (get headers "action"))
+                   (contains? #{"pending" "consumed" "unavailable"}
+                              stored-status)
+                   reply-text
+                   (= reply-label (route-action-text
+                                   (get headers "action_label") 80)))
+          {:type reply-action-type
+           :reply_text reply-text
+           :label reply-label
+           :status stored-status
+           :available (= "pending" stored-status)})]
+    (cond
+      mixed? nil
+      (and route-action reply-action) nil
+      reply-action reply-action
+      route-action (resolve-chat-action root route-action)
+      :else nil)))
 
 (defn clarification-metadata [headers]
   (let [id (get headers "clarification_id")
@@ -1572,11 +1656,13 @@
 
 (defn clarification-attention [chat]
   (let [clarifications (filter #(= "clarification" (:kind %)) chat)
+        open (filter #(= "open" (:lifecycle %)) clarifications)
         latest (->> clarifications
                     (keep clarification-latest-change)
                     sort
                     last)]
-    {:unresolved (count (filter #(= "open" (:lifecycle %)) clarifications))
+    {:unseen (boolean (some #(= "unseen" (:attention %)) open))
+     :unresolved (count open)
      :latest_change_at latest}))
 
 ;; A request typed into the pane without the command that answers it leaves the
@@ -1835,15 +1921,383 @@
      :tasks []
      :work_in_flight (vec (mapcat :work_in_flight projects))}))
 
-(defn api-state [root]
-  (if *state-cache*
+(defn dashboard-cache-root [root]
+  (str (fs/absolutize root)))
+
+(defn dashboard-cache-now []
+  (or *dashboard-cache-now-ms* (System/currentTimeMillis)))
+
+(defn dashboard-etag [body]
+  (let [digest (java.security.MessageDigest/getInstance "SHA-256")
+        hash (apply str
+                    (map #(format "%02x" %)
+                         (.digest digest (.getBytes (str body) "UTF-8"))))]
+    (str "\"" hash "\"")))
+
+(defn request-header [headers name]
+  (some (fn [[key value]]
+          (when (= (str/lower-case (str key))
+                   (str/lower-case name))
+            value))
+        headers))
+
+(defn matching-etag? [header etag]
+  (when (and header etag)
+    (some (fn [candidate]
+            (or (= "*" candidate)
+                (= etag candidate)))
+          (->> (str/split (str header) #",")
+               (map str/trim)
+               (map #(str/replace % #"^W/" ""))
+               (remove str/blank?)))))
+
+(defn dashboard-cache-metric! [key]
+  (swap! dashboard-cache-metrics
+         #(-> %
+              (update :requests (fnil inc 0))
+              (update key (fnil inc 0)))))
+
+(defn reset-dashboard-cache!
+  []
+  (reset! dashboard-state-cache {})
+  (reset! dashboard-state-epochs {})
+  (reset! dashboard-cache-metrics
+          {:projection dashboard-automation-projection
+           :hits 0
+           :misses 0
+           :coalesced 0
+           :requests 0
+           :not_modified 0
+           :builds 0
+           :failures 0
+           :last_build_ms 0
+           :last_response_bytes 0
+           :last_invalidation_reason nil
+           :invalidations {}}))
+
+(defn invalidate-dashboard-state! [root reason]
+  (let [root-key (dashboard-cache-root root)
+        safe-reason (or (not-empty (str reason)) "dashboard-write")]
+    (swap! dashboard-state-epochs update root-key (fnil inc 0))
+    (swap! dashboard-state-cache
+           (fn [cache]
+             (into {}
+                   (remove (fn [[[cached-root _ _] _]]
+                             (= cached-root root-key)))
+                   cache)))
+    (swap! dashboard-cache-metrics
+           #(-> %
+                (assoc :last_invalidation_reason safe-reason)
+                (update-in [:invalidations safe-reason] (fnil inc 0))))
+    true))
+
+(defn dashboard-cache-fresh? [entry epoch now]
+  (and entry
+       (not (:building entry))
+       (= epoch (:epoch entry))
+       (contains? entry :built-at)
+       (<= 0 (- now (:built-at entry)))
+       (< (- now (:built-at entry)) dashboard-cache-ttl-ms)))
+
+(defn bounded-dashboard-build-error [kind]
+  (ex-info (str "Authoritative dashboard " (name kind) " build failed.")
+           {:http-status 502}))
+
+(defn cached-dashboard-task
+  [root kind id builder]
+  (loop []
+    (let [root-key (dashboard-cache-root root)
+          epoch (get @dashboard-state-epochs root-key 0)
+          now (dashboard-cache-now)
+          cache-key [root-key kind id]
+          decision (volatile! nil)]
+      (swap! dashboard-state-cache
+             (fn [cache]
+               (let [entry (get cache cache-key)]
+                 (cond
+                   (dashboard-cache-fresh? entry epoch now)
+                   (do
+                     (vreset! decision [:hit entry])
+                     cache)
+
+                   (and (:building entry)
+                        (= epoch (:epoch entry)))
+                   (do
+                     (vreset! decision [:coalesced (:building entry)])
+                     cache)
+
+                   :else
+                   (let [promise (promise)]
+                     (vreset! decision [:miss epoch promise])
+                     (assoc cache cache-key
+                            {:epoch epoch :building promise}))))))
+      (let [[mode first second] @decision]
+        (case mode
+          :hit
+          (do
+            (dashboard-cache-metric! :hits)
+            (assoc first :cache_status "hit"))
+
+          :coalesced
+          (do
+            (dashboard-cache-metric! :coalesced)
+            (let [built @first]
+              (if (:error built)
+                (throw (:error built))
+                (if (= epoch (get @dashboard-state-epochs root-key 0))
+                  (assoc built :cache_status "coalesced")
+                  (recur)))))
+
+          :miss
+          (let [epoch first
+                promise second
+                started (System/nanoTime)]
+            (dashboard-cache-metric! :misses)
+            (let [result
+                  (try
+                    (let [value (builder)
+                          elapsed (long (/ (- (System/nanoTime) started) 1000000.0))
+                          etag (when-let [body (:body value)]
+                                 (dashboard-etag body))
+                          built (cond-> (assoc value
+                                               :epoch epoch
+                                               :built-at (or (:built_at value)
+                                                             (dashboard-cache-now))
+                                               :build_ms elapsed)
+                                  etag (assoc :etag etag))
+                          current-epoch (get @dashboard-state-epochs root-key 0)]
+                      (swap! dashboard-cache-metrics
+                             #(-> %
+                                  (update :builds (fnil inc 0))
+                                  (assoc :last_build_ms elapsed)))
+                      (if (= epoch current-epoch)
+                        (swap! dashboard-state-cache assoc cache-key built)
+                        (swap! dashboard-state-cache
+                               (fn [cache]
+                                 (if (= promise
+                                        (get-in cache [cache-key :building]))
+                                   (dissoc cache cache-key)
+                                   cache))))
+                      (deliver promise built)
+                      (if (= epoch current-epoch)
+                        (assoc built :cache_status "miss")
+                        ::retry))
+                    (catch Throwable error
+                      (let [failure (bounded-dashboard-build-error id)]
+                        (swap! dashboard-cache-metrics
+                               update :failures (fnil inc 0))
+                        (swap! dashboard-state-cache
+                               (fn [cache]
+                                 (if (= promise
+                                        (get-in cache [cache-key :building]))
+                                   (dissoc cache cache-key)
+                                   cache)))
+                        (deliver promise {:epoch epoch :error failure})
+                        (throw failure))))]
+              (if (= result ::retry)
+                (recur)
+                result))))))))
+
+(defn build-authoritative-dashboard-state [root]
+  (binding [*state-cache* (atom {})]
     (if (forge/forge? root)
       (forge-dashboard-state root)
-      (dashboard-state root))
-    (binding [*state-cache* (atom {})]
-      (if (forge/forge? root)
-        (forge-dashboard-state root)
-        (dashboard-state root)))))
+      (dashboard-state root))))
+
+(defn cached-dashboard-snapshot [root]
+  (cached-dashboard-task
+   root :snapshot :authoritative
+   #(hash-map :value (build-authoritative-dashboard-state root))))
+
+(defn bounded-automation-section [items limit transform]
+  (let [items (vec items)]
+    {:count (count items)
+     :truncated (> (count items) limit)
+     :items (mapv transform (take limit items))}))
+
+(def automation-approval-limit 200)
+(def automation-clarification-limit 200)
+(def automation-project-limit 64)
+(def automation-card-limit 200)
+(def automation-activity-limit 64)
+(def automation-lane-limit 64)
+(def automation-identity-limit 512)
+(def automation-clarification-excerpt-limit 500)
+(def automation-clarification-excerpt-marker " [truncated]")
+
+(defn automation-approval [item]
+  (cond-> (select-keys item [:id :gate :task_id :task :kind :project])
+    (contains? item :reviews)
+    (assoc :has_reviews (boolean (seq (:reviews item))))))
+
+(def resolved-approval-resolutions
+  #{"approved" "sent_back" "automatic_spec_approval" "auto_approved"})
+
+(defn automation-resolved-approval [item]
+  (let [resolution (:resolution item)]
+    (when-not (and (string? resolution)
+                   (contains? resolved-approval-resolutions resolution))
+      (throw (bounded-dashboard-build-error :resolved-approval-resolution)))
+    (assoc (automation-approval item) :resolution resolution)))
+
+(defn automation-resolved-approval-section [items]
+  (bounded-automation-section
+   (mapv automation-resolved-approval items)
+   automation-approval-limit
+   identity))
+
+(defn automation-card [item]
+  (select-keys item [:name :id :lane :updated_at :audit_count :batch :merging]))
+
+(defn automation-work-row [item]
+  (select-keys item [:task :tasks :batch_tasks :role :state :updated_at :activity]))
+
+(defn automation-activity [item]
+  (select-keys item [:alive :state :heat :last_changed_at]))
+
+(defn code-point-length [text]
+  (.codePointCount ^String text 0 (.length ^String text)))
+
+(defn code-point-prefix [text maximum]
+  (if (<= (code-point-length text) maximum)
+    text
+    (subs text 0 (.offsetByCodePoints ^String text 0 (int maximum)))))
+
+(defn automation-clarification-question [text]
+  (let [text (when (string? text)
+               (-> text
+                   (str/replace #"[\p{Cc}\p{Cf}]" " ")
+                   (str/replace #"\s+" " ")
+                   (str/replace clarification-path-re "[redacted-path]")
+                   (str/replace chat-token-re "[redacted-token]")
+                   str/trim))]
+    (when-not (str/blank? text)
+      (if (> (code-point-length text)
+             automation-clarification-excerpt-limit)
+        (let [prefix-limit (- automation-clarification-excerpt-limit
+                              (code-point-length
+                               automation-clarification-excerpt-marker))]
+          (str (code-point-prefix text prefix-limit)
+               automation-clarification-excerpt-marker))
+        text))))
+
+(defn automation-clarification [item]
+  (assoc (select-keys item
+                      [:id :status :role :created_at :project :author :direction
+                       :kind :clarification_id :attention :answered_at
+                       :answered_by :withdrawn_at :seen_at :updated_at])
+         :question_excerpt
+         (automation-clarification-question (:body item))))
+
+(defn typed-project-clarifications [root project]
+  (->> (list-chat root)
+       (filter #(= "clarification" (:kind %)))
+       (map #(assoc % :project project))
+       (sort-by (juxt #(str (:created_at %)) #(str (:id %))))
+       vec))
+
+(defn automation-project [item]
+  {:name (:name item)
+   :single_agent (boolean (:single_agent item))
+   :active_card (some-> (:active_card item) automation-card)
+   :idle (boolean (:idle item))
+   :lanes (bounded-automation-section (:lanes item) automation-lane-limit identity)
+   :cards (bounded-automation-section (:tasks item) automation-card-limit automation-card)
+   :activity (bounded-automation-section
+              (:work_in_flight item) automation-activity-limit automation-work-row)
+   :clarification_attention (:clarification_attention item)})
+
+(defn automation-projection [root snapshot]
+  (let [family? (forge/forge? root)
+        family-identity {:kind (if family? "family" "project")
+                         :name (str (fs/file-name root))}
+        projects (if family?
+                   (:projects snapshot)
+                   [{:name (:name family-identity)
+                     :single_agent (single-agent-project? root)
+                     :active_card (:active_card snapshot)
+                     :idle (:idle snapshot)
+                     :lanes (:lanes snapshot)
+                     :tasks (:tasks snapshot)
+                     :work_in_flight (:work_in_flight snapshot)
+                     :clarification_attention (:clarification_attention snapshot)}])
+        typed (mapcat
+               (fn [project]
+                 (typed-project-clarifications
+                  (if family?
+                    (open-project-root root (:name project))
+                    root)
+                  (:name project)))
+               projects)]
+    {:projection dashboard-automation-projection
+     :identity (assoc family-identity
+                      :all_projects
+                      (bounded-automation-section
+                       (if family?
+                         (:all_projects snapshot)
+                         [(:name family-identity)])
+                       automation-identity-limit
+                       identity)
+                      :open_projects
+                      (bounded-automation-section
+                       (if family?
+                         (:open_projects snapshot)
+                         [(:name family-identity)])
+                       automation-project-limit
+                       identity))
+     :approvals
+     (bounded-automation-section
+      (:approvals snapshot) automation-approval-limit automation-approval)
+     :resolved_approvals (automation-resolved-approval-section
+                          (:resolved_approvals snapshot))
+     :clarifications
+     {:legacy
+      (bounded-automation-section
+       (:clarifications snapshot) automation-clarification-limit
+       automation-clarification)
+      :typed
+      (bounded-automation-section
+       typed automation-clarification-limit automation-clarification)}
+     :projects
+     (bounded-automation-section
+      projects automation-project-limit automation-project)
+     :lieutenant_activity (some-> (:lieutenant_activity snapshot) automation-activity)}))
+
+(defn cached-dashboard-state [root]
+  (cached-dashboard-task
+   root :projection "dashboard-state-v1"
+   #(let [snapshot-result (cached-dashboard-snapshot root)
+          snapshot (:value snapshot-result)]
+      {:value snapshot
+       :body (json/generate-string snapshot)
+       :built_at (:built-at snapshot-result)})))
+
+(defn cached-automation-state [root]
+  (cached-dashboard-task
+   root :projection dashboard-automation-projection
+   #(let [snapshot-result (cached-dashboard-snapshot root)
+          snapshot (:value snapshot-result)
+          value (automation-projection root snapshot)]
+      {:value value
+       :body (json/generate-string value)
+       :built_at (:built-at snapshot-result)})))
+
+(defn record-dashboard-response-bytes! [body]
+  (swap! dashboard-cache-metrics
+         assoc :last_response_bytes
+         (count (.getBytes (str body) "UTF-8"))))
+
+(defn dashboard-cache-headers [projection result]
+  (cond-> {"Content-Type" "application/json"
+           "Cache-Control" "no-store"
+           "X-SwarmForge-Projection" projection
+           "X-SwarmForge-Cache" (or (:cache_status result) "miss")
+           "X-SwarmForge-Build-Ms" (str (or (:build_ms result) 0))}
+    (:etag result)
+    (assoc "ETag" (:etag result))))
+
+(defn api-state [root]
+  (:value (cached-dashboard-snapshot root)))
 
 (defn health-response []
   {:status 200
@@ -1978,44 +2432,93 @@
        (sort-by :thread_id)
        vec))
 
-(defn paged-chat-state [root pagination]
-  (let [thread-id (:thread_id pagination)
-        limit (:limit pagination)
-        boundary (when-let [cursor (:cursor pagination)]
-                   (decode-chat-cursor thread-id cursor))
-        all-general (vec (ordered-general-chat root))
-        thread-turns (filter #(= thread-id (:thread_id %)) all-general)
-        eligible (if boundary
-                   (filter #(neg? (compare (chat-order %)
-                                           (chat-order boundary)))
-                           thread-turns)
-                   thread-turns)
-        page (vec (take-last limit eligible))
-        has-more (> (count eligible) limit)
-        next-cursor (when has-more
-                      (encode-chat-cursor thread-id (first page)))
-        page-ids (set (map :id page))
-        pending (->> thread-turns
-                     (filter #(= "pending" (:status %)))
-                     (remove #(contains? page-ids (:id %)))
-                     (sort-by chat-order)
-                     vec)
-        summary (chat-conversation-summary thread-id thread-turns)
-        base (api-state root)]
-    (assoc base
-           :chat page
-           :chat_conversations (chat-conversation-summaries all-general)
-           :chat_page {:thread_id thread-id
-                       :limit limit
-                       :has_more has-more
-                       :next_cursor next-cursor
-                       :conversation summary
-                       :pending_turns pending})))
+(defn paged-chat-state
+  ([root pagination]
+   (paged-chat-state root pagination (api-state root)))
+  ([root pagination base]
+   (let [thread-id (:thread_id pagination)
+         limit (:limit pagination)
+         boundary (when-let [cursor (:cursor pagination)]
+                    (decode-chat-cursor thread-id cursor))
+         all-general (vec (ordered-general-chat root))
+         thread-turns (filter #(= thread-id (:thread_id %)) all-general)
+         eligible (if boundary
+                    (filter #(neg? (compare (chat-order %)
+                                            (chat-order boundary)))
+                            thread-turns)
+                    thread-turns)
+         page (vec (take-last limit eligible))
+         has-more (> (count eligible) limit)
+         next-cursor (when has-more
+                       (encode-chat-cursor thread-id (first page)))
+         page-ids (set (map :id page))
+         pending (->> thread-turns
+                      (filter #(= "pending" (:status %)))
+                      (remove #(contains? page-ids (:id %)))
+                      (sort-by chat-order)
+                      vec)
+         summary (chat-conversation-summary thread-id thread-turns)]
+     (assoc base
+            :chat page
+            :chat_conversations (chat-conversation-summaries all-general)
+            :chat_page {:thread_id thread-id
+                        :limit limit
+                        :has_more has-more
+                        :next_cursor next-cursor
+                        :conversation summary
+                        :pending_turns pending}))))
 
 (defn api-state-with-chat-page [root uri]
   (if-let [pagination (chat-page-parameters uri)]
     (paged-chat-state root pagination)
     (api-state root)))
+
+(defn not-modified-response [projection result]
+  (swap! dashboard-cache-metrics update :not_modified (fnil inc 0))
+  {:status 304
+   :headers (dashboard-cache-headers projection result)
+   :body nil})
+
+(defn dashboard-state-response
+  ([root uri]
+   (dashboard-state-response root uri nil))
+  ([root uri headers]
+   (if-let [pagination (chat-page-parameters uri)]
+     (let [snapshot (cached-dashboard-snapshot root)
+           body (json/generate-string
+                 (paged-chat-state root pagination (:value snapshot)))
+           result (assoc snapshot :etag (dashboard-etag body))]
+       (if (matching-etag? (request-header headers "If-None-Match")
+                           (:etag result))
+         (not-modified-response "dashboard-state-page-v1" result)
+         (do
+           (record-dashboard-response-bytes! body)
+           {:status 200
+            :headers (dashboard-cache-headers "dashboard-state-page-v1" result)
+            :body body})))
+     (let [result (cached-dashboard-state root)]
+       (if (matching-etag? (request-header headers "If-None-Match")
+                           (:etag result))
+         (not-modified-response "dashboard-state-v1" result)
+         (do
+           (record-dashboard-response-bytes! (:body result))
+           {:status 200
+            :headers (dashboard-cache-headers "dashboard-state-v1" result)
+            :body (:body result)}))))))
+
+(defn automation-state-response
+  ([root]
+   (automation-state-response root nil))
+  ([root headers]
+   (let [result (cached-automation-state root)]
+     (if (matching-etag? (request-header headers "If-None-Match")
+                         (:etag result))
+       (not-modified-response dashboard-automation-projection result)
+       (do
+         (record-dashboard-response-bytes! (:body result))
+         {:status 200
+          :headers (dashboard-cache-headers dashboard-automation-projection result)
+          :body (:body result)})))))
 
 (defn require-root! [root]
   (when (str/blank? root)
@@ -2963,8 +3466,11 @@
             (forge/read-open-projects forge))
       (throw (ex-info (str "Unknown clarification: " id) {:http-status 404}))))
 
-(defn handle-get [root uri]
-  (cond
+(defn handle-get
+  ([root uri]
+   (handle-get root uri nil))
+  ([root uri headers]
+   (cond
     (= "/" uri)
     {:status 200
      :headers {"Content-Type" "text/html; charset=utf-8"}
@@ -2974,9 +3480,10 @@
     (health-response)
 
     (= "/api/state" (first (str/split (or uri "") #"\?")))
-    {:status 200
-     :headers {"Content-Type" "application/json"}
-     :body (json/generate-string (api-state-with-chat-page root uri))}
+    (dashboard-state-response root uri headers)
+
+    (= "/api/automation-state" (first (str/split (or uri "") #"\?")))
+    (automation-state-response root headers)
 
     (agent-pane-role uri)
     (get-agent-pane (request-project-root root uri) uri)
@@ -2996,7 +3503,7 @@
     (= "/api/mission" (first (str/split (or uri "") #"\?")))
     (get-mission (request-project-root root uri))
 
-    :else {:status 404 :body "Not found"}))
+    :else {:status 404 :body "Not found"})))
 
 (defn confirm-teardown? [body]
   (let [text (str/trim (or body ""))]
@@ -3152,12 +3659,30 @@
     (post-clarification (scoped-clar-root root uri) uri body)
     :else {:status 404 :body "Not found"}))
 
-(defn handle-request [root {:keys [method uri body]}]
+(defn dashboard-success-response? [response]
+  (<= 200 (long (or (:status response) 500)) 299))
+
+(defn dashboard-write-reason [uri]
+  (let [path (first (str/split (or uri "") #"\?"))]
+    (cond
+      (= path "/api/teardown") "teardown"
+      (str/starts-with? (or path "") "/api/projects") "project-write"
+      (str/starts-with? (or path "") "/api/tasks") "task-write"
+      (= path "/api/chat") "chat-write"
+      (str/starts-with? (or path "") "/api/approvals") "approval-write"
+      (str/starts-with? (or path "") "/api/clarifications") "clarification-write"
+      :else "dashboard-write")))
+
+(defn handle-request [root {:keys [method uri body headers]}]
   (try
-    (case method
-      "GET" (handle-get root uri)
-      "POST" (handle-post root uri body)
-      {:status 404 :body "Not found"})
+    (let [response (case method
+                     "GET" (handle-get root uri headers)
+                     "POST" (handle-post root uri body)
+                     {:status 404 :body "Not found"})]
+      (when (and (= method "POST")
+                 (dashboard-success-response? response))
+        (invalidate-dashboard-state! root (dashboard-write-reason uri)))
+      response)
     (catch Exception e
       (http-error (or (:http-status (ex-data e)) 500) (.getMessage e)))))
 
@@ -3369,19 +3894,25 @@
                     (str "… +29 lines (ctrl + t to view transcript)\n"
                          "• Working (2s • esc to interrupt)\n")))
 
-(defn test-status-pane! [root text]
+(defn test-status-pane! [root text alive command]
   (require-root! root)
-  (binding [*pane-text* (or text "")]
+  (invalidate-dashboard-state! root "test-pane-change")
+  (binding [*pane-text* (or text "")
+            *lieutenant-activity-context*
+            (when (= "alive" alive)
+              {:alive? true :command (or command "")})]
     (println (:body (handle-request root {:method "GET" :uri "/api/state"})))))
 
 (defn test-status-persist! [root first-text second-text]
   (require-root! root)
+  (invalidate-dashboard-state! root "test-pane-change")
   (reset! pane-status {})
   (reset! pane-status-lines {})
   (binding [*pane-text* (or first-text "")]
     (let [first-status (:status (first (:tasks (json/parse-string
                                                 (:body (handle-request root {:method "GET" :uri "/api/state"}))
                                                 true))))]
+      (invalidate-dashboard-state! root "test-pane-change")
       (binding [*pane-text* (or second-text "")]
         (let [second-status (:status (first (:tasks (json/parse-string
                                                      (:body (handle-request root {:method "GET" :uri "/api/state"}))
@@ -3458,9 +3989,10 @@
 (defn test-health-during-slow-state! [root]
   (require-root! root)
   (let [metrics (atom {})]
-    (with-redefs [api-state (fn [_]
-                              (Thread/sleep 650)
-                              {:slow_state true})]
+    (with-redefs [build-authoritative-dashboard-state
+                  (fn [_]
+                    (Thread/sleep 650)
+                    {:slow_state true})]
       (binding [*state-metrics* metrics]
         (let [state-job (future
                           (handle-request root {:method "GET" :uri "/api/state"}))
@@ -3487,6 +4019,7 @@
         health-ms (atom [])]
     (binding [*state-metrics* metrics]
       (dotimes [_ iterations]
+        (reset-dashboard-cache!)
         (reset! metrics {})
         (let [started (System/nanoTime)
               response (handle-request root {:method "GET" :uri "/api/state"})]
@@ -3635,7 +4168,8 @@
   (fn [req]
     (handle-request root {:method (str/upper-case (name (:request-method req)))
                           :uri (request-uri req)
-                          :body (request-body req)})))
+                          :body (request-body req)
+                          :headers (:headers req)})))
 
 (defn write-dashboard-url! [root url]
   (let [file (fs/path root ".swarmforge" "dashboard-url")]

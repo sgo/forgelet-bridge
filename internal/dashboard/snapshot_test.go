@@ -248,6 +248,31 @@ func TestAutomationBoardsMarksOnlyTheDoneLane(t *testing.T) {
 	}
 }
 
+func TestSnapshotKeepsApprovalsWhenOnlyTheBoardViewFails(t *testing.T) {
+	state := testAutomationState()
+	state.Approvals = testSection([]AutomationApproval{{
+		ID: "approval-1", Project: "project", Card: "card",
+	}})
+	state.Projects = testSection([]AutomationProject{{
+		Name:     "project",
+		Lanes:    testSection([]string{}),
+		Cards:    testSection([]AutomationCard{}),
+		Activity: testSection([]AutomationActivity{}),
+	}})
+	server := automationServer(t, state, AutomationProjection)
+	defer server.Close()
+	snapshot, err := (SnapshotSource{Root: "/forge", ConfiguredURL: server.URL}).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if len(snapshot.Approvals) != 1 {
+		t.Errorf("approvals = %+v, want the usable approval", snapshot.Approvals)
+	}
+	if !snapshot.BoardFallback || snapshot.Boards != nil {
+		t.Errorf("boards = %+v, fallback = %t, want only a local board fallback", snapshot.Boards, snapshot.BoardFallback)
+	}
+}
+
 func TestSnapshotSourceReportsAnUnannouncedDashboard(t *testing.T) {
 	source := SnapshotSource{Root: t.TempDir()}
 	if _, err := source.Identity(); err == nil {

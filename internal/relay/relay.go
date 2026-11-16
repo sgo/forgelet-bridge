@@ -35,6 +35,9 @@ type DashboardSnapshot struct {
 	TypedClarifications []Clarification
 	// Boards are the open project boards carried by the same projection.
 	Boards []Board
+	// BoardFallback asks activity to use the independent board adapter for a
+	// projection that did not carry usable lanes.
+	BoardFallback bool
 }
 
 // RoomEvent is one message the bridge has seen in the chat room. Body is the

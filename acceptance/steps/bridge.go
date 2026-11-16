@@ -2,6 +2,9 @@ package steps
 
 import (
 	"context"
+	"time"
+
+	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 )
 
 func fixturesRunning(_ context.Context, world any, captures []string) error {
@@ -67,6 +70,13 @@ func bridgeCaughtUp(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
 	defer cancel()
+	// Direct workspace writes become authoritative inside the dashboard's
+	// documented freshness bound. A bridge catch-up means at least one tick
+	// after that bound, so a test cannot collapse two external writes into
+	// the bridge's first observation of either one.
+	if err := fixtures.Sleep(ctx, 800*time.Millisecond); err != nil {
+		return err
+	}
 	return w.caughtUp(ctx)
 }
 

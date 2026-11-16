@@ -38,6 +38,8 @@ type projectRemovalScenario struct {
 	planRawOutput string
 	planBridgeLog string
 	planDone      bool
+	bridgePaused  bool
+	bridgePids    []int
 }
 
 func recordManagedProjects(_ context.Context, world any, captures []string) error {

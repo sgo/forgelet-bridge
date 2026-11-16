@@ -205,6 +205,7 @@ func newWorldWithBackend(backend fixtures.MatrixBackend) *World {
 func (w *World) Close() {
 	teardownStart := time.Now()
 	defer func() { w.writeProfile(time.Since(teardownStart)) }()
+	w.resumeBridgeAfterPlan()
 	w.stopBridge()
 	w.stopAdapterBridge()
 	for _, socket := range w.sockets {

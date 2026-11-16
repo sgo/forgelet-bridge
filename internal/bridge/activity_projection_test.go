@@ -13,10 +13,14 @@ import (
 type countingBoard struct {
 	board *fakeBoard
 	calls int
+	err   error
 }
 
 func (b *countingBoard) Boards() ([]relay.Board, error) {
 	b.calls++
+	if b.err != nil {
+		return nil, b.err
+	}
 	return b.board.Boards()
 }
 
@@ -48,6 +52,39 @@ func TestActivityFromChoosesProjectionBoardsOrTheCompatibleStore(t *testing.T) {
 				t.Errorf("board store reads = %d, want %d", board.calls, test.wantStoreRead)
 			}
 		})
+	}
+}
+
+func TestActivityFromFallsBackWhenTheProjectionHasNoLanes(t *testing.T) {
+	board := &countingBoard{board: &fakeBoard{}}
+	built, _ := newTestBridgeWithStores(t, &fakeRooms{},
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	if _, err := built.activityFrom(context.Background(), "/forges/forge-a",
+		Room{ActivityRoomID: "!activity-forge-a"},
+		relay.DashboardSnapshot{BoardFallback: true}, true); err != nil {
+		t.Fatalf("activityFrom fallback: %v", err)
+	}
+	if board.calls != 1 {
+		t.Errorf("board store reads = %d, want one fallback read", board.calls)
+	}
+}
+
+func TestActivityFromReportsAFallbackBoardFailure(t *testing.T) {
+	board := &countingBoard{board: &fakeBoard{}, err: os.ErrPermission}
+	built, _ := newTestBridgeWithStores(t, &fakeRooms{},
+		map[string]ForgeStore{"/forges/forge-a": &fakeStore{}},
+		map[string]ApprovalStore{"/forges/forge-a": &fakeApprovals{}},
+		map[string]BoardStore{"/forges/forge-a": board}, "/forges/forge-a")
+	written, err := built.activityFrom(context.Background(), "/forges/forge-a",
+		Room{ActivityRoomID: "!activity-forge-a"},
+		relay.DashboardSnapshot{BoardFallback: true}, true)
+	if err == nil {
+		t.Fatal("activityFrom accepted a fallback board failure")
+	}
+	if written != 0 {
+		t.Errorf("activity work = %d, want none after a board failure", written)
 	}
 }
 

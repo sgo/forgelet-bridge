@@ -7,7 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"maunium.net/go/mautrix/event"
 
@@ -138,6 +142,20 @@ func (w *World) invokeProjectPlanArgs(servedName string, args ...string) error {
 	if w.projectRemoval == nil {
 		return fmt.Errorf("the scenario has not recorded managed projects")
 	}
+	ctx, cancel := stepContext()
+	defer cancel()
+	// Capture the state a running bridge has settled into. Otherwise a
+	// background tick could write its own progress during a read-only plan and
+	// make the observer mistake that progress for the plan's change.
+	if err := w.caughtUp(ctx); err != nil {
+		return err
+	}
+	if err := w.waitForStableBridgeState(ctx); err != nil {
+		return err
+	}
+	if err := w.pauseBridgeForPlan(); err != nil {
+		return err
+	}
 	w.projectRemoval.stateBefore, err = os.ReadFile(w.removalStatePath())
 	if err != nil {
 		return err
@@ -152,9 +170,8 @@ func (w *World) invokeProjectPlanArgs(servedName string, args ...string) error {
 	}
 	w.projectRemoval.planDone = false
 
-	ctx, cancel := stepContext()
-	defer cancel()
 	if _, runErr := w.adapterCommand(ctx, append([]string{"remove-project-plan"}, args...)...); runErr != nil {
+		w.resumeBridgeAfterPlan()
 		return fmt.Errorf("project removal plan exited with %v: %s", runErr, w.adapterOutput)
 	}
 	output := strings.TrimSpace(w.adapterStdout)
@@ -164,6 +181,7 @@ func (w *World) invokeProjectPlanArgs(servedName string, args ...string) error {
 	} else {
 		var report removalReport
 		if err := json.Unmarshal([]byte(output), &report); err != nil {
+			w.resumeBridgeAfterPlan()
 			return fmt.Errorf("project removal plan did not return ready or one JSON object: %q: %w", output, err)
 		}
 		w.projectRemoval.planStatus = report.Status
@@ -173,6 +191,95 @@ func (w *World) invokeProjectPlanArgs(servedName string, args ...string) error {
 	w.projectRemoval.rawOutput = w.adapterStdout
 	w.projectRemoval.planDone = true
 	return nil
+}
+
+func (w *World) pauseBridgeForPlan() error {
+	if w.bridge != nil && w.bridge.cmd != nil && w.bridge.cmd.Process != nil {
+		if err := w.bridge.cmd.Process.Signal(syscall.SIGSTOP); err != nil {
+			return fmt.Errorf("pause the bridge for a read-only plan: %w", err)
+		}
+		w.projectRemoval.bridgePaused = true
+		return nil
+	}
+	binary, err := w.bridgeBinary()
+	if err != nil {
+		return err
+	}
+	config := w.bridgeConfigOf(w.servedRoot)
+	pattern := regexp.QuoteMeta(binary + " --config " + config)
+	output, err := exec.Command("pgrep", "-f", pattern).Output()
+	if err != nil {
+		return fmt.Errorf("find the adapter's bridge for a read-only plan: %w", err)
+	}
+	for _, field := range strings.Fields(string(output)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			return fmt.Errorf("parse the adapter's bridge pid %q: %w", field, err)
+		}
+		comm, err := exec.Command("ps", "-p", field, "-o", "comm=").Output()
+		if err != nil {
+			return fmt.Errorf("inspect the adapter's bridge pid %d: %w", pid, err)
+		}
+		if strings.TrimSpace(string(comm)) != binary {
+			continue
+		}
+		if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
+			return fmt.Errorf("pause the adapter's bridge pid %d: %w", pid, err)
+		}
+		w.projectRemoval.bridgePids = append(w.projectRemoval.bridgePids, pid)
+	}
+	if len(w.projectRemoval.bridgePids) == 0 {
+		return fmt.Errorf("the adapter's bridge process was not found")
+	}
+	w.projectRemoval.bridgePaused = true
+	return nil
+}
+
+func (w *World) resumeBridgeAfterPlan() {
+	if w.projectRemoval == nil || !w.projectRemoval.bridgePaused {
+		return
+	}
+	if w.bridge != nil && w.bridge.cmd != nil && w.bridge.cmd.Process != nil {
+		_ = w.bridge.cmd.Process.Signal(syscall.SIGCONT)
+	}
+	for _, pid := range w.projectRemoval.bridgePids {
+		_ = syscall.Kill(pid, syscall.SIGCONT)
+	}
+	w.projectRemoval.bridgePids = nil
+	w.projectRemoval.bridgePaused = false
+}
+
+func (w *World) waitForStableBridgeState(ctx context.Context) error {
+	var last []byte
+	var stableSince time.Time
+	for {
+		current, err := os.ReadFile(w.removalStatePath())
+		if err != nil {
+			return err
+		}
+		now := time.Now()
+		if !equalBytes(last, current) {
+			last = current
+			stableSince = now
+		} else if now.Sub(stableSince) >= 750*time.Millisecond {
+			return nil
+		}
+		if err := fixtures.Sleep(ctx, 50*time.Millisecond); err != nil {
+			return err
+		}
+	}
+}
+
+func equalBytes(left, right []byte) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func projectPlanResultReports(_ context.Context, world any, captures []string) error {
@@ -211,6 +318,7 @@ func projectPlanLeftBridgeRunning(_ context.Context, world any, _ []string) erro
 
 func projectPlanChangedNothing(_ context.Context, world any, _ []string) error {
 	w := world.(*World)
+	defer w.resumeBridgeAfterPlan()
 	stateAfter, err := os.ReadFile(w.removalStatePath())
 	if err != nil {
 		return err
