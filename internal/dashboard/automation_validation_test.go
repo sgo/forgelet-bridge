@@ -8,18 +8,19 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
 
-func TestLegacyProjectionErrorIdentifiesTheResolvedApprovalRolloutGap(t *testing.T) {
+func TestLegacyClarificationErrorFailsPendingLegacyWorkClosed(t *testing.T) {
 	state := testAutomationState()
-	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
-		ID: "old", Project: "project",
+	question := "which stage?"
+	state.Clarifications.Legacy = testSection([]AutomationClarification{{
+		ID: "old", Status: "pending", Project: "project", Role: "coder", QuestionExcerpt: &question,
 	}})
 	err := validateAutomationState(state)
-	var legacy LegacyProjectionError
+	var legacy LegacyClarificationError
 	if !errors.As(err, &legacy) {
-		t.Fatalf("error = %v, want LegacyProjectionError", err)
+		t.Fatalf("error = %v, want LegacyClarificationError", err)
 	}
-	if !strings.Contains(legacy.Error(), "resolved-approval resolutions") {
-		t.Errorf("error = %q, want the rollout gap", legacy.Error())
+	if !strings.Contains(legacy.Error(), "legacy clarification") {
+		t.Errorf("error = %q, want the retired clarification lane", legacy.Error())
 	}
 }
 

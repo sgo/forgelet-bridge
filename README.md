@@ -48,14 +48,14 @@ inside it, invites the configured operator, and then:
 - a restart repeats nothing, in either direction.
 
 On each bridge tick the bridge requests `/api/automation-state` once from each
-configured dashboard. Pending approvals, exact desk resolutions, legacy
-clarifications, typed project-chat clarifications and project board activity
-are all derived from that bounded `automation-v1` response. During controlled
-dashboard rollout, an older dashboard may use one 2 MiB-bounded `/api/state`
-compatibility read, and the bridge reports that fallback in its status. Other
-malformed projections leave their dependent consumers unserved for that tick; a
-later tick performs a fresh read instead of reusing stale state or fabricating
-empty state.
+configured dashboard. Pending approvals, exact desk resolutions, typed
+project-chat clarifications and project board activity are all derived from that
+bounded `automation-v1` response. Typed project clarifications are the only
+bridge clarification authority. A pending legacy row, a mixed legacy/typed
+projection, a malformed row, or an unsupported endpoint fails that Family's
+dependent consumers closed and appears in bridge status; there is no
+full-state or legacy fallback. A later tick performs a fresh read instead of
+reusing stale state or fabricating empty state.
 
 The app prefix is presentation metadata, not impersonation: the event remains
 under the bridge's Matrix account and keeps a normal thread root for the
@@ -76,25 +76,23 @@ the desktop. Once an approval is resolved, from the phone or from the desktop,
 the thread says so and nothing can approve it twice. Deleting work and tearing
 projects down stay on the desktop too.
 
-The clarifications room carries the questions a forge's agents are blocked on.
-Each pending clarification arrives as a message naming the project, the role
-that is blocked, and the question itself. A reply in its thread is the answer -
+The clarifications room carries typed project-chat questions. Each question
+arrives as a message naming the project and the bounded question excerpt. A
+reply in its thread is the answer -
 unlike an approval, where a reply sends the work back - and the operator's
-words are carried back through the dashboard, which is what wakes the blocked
-role with them and resolves the clarification; the thread then says it was
-answered. A reply the phone makes by quoting the message counts as a reply as
-well, and the quote the phone writes into the body is not read as the answer. A
-clarification answered from the desktop is marked resolved in the room rather
-than left looking open.
+words are carried back through the owning project's normal `/api/chat` path,
+which wakes that project and marks the clarification answered. A reply the
+phone makes by quoting the message counts as a reply as well, and the quote the
+phone writes into the body is not read as the answer.
 
-Typed project-chat clarifications follow the same operator path. Only an open,
+Only an open,
 unseen row posts a notice, so repeated ticks and restarts do not duplicate it.
 A seen row stays answerable without another notice, while answered or withdrawn
 rows clear the bridge's notification record. A Matrix answer is delivered with
 the clarification id through the owning project's normal `/api/chat` endpoint;
-the dashboard marks it answered and wakes that project agent. Legacy and typed
-questions retain separate identities, and the bridge copies only the bounded
-`question_excerpt` into Matrix.
+the dashboard marks it answered and wakes that project agent. The bridge copies
+only the bounded `question_excerpt` into Matrix. Existing Matrix room history is
+kept when obsolete legacy bridge records are reconciled away.
 
 The activity room is a log to keep quiet: a card appearing, moving to another
 lane, or finishing in one of the forge's open projects arrives as one short

@@ -24,6 +24,7 @@ func main() {
 	configPath := flag.String("config", "forgelet-bridge.json", "path to the bridge configuration")
 	interval := flag.Duration("interval", time.Second, "how often the bridge checks the forge and its chat room")
 	validate := flag.Bool("validate", false, "check the configuration and exit, without serving anything")
+	typedPreflight := flag.Bool("typed-clarification-preflight", false, "verify every configured Family serves the typed clarification contract and exit")
 	removeForge := flag.String("remove-forge", removalUnset, "remove one configured forge's Matrix rooms and state")
 	planRemoval := flag.String("remove-forge-plan", removalUnset, "validate a forge removal before the adapter stops the bridge")
 	removeProject := flag.String("remove-project", removalUnset, "remove one managed project's Matrix room and state")
@@ -62,6 +63,13 @@ func main() {
 		}
 		return
 	}
+	if *typedPreflight {
+		if err := checkTypedClarifications(*configPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -77,6 +85,33 @@ func main() {
 func check(configPath string) error {
 	_, err := config.Load(configPath)
 	return err
+}
+
+// checkTypedClarifications is the rollout gate for retiring the bridge's
+// legacy clarification authority. It reads every configured Family's bounded
+// projection and prints only a count; callers turn an error into a bounded
+// deployment refusal.
+func checkTypedClarifications(configPath string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+	for _, forge := range cfg.Forges {
+		address, err := dashboard.URL(forge.Root, forge.DashboardURL)
+		if err != nil {
+			return fmt.Errorf("typed clarification preflight for Family %s: %w", cfg.ForgeName(forge.Root), err)
+		}
+		state, err := dashboard.NewForgeAPI(forge.Root, address).AutomationState(context.Background())
+		if err != nil {
+			return fmt.Errorf("typed clarification preflight for Family %s: %w", cfg.ForgeName(forge.Root), err)
+		}
+		if state.Identity.Kind != "family" {
+			return fmt.Errorf("typed clarification preflight for Family %s: identity is %q, want family",
+				cfg.ForgeName(forge.Root), state.Identity.Kind)
+		}
+	}
+	fmt.Printf("typed clarification preflight passed for %d Families\n", len(cfg.Forges))
+	return nil
 }
 
 func run(ctx context.Context, configPath string, interval time.Duration, log *slog.Logger) error {

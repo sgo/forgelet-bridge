@@ -1,10 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/unclebob/forgelet-bridge/internal/dashboard"
 )
 
 // goodConfig is a configuration the bridge would serve.
@@ -48,5 +53,65 @@ func TestCheckRefusesAConfiguredTwice(t *testing.T) {
 func TestCheckRefusesAConfigurationThatIsNotJSON(t *testing.T) {
 	if err := check(writeConfig(t, "not json")); err == nil {
 		t.Fatal("check accepted a configuration that is not JSON")
+	}
+}
+
+func TestTypedClarificationPreflightAcceptsEveryFamilyProjection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
+		_ = json.NewEncoder(writer).Encode(preflightState("family", "One"))
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	config := `{
+  "homeserver_url": "https://matrix.example.org",
+  "user_id": "@bridge:example.org",
+  "access_token": "token",
+  "operator": "@operator:example.org",
+  "forges": [{"root": "` + root + `", "name": "One", "dashboard_url": "` + server.URL + `"}]
+}`
+	if err := checkTypedClarifications(writeConfig(t, config)); err != nil {
+		t.Fatalf("typed clarification preflight: %v", err)
+	}
+}
+
+func TestTypedClarificationPreflightRefusesANonFamilyProjection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
+		_ = json.NewEncoder(writer).Encode(preflightState("project", "One"))
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	config := `{
+  "homeserver_url": "https://matrix.example.org",
+  "user_id": "@bridge:example.org",
+  "access_token": "token",
+  "operator": "@operator:example.org",
+  "forges": [{"root": "` + root + `", "name": "One", "dashboard_url": "` + server.URL + `"}]
+}`
+	err := checkTypedClarifications(writeConfig(t, config))
+	if err == nil || !strings.Contains(err.Error(), "want family") {
+		t.Fatalf("error = %v, want the Family identity refusal", err)
+	}
+}
+
+func preflightState(kind, name string) dashboard.AutomationState {
+	section := func(count int) *dashboard.AutomationSection[string] {
+		return &dashboard.AutomationSection[string]{Count: count, Items: make([]string, count)}
+	}
+	return dashboard.AutomationState{
+		Projection: dashboard.AutomationProjection,
+		Identity: &dashboard.AutomationIdentity{
+			Kind: kind, Name: name, AllProjects: section(0), OpenProjects: section(0),
+		},
+		Approvals:         &dashboard.AutomationSection[dashboard.AutomationApproval]{},
+		ResolvedApprovals: &dashboard.AutomationSection[dashboard.AutomationResolvedApproval]{},
+		Clarifications: &dashboard.AutomationClarifications{
+			Legacy: &dashboard.AutomationSection[dashboard.AutomationClarification]{},
+			Typed:  &dashboard.AutomationSection[dashboard.AutomationClarification]{},
+		},
+		Projects: &dashboard.AutomationSection[dashboard.AutomationProject]{},
 	}
 }

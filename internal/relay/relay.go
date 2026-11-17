@@ -28,19 +28,13 @@ type Request struct {
 type DashboardSnapshot struct {
 	Approvals         []Approval
 	ResolvedApprovals map[string]string
-	Clarifications    []Clarification
-	// TypedClarifications are validated project-chat clarifications retained
-	// for the notification-parity consumer. Legacy notification behavior does
-	// not silently absorb them.
+	// TypedClarifications are the only clarification authority.
 	TypedClarifications []Clarification
 	// Boards are the open project boards carried by the same projection.
 	Boards []Board
 	// BoardFallback asks activity to use the independent board adapter for a
 	// projection that did not carry usable lanes.
 	BoardFallback bool
-	// ProjectionFallback records that this snapshot came through the temporary
-	// bounded full-state compatibility path during dashboard rollout.
-	ProjectionFallback bool
 }
 
 // RoomEvent is one message the bridge has seen in the chat room. Body is the

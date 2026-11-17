@@ -164,10 +164,9 @@ func fakeProjectServesClarification(_ context.Context, world any, captures []str
 	fake := fixtures.StartFakeDashboard()
 	question := captures[4]
 	fake.SetState(automationStateWithClarification(dashboard.AutomationClarification{
-		ID:      "clarification-" + project,
-		Status:  "pending",
-		Project: project,
-		Role:    captures[3], QuestionExcerpt: &question,
+		ID: "typed-request-" + project, ClarificationID: "clarification-" + project,
+		Status: "open", Attention: "unseen", Project: project,
+		Role: captures[3], QuestionExcerpt: &question,
 	}))
 	if err := os.WriteFile(filepath.Join(root, dashboard.URLFile), []byte(fake.URL()+"\n"), 0o644); err != nil {
 		fake.Close()
@@ -204,18 +203,11 @@ func fakeForgesNextServeClarifications(_ context.Context, world any, captures []
 		project := captures[index+1]
 		question := "which stage is next?"
 		fake.UpdateState(func(state dashboard.AutomationState) dashboard.AutomationState {
-			if state.Clarifications == nil {
-				state.Clarifications = &dashboard.AutomationClarifications{
-					Legacy: automationSection([]dashboard.AutomationClarification{}),
-					Typed:  automationSection([]dashboard.AutomationClarification{}),
-				}
-			}
-			state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
-				ID:              "clarification-" + project,
-				Status:          "pending",
-				Project:         project,
-				Role:            "coder",
-				QuestionExcerpt: &question,
+			ensureAutomationClarifications(&state)
+			state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{{
+				ID: "typed-request-" + project, ClarificationID: "clarification-" + project,
+				Status: "open", Attention: "unseen",
+				Project: project, Role: "coder", QuestionExcerpt: &question,
 			}})
 			return state
 		})
@@ -337,18 +329,6 @@ func bridgeLastErrorSaysUnsupported(_ context.Context, world any, _ []string) er
 	return nil
 }
 
-func statusReportsProjectionFallback(_ context.Context, world any, captures []string) error {
-	w := world.(*World)
-	status, err := readStatus(filepath.Join(w.stateDir, bridge.StatusName))
-	if err != nil {
-		return err
-	}
-	if !fixtures.Contains(status.ProjectionFallbacks, captures[1]) {
-		return fmt.Errorf("projection fallbacks = %v, want %s", status.ProjectionFallbacks, captures[1])
-	}
-	return nil
-}
-
 func forgeApprovalRoomHoldsOnly(_ context.Context, world any, captures []string) error {
 	w := world.(*World)
 	ctx, cancel := stepContext()
@@ -456,12 +436,11 @@ func automationStateWithClarification(clarification dashboard.AutomationClarific
 	if clarification.Project == "" {
 		clarification.Project = "forgelet-bridge"
 	}
-	state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{clarification})
+	state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{clarification})
 	return state
 }
 
 func automationFullState() dashboard.AutomationState {
-	question := "which stage is next?"
 	typedQuestion := "which typed stage is next?"
 	state := automationState()
 	state.Approvals = automationSection([]dashboard.AutomationApproval{{
@@ -472,13 +451,9 @@ func automationFullState() dashboard.AutomationState {
 		ID: "approval-card-a", Project: "forgelet-bridge", Card: "card-a",
 		Resolution: relay.ResolutionApproved,
 	}})
-	state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
-		ID: "clarification-snapshot", Status: "pending", Project: "forgelet-bridge",
-		Role: "coder", QuestionExcerpt: &question,
-	}})
 	state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{{
 		ID: "typed-request", ClarificationID: "clarification-typed", Status: "open",
-		Project: "forgelet-bridge", Attention: "seen", QuestionExcerpt: &typedQuestion,
+		Project: "forgelet-bridge", Attention: "unseen", QuestionExcerpt: &typedQuestion,
 	}})
 	state.Projects = automationSection([]dashboard.AutomationProject{{
 		Name:     "forgelet-bridge",

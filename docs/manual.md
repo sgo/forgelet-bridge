@@ -57,13 +57,14 @@ discriminator, validates the bounded shape and decodes one
 `internal/dashboard.AutomationState` into one
 `internal/relay.DashboardSnapshot`. `internal/dashboard.AutomationProjection`
 names the accepted discriminator. `internal/bridge.SnapshotStore` shares that
-value among approvals, resolved approvals, legacy clarifications and project
+value among approvals, resolved approvals, typed clarifications and project
 board activity in the tick. Typed clarification rows are validated and carried
 in `DashboardSnapshot.TypedClarifications`; `internal/relay.Clarification`
 retains their project, stable clarification id, `open|answered|withdrawn`
-lifecycle and `unseen|seen` attention. A malformed lifecycle, attention value,
-identity, blank excerpt or truncated typed section fails the projection closed
-because a partial sample cannot safely reconcile previously posted notices.
+lifecycle and `unseen|seen` attention. A pending legacy row, mixed
+legacy/typed projection, malformed lifecycle, attention value, identity, blank
+excerpt or truncated typed section fails the projection closed because a
+partial sample cannot safely reconcile previously posted notices.
 
 The tick cache is keyed by both the forge root and the resolved dashboard
 address. Forge-level and project-level work that address the same dashboard
@@ -75,15 +76,12 @@ If the request fails, has the wrong projection header, or lacks a required
 bounded field, every consumer that needs that snapshot fails for the tick. The
 bridge does not retry in the same tick, substitute an earlier response or
 manufacture empty data. Chat relay continues because it does not depend on the
-projection. During controlled dashboard rollout, two older forms use a
-temporary compatibility read: HTTP 404/501, or the immediately preceding
-`automation-v1` shape whose resolved-approval rows have no `resolution` field.
-That path reads `/api/state` once under a 2 MiB bound, derives the same safe
-consumer fields, uses the independent board adapter, and names the affected
-Family in `projection_fallbacks` in bridge status. Unknown resolutions and every
-other malformed shape still fail closed. The fallback is removed after the
-controlled dashboard rollout. The dashboard's approval, send-back,
-clarification-answer and chat endpoints are unchanged.
+projection. Unsupported endpoints and older projections no longer use an
+`/api/state` compatibility read. They fail closed with a bounded `last_error`,
+no stale notification work and no revival of the legacy clarification store.
+Unknown resolutions and every malformed shape fail the same way. The shared
+dashboard approval, send-back, clarification-answer and chat endpoints remain
+available outside the bridge.
 
 Resolved approvals retain the exact bounded value. Manual `approved` selects
 the ➡ mark, manual `sent_back` selects ⬅, and the automatic endings
@@ -97,28 +95,35 @@ An open typed clarification posts in the Family Clarifications room only while
 its attention is `unseen`. The notification record has a typed,
 project-qualified identity, so the same clarification id in another project or
 Family remains distinct. The Family projection is the typed authority for its
-open projects; the duplicate project-dashboard row keeps the one automation
-read and Matrix behavior without creating a second notice. Open seen questions
-remain answerable without another post. A later snapshot that reports the row
-as answered or withdrawn, or no longer reports it, removes the typed
-notification record without posting stale work. Repeated ticks and bridge
-restarts therefore cannot duplicate an unseen notice, and a failed projection
-changes no notification record.
+open projects; a nested project-dashboard snapshot creates no second notice.
+Open seen questions remain answerable without another post. A later snapshot
+that reports the row as answered or withdrawn, or no longer reports it, removes
+the typed notification record without posting stale work. Reconciliation also
+removes obsolete legacy bridge records for that room while leaving every Matrix
+message and state event in place. Repeated ticks and bridge restarts therefore
+cannot duplicate an unseen notice, and a failed projection changes no
+notification record.
 
 `internal/dashboard.Clarifications.AnswerTyped` sends a Matrix answer to the
 owning project's normal `POST /api/chat` endpoint as
 `{"text":"...","clarification_id":"..."}`. It resolves exactly one marked,
 open project beneath the configured Family; an unknown, duplicate, mismatched
-or unmarked project fails the action closed. The legacy
-`/api/clarifications/<id>/answer` path remains unchanged for legacy rows.
+or unmarked project fails the action closed. The bridge no longer calls the
+legacy `/api/clarifications/<id>/answer` endpoint; that shared endpoint remains
+available outside the bridge.
+
+Deployment runs `forgelet-bridge --typed-clarification-preflight` before the
+adapter stops or starts the service. It reads every configured Family's live
+`automation-v1` typed section and requires a named Family identity. A failure
+refuses the deployment before a mixed-authority bridge can start.
 
 The fixed comparison in
-`docs/evidence/consume-bounded-automation-state-in-bridge.json` uses 32 ticks
-and two 1 MiB full-state dashboards. Both paths make 64 requests, one per
-dashboard per tick. Bytes fall from 67,114,048 to 1,424,096, a 97.9% reduction.
-The measured process CPU in that run fell from 1.513 seconds to 0.187 seconds,
-an 87.6% reduction. These synthetic figures isolate transfer and decoding; the
-deploy gate and operator acceptance check the live bridge and Matrix delivery.
+`docs/evidence/consume-bounded-automation-state-in-bridge.json` records the
+earlier measurement that motivated the bounded projection. Bytes fell from
+67,114,048 to 1,424,096, a 97.9% reduction; measured process CPU fell from
+1.513 seconds to 0.187 seconds, an 87.6% reduction. These synthetic figures
+isolate transfer and decoding. The deployment preflight and operator acceptance
+check the live bridge and Matrix delivery.
 The typed clarification E2E record in
 `docs/evidence/notify-typed-project-clarifications-through-bridge.json`
 creates an unseen question through the real project dashboard, observes its

@@ -180,20 +180,6 @@ func (a *API) State(ctx context.Context) (State, error) {
 	return state, nil
 }
 
-// compatibilityState reads the bounded full state used by dashboards that have
-// not yet rolled out the resolved-approval automation projection.
-func (a *API) compatibilityState(ctx context.Context) (State, error) {
-	_, _, data, err := a.exchange(ctx, http.MethodGet, "/api/state", nil, maxCompatibilityStateBytes)
-	if err != nil {
-		return State{}, fmt.Errorf("read dashboard state: %w", err)
-	}
-	var state State
-	if err := json.Unmarshal(data, &state); err != nil {
-		return State{}, fmt.Errorf("decode dashboard state: %w", err)
-	}
-	return state, nil
-}
-
 // approvals derives the pending approvals from a complete dashboard state.
 func (a *API) approvals(state State) []relay.Approval {
 	approvals := make([]relay.Approval, 0, len(state.Approvals))

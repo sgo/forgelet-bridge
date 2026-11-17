@@ -34,4 +34,8 @@
   "accept-superseded-automation-resolutions"
   {:procedure "qa/accept-superseded-automation-resolutions.md"
    :script "qa/accept-superseded-automation-resolutions.sh"
+   :required-inputs []}
+  "retire-legacy-clarification-path-from-bridge"
+  {:procedure "qa/retire-legacy-clarification-path-from-bridge.md"
+   :script "qa/retire-legacy-clarification-path-from-bridge.sh"
    :required-inputs []}}}

@@ -23,9 +23,6 @@ type Clarification struct {
 	// Lifecycle and Attention preserve the authoritative typed row fields.
 	Lifecycle string
 	Attention string
-	// Notify is set only for an open, unseen typed clarification. Legacy rows
-	// leave it false and keep their existing post-on-every-pending behavior.
-	Notify bool
 }
 
 // ClarificationState is what the bridge remembers about one clarification.
@@ -66,9 +63,6 @@ const (
 	// AnswerClarification carries the operator's answer back to the forge,
 	// which is what wakes the blocked role.
 	AnswerClarification ClarificationKind = "answer_clarification"
-	// ReplyClarification reports in the clarification's thread how it was
-	// answered.
-	ReplyClarification ClarificationKind = "reply_clarification"
 	// ReactClarification marks the clarification's own message with the
 	// bridge's reaction, so an answer the operator gave here carries no thread
 	// reply.
@@ -87,12 +81,9 @@ type ClarificationAction struct {
 	Reaction      string
 }
 
-// PlanClarifications works out what the clarifications room needs: a message
-// for every clarification the forge is waiting for, the operator's answer
-// carried back to the forge, and the answer carried to the operator once a
-// clarification is answered - marked on the clarification's own message when
-// the operator answered here, and replied to in its thread when the answer came
-// from the desktop.
+// PlanClarifications works out what the clarifications room needs: one message
+// for every open, unseen typed clarification, the operator's answer carried
+// through project chat, and one mark when that answer lands.
 //
 // A clarification's answer is free text, so a reply is what the room takes
 // rather than a gesture: any reply of the operator's in the clarification's
@@ -160,7 +151,8 @@ func awaitingAnswer(st State, key string) bool {
 func unpostedClarifications(st State, pending []Clarification) []ClarificationAction {
 	var actions []ClarificationAction
 	for _, clarification := range pending {
-		unseen := clarification.Source != ClarificationSourceTyped || clarification.Notify
+		unseen := clarification.Lifecycle == ClarificationOpen &&
+			clarification.Attention == "unseen"
 		if unseen && st.Clarifications[clarification.Key].MessageID == "" {
 			actions = append(actions, ClarificationAction{Kind: PostClarification, Key: clarification.Key, Clarification: clarification})
 		}
@@ -168,61 +160,24 @@ func unpostedClarifications(st State, pending []Clarification) []ClarificationAc
 	return actions
 }
 
-// answersToReport plans the reports for the clarifications that are no longer
-// waiting - answered on the desktop, or by the answer just carried back - and
-// have not been reported yet: an answer the operator gave here is marked on the
-// clarification's own message, and a desktop answer keeps its threaded reply.
+// answersToReport marks an answer the operator gave in Matrix after project
+// chat accepted it. A desktop answer needs no Matrix work; its authoritative
+// terminal row reconciles the record.
 func answersToReport(st State, byKey map[string]Clarification) []ClarificationAction {
 	var actions []ClarificationAction
-	for key, state := range st.Clarifications {
-		if !unreportedAnswer(state, key, byKey) {
+	for _, clarification := range byKey {
+		state := st.Clarifications[clarification.Key]
+		if state.Answer == "" || state.ReactionID != "" || state.MessageID == "" {
 			continue
 		}
-		actions = append(actions, answerReport(key, state))
-	}
-	return actions
-}
-
-// answerReport is how one answer reaches the operator: an answer the operator
-// gave here is marked with the bridge's reaction on the clarification's own
-// message, and a desktop answer is replied to in the thread, because it is a
-// word the room never heard.
-func answerReport(key string, state ClarificationState) ClarificationAction {
-	if state.Answer != "" {
-		return ClarificationAction{
+		actions = append(actions, ClarificationAction{
 			Kind:      ReactClarification,
-			Key:       key,
+			Key:       clarification.Key,
 			MessageID: state.MessageID,
 			Reaction:  CarriedOutReaction,
-		}
+		})
 	}
-	return ClarificationAction{
-		Kind:      ReplyClarification,
-		Key:       key,
-		MessageID: state.MessageID,
-		Text:      ClarificationsReply(state.Answer),
-	}
-}
-
-// unreportedAnswer reports whether a clarification the room has seen still
-// needs its answer reported: it is no longer one the forge waits for, and the
-// room has not been told yet, by a thread reply or a reaction.
-func unreportedAnswer(state ClarificationState, key string, byKey map[string]Clarification) bool {
-	if state.Source == ClarificationSourceTyped ||
-		state.MessageID == "" || state.ReplyID != "" || state.ReactionID != "" {
-		return false
-	}
-	_, stillWaiting := byKey[key]
-	return !stillWaiting
-}
-
-// ClarificationsReply is the text the bridge reports an answer with: the answer
-// that was carried back, or the desktop's when it was answered there.
-func ClarificationsReply(answer string) string {
-	if answer != "" {
-		return "Answered"
-	}
-	return "Resolved on the desktop"
+	return actions
 }
 
 // mutate4go-manifest-begin

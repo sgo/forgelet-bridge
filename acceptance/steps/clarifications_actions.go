@@ -14,7 +14,7 @@ func clarificationStateEvent(ctx context.Context, w *World, project string) (roo
 	if err != nil {
 		return "", "", "", err
 	}
-	eventID, quote, err = stateEventToSwipe(ctx, w, roomID, relay.ClarificationFactType, clarificationID(project))
+	eventID, quote, err = stateEventToSwipe(ctx, w, roomID, relay.ClarificationFactType, clarificationFactKey(project))
 	return roomID, eventID, quote, err
 }
 

@@ -123,7 +123,7 @@
   {:id "manual-bridge-help"
    :section "manual-operation"
    :command ["bash" "-lc" "go run -tags goolm ./cmd/forgelet-bridge --help"]
-   :expect ["-remove-forge string" "-remove-project string" "-validate"]}
+   :expect ["-remove-forge string" "-remove-project string" "-typed-clarification-preflight" "-validate"]}
   {:id "manual-chat-source"
    :section "manual-operation"
    :command ["bash" "-lc" "go doc ./internal/relay Request.Source; go doc ./internal/relay AppCompletedCardReportSource"]
@@ -134,8 +134,8 @@
    :expect ["type AutomationState struct" "AutomationProjection = \"automation-v1\"" "type SnapshotStore interface"]}
   {:id "manual-typed-clarification-api"
    :section "manual-dashboard-snapshots"
-   :command ["bash" "-lc" "go doc ./internal/dashboard Clarifications.AnswerTyped; go doc ./internal/relay Clarification"]
-   :expect ["func (c Clarifications) AnswerTyped" "type Clarification struct" "Lifecycle string"]}
+   :command ["bash" "-lc" "go doc ./internal/dashboard Clarifications.AnswerTyped; go doc ./internal/dashboard LegacyClarificationError; go doc ./internal/relay Clarification"]
+   :expect ["func (c Clarifications) AnswerTyped" "type LegacyClarificationError struct" "type Clarification struct" "Lifecycle string"]}
   {:id "manual-automation-state-measure"
    :section "manual-dashboard-snapshots"
    :command ["bash" "-lc" "go run -tags goolm ./qa/automation-state-measure --ticks 1 --full-payload-bytes 65536"]

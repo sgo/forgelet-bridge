@@ -60,7 +60,7 @@ Feature: Fetch one dashboard snapshot per bridge tick
     And the forge forge-b approval room holds the card card-<approval-expected-b> and not the card card-<approval-expected-a>
     And the forge forge-a clarifications room holds the project <clarification-expected-a> and not <clarification-expected-b>
     And the forge forge-b clarifications room holds the project <clarification-expected-b> and not <clarification-expected-a>
-    And the fake dashboards forge-a, forge-b, project-alpha and project-beta each serve at most one state request per tick over three more ticks
+    And the fake dashboards forge-a and forge-b each serve at most one state request per tick over three more ticks
 
     Examples:
       | approval-seed-a | approval-expected-a | approval-seed-b | approval-expected-b | clarification-seed-a | clarification-expected-a | clarification-seed-b | clarification-expected-b |

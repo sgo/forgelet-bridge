@@ -19,12 +19,13 @@ accept a project room id from their caller.
 Within one relay pass, `internal/dashboard.SnapshotSource` reads the complete
 dashboard payload once and returns `internal/relay.DashboardSnapshot`.
 `internal/bridge` owns a tick-local cache keyed by forge root and dashboard
-address and passes the derived approvals, resolutions, legacy clarifications,
-typed project clarifications and activity to their consumers. The cache has no
+address and passes the derived approvals, resolutions, typed project
+clarifications and activity to their consumers. The cache has no
 lifetime beyond that `Tick`, and a failed entry is retained only long enough to
 prevent a same-tick retry. `internal/dashboard.Clarifications.AnswerTyped`
 resolves exactly one marked open project and sends its answer through normal
-project chat; legacy answers keep the clarification endpoint.
+project chat. The bridge does not call the legacy clarification store or answer
+endpoint; those remain part of the shared dashboard surface.
 
 The installed `scripts/matrix-bridge.sh` adapter is the process boundary for
 host project removal. Its `remove-project-plan` operation validates configured
@@ -66,23 +67,23 @@ commands and `build/acceptance/bin` output remain the contract.
   `internal/matrix`.
 - Dashboard automation state is read at most once per
   forge-root/dashboard identity per `Bridge.Tick`; the validated
-  `automation-v1` snapshot supplies approvals, resolutions, legacy
-  clarifications, typed project clarifications and board activity and cannot
-  cross a tick or dashboard identity. A temporary rollout compatibility path
-  may then read one
-  `/api/state` response bounded to 2 MiB for a 404/501 endpoint or the
-  immediately preceding projection without resolution fields; bridge status
-  reports affected Families in `projection_fallbacks`.
+  `automation-v1` snapshot supplies approvals, resolutions, typed project
+  clarifications and board activity and cannot cross a tick or dashboard
+  identity. Unsupported, legacy-only, mixed and malformed projections fail
+  closed without an `/api/state` fallback.
 - Resolved-approval validation admits only the five bounded endings. The
   dashboard layer preserves the validated value, while relay presentation
   alone decides that manual `approved` and `sent_back` carry ➡ and ⬅;
   `automatic_spec_approval`, `auto_approved` and `superseded` remain
   non-manual, with `superseded` keeping its distinct threaded reply.
-- Typed clarification notification state is project-qualified and distinct from
-  the legacy lane. Only open-unseen rows post, open-seen rows remain
+- Typed clarification is the only bridge notification authority. Its state is
+  project-qualified. Only open-unseen rows post, open-seen rows remain
   answerable, and answered, withdrawn or absent authoritative rows clear the
-  record. A typed Matrix answer uses the one owning project's `/api/chat` route
-  and never the legacy answer endpoint.
+  record. Reconciliation retires obsolete legacy bridge marks without deleting
+  Matrix history. A Matrix answer uses the one owning project's `/api/chat`
+  route and never the legacy answer endpoint.
+- The deployment adapter runs the typed-clarification preflight against every
+  configured Family before restarting the bridge.
 - `scripts/check-architecture.sh` executes `go vet` and rejects either
   dependency direction.
 - The Gherkin runtime dispatches every step to exactly one handler and runs

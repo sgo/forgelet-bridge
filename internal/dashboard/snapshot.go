@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -15,7 +14,6 @@ import (
 type SnapshotSource struct {
 	Root          string
 	ConfiguredURL string
-	Project       string
 }
 
 // Identity makes the approvals facade the forge's dashboard-snapshot source.
@@ -32,13 +30,13 @@ func (a Approvals) Snapshot(ctx context.Context) (relay.DashboardSnapshot, error
 // Identity makes the clarifications facade a project dashboard-snapshot
 // source.
 func (c Clarifications) Identity() (string, error) {
-	return (SnapshotSource{Root: c.Root, ConfiguredURL: c.ConfiguredURL, Project: c.Project}).Identity()
+	return (SnapshotSource{Root: c.Root, ConfiguredURL: c.ConfiguredURL}).Identity()
 }
 
 // Snapshot makes the clarifications facade serve its project's complete
 // dashboard state.
 func (c Clarifications) Snapshot(ctx context.Context) (relay.DashboardSnapshot, error) {
-	return (SnapshotSource{Root: c.Root, ConfiguredURL: c.ConfiguredURL, Project: c.Project}).Snapshot(ctx)
+	return (SnapshotSource{Root: c.Root, ConfiguredURL: c.ConfiguredURL}).Snapshot(ctx)
 }
 
 // Identity names the dashboard a snapshot belongs to. The root keeps two
@@ -62,60 +60,20 @@ func (s SnapshotSource) Snapshot(ctx context.Context) (relay.DashboardSnapshot, 
 	api := NewForgeAPI(s.Root, url)
 	state, err := api.AutomationState(ctx)
 	if err != nil {
-		if projectionCompatibilityFallback(err) {
-			snapshot, fallbackErr := compatibilitySnapshot(ctx, api, s.Project)
-			if fallbackErr != nil {
-				return relay.DashboardSnapshot{}, fmt.Errorf(
-					"read automation snapshot for %s: %w; compatibility state fallback: %v",
-					s.Root, err, fallbackErr)
-			}
-			return snapshot, nil
-		}
 		return relay.DashboardSnapshot{}, fmt.Errorf("read automation snapshot for %s: %w", s.Root, err)
 	}
-	return automationSnapshot(api, state, s.Project)
+	return automationSnapshot(api, state)
 }
 
-func projectionCompatibilityFallback(err error) bool {
-	var unsupported UnsupportedProjectionError
-	if errors.As(err, &unsupported) {
-		return true
-	}
-	var legacy LegacyProjectionError
-	return errors.As(err, &legacy)
-}
-
-func compatibilitySnapshot(ctx context.Context, api *API, project string) (relay.DashboardSnapshot, error) {
-	state, err := api.compatibilityState(ctx)
-	if err != nil {
-		return relay.DashboardSnapshot{}, err
-	}
-	clarifications := api.clarifications(state)
-	for index := range clarifications {
-		if clarifications[index].Project == "" {
-			clarifications[index].Project = project
-		}
-	}
-	snapshot := relay.DashboardSnapshot{
-		Approvals:          api.approvals(state),
-		ResolvedApprovals:  api.resolvedApprovals(state),
-		Clarifications:     clarifications,
-		BoardFallback:      true,
-		ProjectionFallback: true,
-	}
-	return snapshot, nil
-}
-
-func automationSnapshot(api *API, state AutomationState, project string) (relay.DashboardSnapshot, error) {
-	clarifications, err := automationClarifications(api.root, state.Clarifications, project)
+func automationSnapshot(api *API, state AutomationState) (relay.DashboardSnapshot, error) {
+	clarifications, err := automationClarifications(api.root, state.Clarifications)
 	if err != nil {
 		return relay.DashboardSnapshot{}, err
 	}
 	snapshot := relay.DashboardSnapshot{
 		Approvals:           automationApprovals(api, state.Approvals.Items),
 		ResolvedApprovals:   automationResolvedApprovals(api.root, state.ResolvedApprovals.Items),
-		Clarifications:      clarifications.legacy,
-		TypedClarifications: clarifications.typed,
+		TypedClarifications: clarifications,
 		Boards:              automationBoards(api.root, state.Projects.Items),
 	}
 	for _, project := range state.Projects.Items {
@@ -146,87 +104,49 @@ func automationResolvedApprovals(root string, items []AutomationResolvedApproval
 	return resolved
 }
 
-type automationClarificationSets struct {
-	legacy []relay.Clarification
-	typed  []relay.Clarification
-}
-
-func automationClarifications(root string, sections *AutomationClarifications, project string) (automationClarificationSets, error) {
-	sets := automationClarificationSets{}
+func automationClarifications(root string, sections *AutomationClarifications) ([]relay.Clarification, error) {
+	var typed []relay.Clarification
 	seen := map[string]bool{}
-	var err error
-	if sets.legacy, err = automationClarificationSection(root, "legacy", sections.Legacy.Items, project, true, seen); err != nil {
-		return sets, err
-	}
-	if sets.typed, err = automationClarificationSection(root, "typed", sections.Typed.Items, project, false, seen); err != nil {
-		return sets, err
-	}
-	return sets, nil
-}
-
-func automationClarificationSection(root, kind string, items []AutomationClarification, fallbackProject string, pendingOnly bool, seen map[string]bool) ([]relay.Clarification, error) {
-	var pending []relay.Clarification
-	for _, item := range items {
-		if pendingOnly && item.Status != "pending" {
-			continue
-		}
-		clarification, err := automationClarification(root, kind, item, fallbackProject, seen)
+	for _, item := range sections.Typed.Items {
+		clarification, err := automationClarification(root, item, seen)
 		if err != nil {
 			return nil, err
 		}
-		pending = append(pending, clarification)
+		typed = append(typed, clarification)
 	}
-	return pending, nil
+	return typed, nil
 }
 
-func automationClarification(root, kind string, item AutomationClarification, fallbackProject string, seen map[string]bool) (relay.Clarification, error) {
-	project, id, ok := clarificationIdentity(kind, item, fallbackProject)
+func automationClarification(root string, item AutomationClarification, seen map[string]bool) (relay.Clarification, error) {
+	project, id, ok := clarificationIdentity(item)
 	if !ok {
-		return relay.Clarification{}, fmt.Errorf("invalid %s clarification in automation projection", kind)
+		return relay.Clarification{}, fmt.Errorf("invalid typed clarification in automation projection")
 	}
 	identity := project + "\x00" + id
 	if seen[identity] {
-		return relay.Clarification{}, fmt.Errorf("duplicate or colliding clarification in automation projection")
+		return relay.Clarification{}, fmt.Errorf("duplicate typed clarification in automation projection")
 	}
 	seen[identity] = true
 	clarification := relay.Clarification{
-		Key:       forgeKey(root, project, id),
+		Key:       typedClarificationKey(root, project, id),
 		ID:        id,
 		Project:   project,
 		Role:      clarificationRole(item),
 		Question:  strings.TrimSpace(*item.QuestionExcerpt),
+		Source:    relay.ClarificationSourceTyped,
 		Lifecycle: item.Status,
 		Attention: item.Attention,
-	}
-	if kind == relay.ClarificationSourceTyped {
-		clarification.Key = typedClarificationKey(root, project, id)
-		clarification.Source = relay.ClarificationSourceTyped
-		clarification.Notify = item.Status == relay.ClarificationOpen && item.Attention == "unseen"
 	}
 	return clarification, nil
 }
 
-func clarificationIdentity(kind string, item AutomationClarification, fallbackProject string) (string, string, bool) {
-	project := clarificationProject(item.Project, fallbackProject)
-	id := clarificationID(kind, item)
+func clarificationIdentity(item AutomationClarification) (string, string, bool) {
+	project := item.Project
+	id := item.ClarificationID
 	if project == "" || id == "" || item.QuestionExcerpt == nil {
 		return "", "", false
 	}
 	return project, id, true
-}
-
-func clarificationProject(project, fallback string) string {
-	if project == "" {
-		return fallback
-	}
-	return project
-}
-
-func clarificationID(kind string, item AutomationClarification) string {
-	if kind == relay.ClarificationSourceTyped && item.ClarificationID != "" {
-		return item.ClarificationID
-	}
-	return item.ID
 }
 
 func typedClarificationKey(root, project, id string) string {

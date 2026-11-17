@@ -75,9 +75,11 @@ func clarificationFactCarried(_ context.Context, world any, captures []string) e
 	if err != nil {
 		return err
 	}
-	id := clarificationID(project)
+	id := clarificationFactKey(project)
 	_, err = waitForFact(ctx, w, roomID, relay.ClarificationFactType, id, func(content map[string]any) error {
-		return names(content, map[string]string{"id": id, "project": project, "role": role, "body": question})
+		return names(content, map[string]string{
+			"id": clarificationID(project), "project": project, "role": role, "body": question,
+		})
 	})
 	return err
 }
@@ -107,7 +109,7 @@ func clarificationFactCleared(_ context.Context, world any, captures []string) e
 	if err != nil {
 		return err
 	}
-	return waitForClearedFact(ctx, w, roomID, relay.ClarificationFactType, clarificationID(project))
+	return waitForClearedFact(ctx, w, roomID, relay.ClarificationFactType, clarificationFactKey(project))
 }
 
 // boardFactCleared checks the activity room no longer carries facts for one

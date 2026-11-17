@@ -39,12 +39,12 @@ Feature: Waiting Facts As State
 
   # Waiting Facts As State 1: every waiting fact reaches its room as state, keyed by the item
   Scenario: Waiting Facts As State 1: every waiting fact reaches its room as state, keyed by the item
-    Given the forge's board already holds the card phone-approvals in the project forgelet-bridge in the lane coder
+    Given the forge's dashboard already holds the pending clarification from the role project-agent in the project forgelet-bridge asking "should the invoice card retry on its own?"
+    And the forge's board already holds the card phone-approvals in the project forgelet-bridge in the lane coder
     And the forge's dashboard already holds the pending approval for the card phone-approvals with its handover roles
-    And the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
     Then the activity room Activity carries the board of the project forgelet-bridge as a com.forgelet.board state event keyed by the project, with its lanes, holding the card phone-approvals in the lane coder
     And the approvals room Approvals carries the approval for the card phone-approvals as a com.forgelet.approval state event keyed by the approval, naming the project forgelet-bridge and the gate "coder → refactorer"
-    And the clarifications room Clarifications carries the question from the role coder in the project forgelet-bridge as a com.forgelet.clarification state event keyed by the question, asking "should the invoice card retry on its own?"
+    And the clarifications room Clarifications carries the question from the role project-agent in the project forgelet-bridge as a com.forgelet.clarification state event keyed by the question, asking "should the invoice card retry on its own?"
 
   # Waiting Facts As State 2: a card that moves on is read where it is now, not where it was
   Scenario: Waiting Facts As State 2: a card that moves on is read where it is now, not where it was
@@ -64,11 +64,11 @@ Feature: Waiting Facts As State
 
   # Waiting Facts As State 4: a question that stops waiting is cleared
   Scenario: Waiting Facts As State 4: a question that stops waiting is cleared
-    Given the forge's dashboard already holds the pending clarification from the role coder in the project forgelet-bridge asking "should the invoice card retry on its own?"
-    And the clarifications room Clarifications carries the question from the role coder in the project forgelet-bridge as a com.forgelet.clarification state event keyed by the question, asking "should the invoice card retry on its own?"
+    Given the forge's dashboard already holds the pending clarification from the role project-agent in the project forgelet-bridge asking "should the invoice card retry on its own?"
+    And the clarifications room Clarifications carries the question from the role project-agent in the project forgelet-bridge as a com.forgelet.clarification state event keyed by the question, asking "should the invoice card retry on its own?"
     When the operator replies "yes" in the clarification message's thread for the project forgelet-bridge
     And the bridge has caught up with the forge
-    Then the clarifications room Clarifications carries no facts for the question from the role coder in the project forgelet-bridge
+    Then the clarifications room Clarifications carries no facts for the question from the role project-agent in the project forgelet-bridge
 
   # Waiting Facts As State 5: a board that stops waiting is cleared
   Scenario: Waiting Facts As State 5: a board that stops waiting is cleared

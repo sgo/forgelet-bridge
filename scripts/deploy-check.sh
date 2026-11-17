@@ -27,6 +27,7 @@ if ! grep -q -- '-remove-project' <<< "$help"; then
   exit 1
 fi
 "$project_root/scripts/check-adapter-conformance.sh" "$adapter"
+"$binary" --config "$config" --typed-clarification-preflight
 
 export MATRIX_BRIDGE_FORGE_ROOT="$forge_root"
 export MATRIX_BRIDGE_BINARY="$binary"

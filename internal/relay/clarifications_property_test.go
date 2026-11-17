@@ -141,14 +141,13 @@ func TestPropertyTypedNoticeNeedsOpenAndUnseen(t *testing.T) {
 			Source:    ClarificationSourceTyped,
 			Lifecycle: lifecycle,
 			Attention: attention,
-			Notify:    lifecycle == ClarificationOpen && attention == "unseen",
 		}
 		actions := PlanClarifications(operator, State{}, []Clarification{clarification}, nil)
 		posted := false
 		for _, action := range actions {
 			posted = posted || action.Kind == PostClarification
 		}
-		return posted == clarification.Notify
+		return posted == (lifecycle == ClarificationOpen && attention == "unseen")
 	}
 	if err := quick.Check(property, &quick.Config{
 		MaxCount: 300,
@@ -210,8 +209,6 @@ func carryOutClarifications(st *State, pending []Clarification, actions []Clarif
 		case AnswerClarification:
 			state.Answer = action.Answer
 			pending = removeClarification(pending, action.Key)
-		case ReplyClarification:
-			state.ReplyID = "$reply-" + action.Key
 		case ReactClarification:
 			state.ReactionID = "$reaction-" + action.Key
 		}
@@ -273,11 +270,14 @@ func randomClarifications(rnd *rand.Rand) []Clarification {
 	var pending []Clarification
 	for count := rnd.Intn(4); count > 0; count-- {
 		pending = append(pending, Clarification{
-			Key:      keys[rnd.Intn(len(keys))],
-			ID:       randomClarificationText(rnd),
-			Project:  randomClarificationText(rnd),
-			Role:     randomClarificationText(rnd),
-			Question: randomClarificationText(rnd),
+			Key:       keys[rnd.Intn(len(keys))],
+			ID:        randomClarificationText(rnd),
+			Project:   randomClarificationText(rnd),
+			Role:      randomClarificationText(rnd),
+			Question:  randomClarificationText(rnd),
+			Source:    ClarificationSourceTyped,
+			Lifecycle: ClarificationOpen,
+			Attention: "unseen",
 		})
 	}
 	return pending

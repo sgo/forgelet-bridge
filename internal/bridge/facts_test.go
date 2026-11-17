@@ -105,7 +105,8 @@ func TestTickCarriesAClarificationAsStateAndClearsItWhenAnswered(t *testing.T) {
 		t.Fatalf("first Tick: %v", err)
 	}
 	states := rooms.sentStates()
-	if len(states) != 1 || states[0].eventType != relay.ClarificationFactType || states[0].stateKey != "clar-1" {
+	wantKey := "typed:forgelet-bridge:clar-1"
+	if len(states) != 1 || states[0].eventType != relay.ClarificationFactType || states[0].stateKey != wantKey {
 		t.Fatalf("states = %+v, want one clarification state keyed by the question", states)
 	}
 	if states[0].roomID != "!clarifications-forge-a" {
@@ -120,7 +121,7 @@ func TestTickCarriesAClarificationAsStateAndClearsItWhenAnswered(t *testing.T) {
 		t.Fatalf("second Tick: %v", err)
 	}
 	states = rooms.sentStates()
-	if len(states) != 1 || states[0].stateKey != "clar-1" || len(states[0].content) != 0 {
+	if len(states) != 1 || states[0].stateKey != wantKey || len(states[0].content) != 0 {
 		t.Fatalf("states = %+v, want the answered question cleared", states)
 	}
 }

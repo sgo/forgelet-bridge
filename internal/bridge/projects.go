@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/unclebob/forgelet-bridge/internal/relay"
 	"github.com/unclebob/forgelet-bridge/internal/state"
 )
 
@@ -28,28 +27,24 @@ func (b *Bridge) tickProject(ctx context.Context, forgeRoot string, project Proj
 	return carriedOut + clarifications, nil
 }
 
-// carryOutProjectClarifications reads the project dashboard once when it
-// supports snapshots, then carries its clarification work.
+// carryOutProjectClarifications leaves nested projects to the Family typed
+// authority. A project configured as its own forge root can use its snapshot
+// directly.
 func (b *Bridge) carryOutProjectClarifications(ctx context.Context, forgeRoot string, project Project, room Room, seen roomEvents, snapshots snapshotCache) (carriedOut int, err error) {
+	if typedClarificationsHandledByFamily(forgeRoot, project) {
+		return 0, nil
+	}
 	source, snapshotsEnabled := project.Clarifications.(SnapshotStore)
 	if !snapshotsEnabled {
-		return b.carryOutClarifications(
-			ctx, project.Root, project.Clarifications, room,
-			seen.messages[room.ClarificationsRoomID], relay.DashboardSnapshot{}, false)
+		return 0, fmt.Errorf("typed clarifications require an automation snapshot for project root %s", project.Root)
 	}
 	snapshot, err := b.snapshotFrom(ctx, snapshots, source)
 	if err != nil {
 		return
 	}
-	if snapshot.ProjectionFallback {
-		b.compatibilityFallbacks[forgeRoot] = true
-	}
-	if typedClarificationsHandledByFamily(forgeRoot, project) {
-		snapshot.TypedClarifications = nil
-	}
 	return b.carryOutClarifications(
 		ctx, project.Root, project.Clarifications, room,
-		seen.messages[room.ClarificationsRoomID], snapshot, true)
+		seen.messages[room.ClarificationsRoomID], snapshot)
 }
 
 // typedClarificationsHandledByFamily reports whether the forge-level snapshot

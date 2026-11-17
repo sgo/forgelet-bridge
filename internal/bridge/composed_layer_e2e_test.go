@@ -61,9 +61,6 @@ func TestComposedCurrentLayerReachesEveryFamilyInOneTick(t *testing.T) {
 	if len(status.UnhappyForges) != 0 {
 		t.Errorf("unhappy Families = %v (%s), want none", status.UnhappyForges, status.LastError)
 	}
-	if len(status.ProjectionFallbacks) != 0 {
-		t.Errorf("projection fallbacks = %v, want none", status.ProjectionFallbacks)
-	}
 	t.Logf(
 		"composed tick %d reached %d Families: %v; owed items: %v",
 		status.Tick, len(status.ReachedForges), status.ReachedForges, status.Owed,

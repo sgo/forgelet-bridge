@@ -63,11 +63,14 @@ func snapshotApproval() relay.Approval {
 
 func snapshotClarification() relay.Clarification {
 	return relay.Clarification{
-		Key:      "/forges/forge-a/forgelet-bridge/snapshot-clarification",
-		ID:       "snapshot-clarification",
-		Project:  "forgelet-bridge",
-		Role:     "coder",
-		Question: "which lane?",
+		Key:       "/forges/forge-a/typed/forgelet-bridge/snapshot-clarification",
+		ID:        "snapshot-clarification",
+		Project:   "forgelet-bridge",
+		Role:      "coder",
+		Question:  "which lane?",
+		Source:    relay.ClarificationSourceTyped,
+		Lifecycle: relay.ClarificationOpen,
+		Attention: "unseen",
 	}
 }
 
@@ -81,8 +84,8 @@ func TestTickCarriesApprovalsAndClarificationsFromOneSnapshot(t *testing.T) {
 	source := &fakeSnapshotSource{
 		identity: root + "/dashboard",
 		snapshot: relay.DashboardSnapshot{
-			Approvals:      []relay.Approval{snapshotApproval()},
-			Clarifications: []relay.Clarification{snapshotClarification()},
+			Approvals:           []relay.Approval{snapshotApproval()},
+			TypedClarifications: []relay.Clarification{snapshotClarification()},
 		},
 	}
 	built.SetSnapshotSources(map[string]SnapshotStore{root: source})
@@ -146,8 +149,8 @@ func TestFailedSnapshotIsUsedByNoConsumerAndIsNotRetriedInTheTick(t *testing.T) 
 		identity: root + "/dashboard",
 		err:      errors.New("dashboard unavailable"),
 		snapshot: relay.DashboardSnapshot{
-			Approvals:      []relay.Approval{snapshotApproval()},
-			Clarifications: []relay.Clarification{snapshotClarification()},
+			Approvals:           []relay.Approval{snapshotApproval()},
+			TypedClarifications: []relay.Clarification{snapshotClarification()},
 		},
 		callLimit: 1,
 	}
@@ -187,7 +190,7 @@ func TestSnapshotCacheIsScopedToTheTickAndDashboardIdentity(t *testing.T) {
 		map[string]BoardStore{root: &fakeBoard{}}, root)
 	source := &fakeSnapshotSource{
 		identity: "shared-dashboard",
-		snapshot: relay.DashboardSnapshot{Clarifications: []relay.Clarification{snapshotClarification()}},
+		snapshot: relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{snapshotClarification()}},
 	}
 	project := Project{
 		Name:           "project-a",
@@ -254,7 +257,7 @@ func TestDifferentDashboardIdentitiesEachReadOncePerTick(t *testing.T) {
 	}
 }
 
-func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
+func TestProjectClarificationsLeaveNestedProjectsToTheFamily(t *testing.T) {
 	root := "/forges/forge-a"
 	projectRoot := root + "/projects/agent"
 	project := Project{
@@ -265,9 +268,9 @@ func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
 	}
 	source := &fakeSnapshotSource{
 		identity: projectRoot + "/dashboard",
-		snapshot: relay.DashboardSnapshot{Clarifications: []relay.Clarification{
+		snapshot: relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{
 			clarificationOf("agent", "clar-1", "coder", "which stage is next?"),
-		}, ProjectionFallback: true},
+		}},
 	}
 	project.Clarifications = fakeSnapshotClarifications{fakeClarifications: &fakeClarifications{}, source: source}
 	rooms := &fakeRooms{}
@@ -279,11 +282,11 @@ func TestProjectClarificationsUseTheSnapshotWhenAvailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("carryOutProjectClarifications: %v", err)
 	}
-	if carriedOut == 0 || lastMessageIn(rooms, room.RoomID) == nil {
-		t.Errorf("carried out = %d, sent = %+v, want the project clarification", carriedOut, rooms.sentMessages())
+	if carriedOut != 0 || len(rooms.sentMessages()) != 0 {
+		t.Errorf("carried out = %d, sent = %+v, want the Family-only authority", carriedOut, rooms.sentMessages())
 	}
-	if !built.compatibilityFallbacks[root] {
-		t.Error("project compatibility fallback was not reported for its Family")
+	if source.callCount() != 0 {
+		t.Error("the nested project snapshot was read instead of leaving typed work to the Family")
 	}
 }
 
@@ -335,7 +338,7 @@ func TestProjectClarificationSnapshotFailureCarriesNoWork(t *testing.T) {
 	source := &fakeSnapshotSource{identity: "project-dashboard", err: errors.New("unavailable"), callLimit: 1}
 	project := Project{
 		Name: "agent",
-		Root: "/forges/forge-a/projects/agent",
+		Root: "/forges/forge-a",
 		Clarifications: fakeSnapshotClarifications{
 			fakeClarifications: &fakeClarifications{},
 			source:             source,

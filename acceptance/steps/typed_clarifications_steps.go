@@ -9,7 +9,135 @@ import (
 
 	"github.com/unclebob/forgelet-bridge/acceptance/fixtures"
 	"github.com/unclebob/forgelet-bridge/internal/dashboard"
+	"github.com/unclebob/forgelet-bridge/internal/relay"
+	"github.com/unclebob/forgelet-bridge/internal/state"
 )
+
+func fakeNextServesClarificationProjection(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	fake, err := fakeDashboard(w, captures[1])
+	if err != nil {
+		return err
+	}
+	fake.SetFailure(false)
+	state := automationState()
+	question := "which stage?"
+	typed := dashboard.AutomationClarification{
+		ID: "typed-request", ClarificationID: "clarification-projection",
+		Status: "open", Attention: "unseen", Project: "project-alpha",
+		Role: "coder", QuestionExcerpt: &question,
+	}
+	switch captures[2] {
+	case "typed":
+		state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{typed})
+	case "legacy":
+		state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
+			ID: "legacy-projection", Status: "pending", Project: "project-legacy",
+			Role: "coder", QuestionExcerpt: &question,
+		}})
+	case "mixed":
+		state.Clarifications.Legacy = automationSection([]dashboard.AutomationClarification{{
+			ID: "legacy-projection", Status: "pending", Project: "project-legacy",
+			Role: "coder", QuestionExcerpt: &question,
+		}})
+		state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{typed})
+	case "malformed":
+		typed.Status = "closed"
+		state.Clarifications.Typed = automationSection([]dashboard.AutomationClarification{typed})
+	case "unsupported":
+		fake.SetUnsupported(true)
+		return nil
+	default:
+		return fmt.Errorf("the fake dashboard does not know the clarification projection %q", captures[2])
+	}
+	fake.SetState(state)
+	return nil
+}
+
+func bridgeLastErrorIsBounded(_ context.Context, world any, captures []string) error {
+	status, err := readStatus(filepath.Join(world.(*World).stateDir, "status.json"))
+	if err != nil {
+		return err
+	}
+	switch captures[1] {
+	case "empty":
+		if status.LastError != "" {
+			return fmt.Errorf("last error = %q, want empty", status.LastError)
+		}
+	case "bounded legacy clarification error":
+		if !strings.Contains(status.LastError, "unsupported legacy clarification work") {
+			return fmt.Errorf("last error = %q, want the bounded legacy clarification error", status.LastError)
+		}
+	case "bounded malformed projection error":
+		if !strings.Contains(status.LastError, "invalid typed clarification") {
+			return fmt.Errorf("last error = %q, want the bounded malformed projection error", status.LastError)
+		}
+	case "bounded unsupported projection error":
+		if !strings.Contains(status.LastError, "automation projection is unsupported") {
+			return fmt.Errorf("last error = %q, want the bounded unsupported projection error", status.LastError)
+		}
+	default:
+		return fmt.Errorf("the bridge last-error check does not know %q", captures[1])
+	}
+	return nil
+}
+
+func bridgeStatusForForgeMatches(_ context.Context, world any, captures []string) error {
+	status, err := readStatus(filepath.Join(world.(*World).stateDir, "status.json"))
+	if err != nil {
+		return err
+	}
+	wantReached := captures[2] == "reached"
+	if fixtures.Contains(status.ReachedForges, captures[1]) != wantReached {
+		return fmt.Errorf("reached forges = %v, want %s %s", status.ReachedForges,
+			captures[1], map[bool]string{true: "reached", false: "not reached"}[wantReached])
+	}
+	return nil
+}
+
+func bridgeStateHasOldAndTypedClarificationMarks(_ context.Context, world any, _ []string) error {
+	w := world.(*World)
+	forge, err := w.declaredForge("forge-a")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(w.stateDir, "bridge-state.json")
+	loaded, err := state.Load(path)
+	if err != nil {
+		return err
+	}
+	loaded.Relay.Clarifications["/forges/forge-a/project-legacy/legacy-old"] = relay.ClarificationState{
+		ForgeRoot: forge.Root(),
+		MessageID: "$legacy-history",
+	}
+	loaded.Relay.Clarifications["/forges/forge-a/typed/project-alpha/typed-old"] = relay.ClarificationState{
+		ForgeRoot: forge.Root(),
+		MessageID: "$typed-history",
+		Source:    relay.ClarificationSourceTyped,
+	}
+	return loaded.Save(path)
+}
+
+func bridgeStateHoldsOnlyTheTypedClarificationMark(_ context.Context, world any, captures []string) error {
+	loaded, err := state.Load(filepath.Join(world.(*World).stateDir, "bridge-state.json"))
+	if err != nil {
+		return err
+	}
+	found := 0
+	for key, clarification := range loaded.Relay.Clarifications {
+		if !strings.Contains(key, "/"+captures[1]+"/") {
+			continue
+		}
+		if clarification.Source != relay.ClarificationSourceTyped || clarification.MessageID == "" {
+			return fmt.Errorf("record %s = %+v, want only a typed notification mark", key, clarification)
+		}
+		found++
+	}
+	if found != 1 {
+		return fmt.Errorf("typed clarification marks for %s = %d, want one", captures[1], found)
+	}
+	return nil
+}
 
 func fakeNextServesTypedClarification(_ context.Context, world any, captures []string) error {
 	fake, err := fakeDashboard(world.(*World), captures[1])

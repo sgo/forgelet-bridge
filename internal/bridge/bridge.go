@@ -53,16 +53,9 @@ type ApprovalStore interface {
 	SendBack(ctx context.Context, project, id, feedback string) error
 }
 
-// ClarificationStore is the forge side of one root's clarifications: the
-// questions its agents are blocked on.
+// ClarificationStore is the forge side of typed clarification answers. The
+// questions themselves come only from the automation snapshot.
 type ClarificationStore interface {
-	Pending(ctx context.Context) ([]relay.Clarification, error)
-	Answer(ctx context.Context, project, id, answer string) error
-}
-
-// TypedClarificationAnswerer lets a dashboard accept a Matrix answer through
-// the project's ordinary chat endpoint while preserving its clarification id.
-type TypedClarificationAnswerer interface {
 	AnswerTyped(ctx context.Context, project, id, answer string) error
 }
 
@@ -143,9 +136,9 @@ type Bridge struct {
 	// unhappy is why each forge could not be served in the tick now running,
 	// so one sick forge is named while the rest keep their rooms.
 	unhappy map[string]string
-	// compatibilityFallbacks names Families whose root or project dashboard
-	// needed the bounded full-state rollout compatibility path this tick.
-	compatibilityFallbacks map[string]bool
+	// clarificationFailures names a forge whose typed clarification consumer
+	// had no automation snapshot. Other consumers can still be served.
+	clarificationFailures map[string]bool
 }
 
 // New builds a bridge around a Matrix client and one dashboard queue per forge
@@ -160,23 +153,23 @@ func New(cfg config.Config, rooms Rooms, stores map[string]ForgeStore, approvals
 		return nil, err
 	}
 	return &Bridge{
-		cfg:                    cfg,
-		rooms:                  rooms,
-		stores:                 stores,
-		approvals:              approvals,
-		clarifications:         clarifications,
-		snapshots:              snapshotStores(approvals),
-		boards:                 boards,
-		statePath:              statePath,
-		statusDir:              cfg.StateDir,
-		state:                  loaded,
-		log:                    log,
-		provisioned:            map[string]Room{},
-		pending:                map[string]*pendingChat{},
-		pendingApprovals:       map[string]*pendingApprovals{},
-		pendingClarifications:  map[string]*pendingClarifications{},
-		unhappy:                map[string]string{},
-		compatibilityFallbacks: map[string]bool{},
+		cfg:                   cfg,
+		rooms:                 rooms,
+		stores:                stores,
+		approvals:             approvals,
+		clarifications:        clarifications,
+		snapshots:             snapshotStores(approvals),
+		boards:                boards,
+		statePath:             statePath,
+		statusDir:             cfg.StateDir,
+		state:                 loaded,
+		log:                   log,
+		provisioned:           map[string]Room{},
+		pending:               map[string]*pendingChat{},
+		pendingApprovals:      map[string]*pendingApprovals{},
+		pendingClarifications: map[string]*pendingClarifications{},
+		unhappy:               map[string]string{},
+		clarificationFailures: map[string]bool{},
 	}, nil
 }
 
@@ -268,7 +261,7 @@ func (b *Bridge) Tick(ctx context.Context) error {
 	snapshots := snapshotCache{}
 
 	b.unhappy = map[string]string{}
-	b.compatibilityFallbacks = map[string]bool{}
+	b.clarificationFailures = map[string]bool{}
 	carriedOut := b.tickConfiguredForges(ctx, seen, snapshots)
 	b.tick++
 	return b.writeTickStatus(carriedOut)
@@ -342,7 +335,7 @@ func (b *Bridge) writeTickStatus(carriedOut int) error {
 	}
 	status.ReachedForges, status.UnhappyForges, status.LastError = b.forgeReport()
 	status.Owed = b.owedReport()
-	status.ProjectionFallbacks = b.projectionFallbackReport()
+	status.ClarificationFailures = b.clarificationFailureReport()
 	if b.tick == 1 {
 		// What the bridge carries is the first thing an operator or a script
 		// adding a forge wants to know, so it is said out loud once, at
@@ -350,6 +343,18 @@ func (b *Bridge) writeTickStatus(carriedOut int) error {
 		b.log.Info("the forges the bridge serves", "reached", status.ReachedForges, "unreached", status.UnhappyForges)
 	}
 	return b.writeStatus(status)
+}
+
+// clarificationFailureReport names configured Families whose clarification
+// consumer lacked its required automation snapshot this tick.
+func (b *Bridge) clarificationFailureReport() []string {
+	var failed []string
+	for _, forge := range b.cfg.Forges {
+		if b.clarificationFailures[forge.Root] {
+			failed = append(failed, b.cfg.ForgeName(forge.Root))
+		}
+	}
+	return failed
 }
 
 // forgeReport is the forges the tick served and the forges it could not, in
@@ -464,9 +469,6 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, sn
 	if err != nil {
 		b.refuse(err, root)
 	} else {
-		if snapshot.ProjectionFallback {
-			b.compatibilityFallbacks[root] = true
-		}
 		carriedOut += stateWork
 		activity, activityErr := b.activityFrom(ctx, root, room, snapshot, fromSnapshot)
 		if activityErr != nil {
@@ -477,18 +479,6 @@ func (b *Bridge) tickForge(ctx context.Context, root string, seen roomEvents, sn
 	}
 
 	return carriedOut, nil
-}
-
-// projectionFallbackReport names the configured Families that used the
-// bounded full-state compatibility path this tick, in configuration order.
-func (b *Bridge) projectionFallbackReport() []string {
-	var fallbacks []string
-	for _, forge := range b.cfg.Forges {
-		if b.compatibilityFallbacks[forge.Root] {
-			fallbacks = append(fallbacks, b.cfg.ForgeName(forge.Root))
-		}
-	}
-	return fallbacks
 }
 
 // forgeTickInputs reads the room and dashboard queue one forge needs before
@@ -532,13 +522,17 @@ func (b *Bridge) carryOutStateConsumers(ctx context.Context, root string, room R
 	} else {
 		carriedOut += approvals
 	}
-	clarifications, err := b.carryOutClarifications(
-		ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID],
-		snapshot, source != nil)
-	if err != nil {
-		b.refuse(err, root)
+	if source == nil {
+		b.clarificationFailures[root] = true
+		b.log.Error("typed clarifications require an automation snapshot", "root", root)
 	} else {
-		carriedOut += clarifications
+		clarifications, err := b.carryOutClarifications(
+			ctx, root, b.clarifications[root], room, seen.messages[room.ClarificationsRoomID], snapshot)
+		if err != nil {
+			b.refuse(err, root)
+		} else {
+			carriedOut += clarifications
+		}
 	}
 	return snapshot, source != nil, carriedOut, nil
 }

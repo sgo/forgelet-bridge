@@ -19,11 +19,7 @@ func TestSnapshotSourceCarriesEveryConsumerFromOneAutomationRead(t *testing.T) {
 	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
 		ID: "approval-old", Project: "forgelet-bridge", Card: "old-card", Resolution: relay.ResolutionApproved,
 	}})
-	legacy := testText
 	typed := "typed clarification question"
-	state.Clarifications.Legacy = testSection([]AutomationClarification{{
-		ID: "clarification-1", Status: "pending", Project: "forgelet-bridge", Role: "coder", QuestionExcerpt: &legacy,
-	}})
 	state.Clarifications.Typed = testSection([]AutomationClarification{{
 		ID: "typed-request", ClarificationID: "clarification-typed", Status: "open",
 		Project: "forgelet-bridge", Attention: "unseen", QuestionExcerpt: &typed,
@@ -45,7 +41,7 @@ func TestSnapshotSourceCarriesEveryConsumerFromOneAutomationRead(t *testing.T) {
 	}))
 	defer server.Close()
 
-	source := SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL, Project: "project-a"}
+	source := SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}
 	snapshot, err := source.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
@@ -59,16 +55,13 @@ func TestSnapshotSourceCarriesEveryConsumerFromOneAutomationRead(t *testing.T) {
 	if got := snapshot.ResolvedApprovals["/forges/forge-a/forgelet-bridge/approval-old"]; got != relay.ResolutionApproved {
 		t.Errorf("resolved approval = %q, want approved", got)
 	}
-	if len(snapshot.Clarifications) != 1 || snapshot.Clarifications[0].Question != testText {
-		t.Errorf("clarifications = %+v, want only the pending legacy clarification", snapshot.Clarifications)
-	}
 	if len(snapshot.TypedClarifications) != 1 ||
 		snapshot.TypedClarifications[0].ID != "clarification-typed" ||
 		snapshot.TypedClarifications[0].Question != typed {
 		t.Errorf("typed clarifications = %+v, want the safe typed question", snapshot.TypedClarifications)
 	}
 	if typed := snapshot.TypedClarifications[0]; typed.Source != relay.ClarificationSourceTyped ||
-		typed.Lifecycle != relay.ClarificationOpen || typed.Attention != "unseen" || !typed.Notify {
+		typed.Lifecycle != relay.ClarificationOpen || typed.Attention != "unseen" {
 		t.Errorf("typed clarification = %+v, want its notification identity and lifecycle", typed)
 	}
 	if len(snapshot.Boards) != 1 || len(snapshot.Boards[0].Cards) != 1 ||
@@ -116,35 +109,17 @@ func TestTypedNotificationDependsOnBothOpenAndUnseen(t *testing.T) {
 						Role: "coder", Status: lifecycle, Attention: attention, QuestionExcerpt: &question,
 					}}),
 				}
-				sets, err := automationClarifications("/forge", sections, "")
+				clarifications, err := automationClarifications("/forge", sections)
 				if err != nil {
 					t.Fatal(err)
 				}
-				got := sets.typed[0].Notify
-				want := lifecycle == relay.ClarificationOpen && attention == "unseen"
-				if got != want {
-					t.Fatalf("Notify = %t, want %t", got, want)
+				wantKey := "/forge/typed/project/clar-1"
+				if len(clarifications) != 1 || clarifications[0].Key != wantKey ||
+					clarifications[0].Lifecycle != lifecycle || clarifications[0].Attention != attention {
+					t.Fatalf("clarifications = %+v, want %s with %s/%s", clarifications, wantKey, lifecycle, attention)
 				}
 			})
 		}
-	}
-}
-
-func TestSnapshotNamesTheProjectWhenTheProjectionDoesNot(t *testing.T) {
-	state := projectAutomationState()
-	question := "next?"
-	state.Clarifications.Legacy = testSection([]AutomationClarification{{
-		ID: "clar-1", Status: "pending", Role: "coder", QuestionExcerpt: &question,
-	}})
-	server := automationServer(t, state, AutomationProjection)
-	defer server.Close()
-	snapshot, err := (SnapshotSource{Root: "/forges/project-a", ConfiguredURL: server.URL, Project: "project-a"}).
-		Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("Snapshot: %v", err)
-	}
-	if len(snapshot.Clarifications) != 1 || snapshot.Clarifications[0].Project != "project-a" {
-		t.Errorf("clarifications = %+v, want the source project", snapshot.Clarifications)
 	}
 }
 
@@ -160,7 +135,9 @@ func TestSnapshotRejectsMalformedProjections(t *testing.T) {
 			state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{ID: "one", Project: "p", Resolution: "guessed"}})
 		}},
 		{name: "clarification excerpt", header: AutomationProjection, change: func(state *AutomationState) {
-			state.Clarifications.Legacy = testSection([]AutomationClarification{{ID: "clar-1", Status: "pending", Role: "coder"}})
+			state.Clarifications.Typed = testSection([]AutomationClarification{{
+				ClarificationID: "clar-1", Project: "project", Status: "open", Attention: "unseen",
+			}})
 		}},
 	}
 	for _, test := range tests {
@@ -218,58 +195,34 @@ func TestSnapshotReportsAnUnsupportedAutomationEndpoint(t *testing.T) {
 	}
 }
 
-func TestSnapshotUsesBoundedStateForLegacyAutomationProjection(t *testing.T) {
+func TestSnapshotDoesNotFallbackForAnOlderResolvedApprovalShape(t *testing.T) {
 	state := testAutomationState()
 	state.ResolvedApprovals = testSection([]AutomationResolvedApproval{{
 		ID: "approval-old", Project: "project-a", Card: "old-card",
 	}})
-	requests := map[string]int{}
+	stateRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requests[request.URL.Path]++
-		switch request.URL.Path {
-		case "/api/automation-state":
-			writer.Header().Set("X-SwarmForge-Projection", AutomationProjection)
-			_ = json.NewEncoder(writer).Encode(state)
-		case "/api/state":
-			_ = json.NewEncoder(writer).Encode(State{
-				Approvals: []ApprovalRequest{{
-					ID: "approval-1", Project: "project-a", Card: "new-card", Gate: "coder → refactorer",
-				}},
-				ResolvedApprovals: []ResolvedApprovalRequest{{
-					ID: "approval-old", Project: "project-a", Resolution: relay.ResolutionSentBack,
-				}},
-				Clarifications: []ClarificationRequest{{
-					ID: "clarification-1", Status: "pending", Role: "coder", Body: testText,
-				}},
-			})
-		default:
-			http.NotFound(writer, request)
+		if request.URL.Path == "/api/state" {
+			stateRequests++
+			return
 		}
+		writer.Header().Set("X-SwarmForge-Projection", AutomationProjection)
+		_ = json.NewEncoder(writer).Encode(state)
 	}))
 	defer server.Close()
 
-	snapshot, err := (SnapshotSource{
-		Root: "/forges/project-a", ConfiguredURL: server.URL, Project: "project-a",
+	_, err := (SnapshotSource{
+		Root: "/forges/project-a", ConfiguredURL: server.URL,
 	}).Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("Snapshot: %v", err)
+	if err == nil {
+		t.Fatal("Snapshot accepted an older resolved-approval projection")
 	}
-	if requests["/api/automation-state"] != 1 || requests["/api/state"] != 1 {
-		t.Fatalf("requests = %v, want one legacy projection and one bounded state read", requests)
-	}
-	if got := snapshot.ResolvedApprovals["/forges/project-a/project-a/approval-old"]; got != relay.ResolutionSentBack {
-		t.Errorf("resolved approval = %q, want sent_back", got)
-	}
-	if len(snapshot.Clarifications) != 1 || snapshot.Clarifications[0].Project != "project-a" {
-		t.Errorf("clarifications = %+v, want the source project", snapshot.Clarifications)
-	}
-	if !snapshot.BoardFallback || !snapshot.ProjectionFallback || snapshot.Boards != nil {
-		t.Errorf("boards = %+v, board fallback = %t, projection fallback = %t, want the compatibility path",
-			snapshot.Boards, snapshot.BoardFallback, snapshot.ProjectionFallback)
+	if stateRequests != 0 {
+		t.Fatalf("state requests = %d, want no compatibility fallback", stateRequests)
 	}
 }
 
-func TestSnapshotUsesBoundedStateWhenAutomationIsUnsupported(t *testing.T) {
+func TestSnapshotDoesNotFallbackWhenAutomationIsUnsupported(t *testing.T) {
 	requests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests[request.URL.Path]++
@@ -283,18 +236,12 @@ func TestSnapshotUsesBoundedStateWhenAutomationIsUnsupported(t *testing.T) {
 	}))
 	defer server.Close()
 
-	snapshot, err := (SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}).Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("Snapshot: %v", err)
+	_, err := (SnapshotSource{Root: "/forges/forge-a", ConfiguredURL: server.URL}).Snapshot(context.Background())
+	if err == nil {
+		t.Fatal("Snapshot accepted an unsupported automation endpoint")
 	}
-	if requests["/api/automation-state"] != 1 || requests["/api/state"] != 1 {
-		t.Fatalf("requests = %v, want one unsupported projection and one bounded state read", requests)
-	}
-	if len(snapshot.Approvals) != 1 {
-		t.Errorf("approvals = %+v, want the bounded state approval", snapshot.Approvals)
-	}
-	if !snapshot.ProjectionFallback {
-		t.Error("unsupported automation did not report its compatibility path")
+	if requests["/api/automation-state"] != 1 || requests["/api/state"] != 0 {
+		t.Fatalf("requests = %v, want one unsupported projection and no fallback", requests)
 	}
 }
 
@@ -325,10 +272,10 @@ func TestSnapshotDoesNotFallbackForAnUnknownResolution(t *testing.T) {
 func TestAutomationClarificationIdentityFailsClosed(t *testing.T) {
 	question := "question?"
 	valid := AutomationClarification{
-		ID: "clar-1", Status: "pending", Project: "project",
+		ClarificationID: "clar-1", Status: "open", Project: "project",
 		Role: "coder", QuestionExcerpt: &question,
 	}
-	project, id, ok := clarificationIdentity("legacy", valid, "")
+	project, id, ok := clarificationIdentity(valid)
 	if !ok || project != "project" || id != "clar-1" {
 		t.Fatalf("identity = %q/%q/%t, want the valid clarification", project, id, ok)
 	}
@@ -345,21 +292,12 @@ func TestAutomationClarificationIdentityFailsClosed(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, _, ok := clarificationIdentity("legacy", test, ""); ok {
+			if _, _, ok := clarificationIdentity(test); ok {
 				t.Error("incomplete clarification identity was accepted")
 			}
 		})
 	}
 
-	if got := clarificationID("typed", AutomationClarification{ID: "message", ClarificationID: "typed"}); got != "typed" {
-		t.Errorf("typed id = %q, want clarification id", got)
-	}
-	if got := clarificationID("typed", AutomationClarification{ID: "message"}); got != "message" {
-		t.Errorf("typed fallback id = %q, want message id", got)
-	}
-	if got := clarificationID("legacy", AutomationClarification{ID: "message", ClarificationID: "other"}); got != "message" {
-		t.Errorf("legacy id = %q, want message id", got)
-	}
 	if got := clarificationRole(AutomationClarification{Role: "coder"}); got != "coder" {
 		t.Errorf("role = %q, want coder", got)
 	}
@@ -371,25 +309,23 @@ func TestAutomationClarificationIdentityFailsClosed(t *testing.T) {
 func TestAutomationClarificationsRejectDuplicateAndMalformedTypedRows(t *testing.T) {
 	question := "question?"
 	sections := &AutomationClarifications{
-		Legacy: testSection([]AutomationClarification{{
-			ID: "clar-1", Status: "pending", Project: "project",
-			Role: "coder", QuestionExcerpt: &question,
-		}}),
 		Typed: testSection([]AutomationClarification{{
 			ID: "request-1", ClarificationID: "clar-1", Status: "open",
 			Project: "project", QuestionExcerpt: &question,
+		}, {
+			ID: "request-2", ClarificationID: "clar-1", Status: "open",
+			Project: "project", QuestionExcerpt: &question,
 		}}),
 	}
-	if _, err := automationClarifications("/forge", sections, ""); err == nil {
-		t.Fatal("duplicate legacy and typed clarification was accepted")
+	if _, err := automationClarifications("/forge", sections); err == nil {
+		t.Fatal("duplicate typed clarification was accepted")
 	}
 
-	sections.Legacy = testSection([]AutomationClarification{})
 	sections.Typed = testSection([]AutomationClarification{{
 		ID: "request-1", ClarificationID: "clar-1", Status: "open",
 		QuestionExcerpt: &question,
 	}})
-	if _, err := automationClarifications("/forge", sections, ""); err == nil {
+	if _, err := automationClarifications("/forge", sections); err == nil {
 		t.Fatal("typed clarification with no project was accepted")
 	}
 }
@@ -403,12 +339,12 @@ func TestAutomationClarificationsIgnoresTerminalLegacyRows(t *testing.T) {
 		}}),
 		Typed: testSection([]AutomationClarification{}),
 	}
-	sets, err := automationClarifications("/forge", sections, "")
+	clarifications, err := automationClarifications("/forge", sections)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sets.legacy) != 0 {
-		t.Fatalf("legacy terminal rows = %+v, want none", sets.legacy)
+	if len(clarifications) != 0 {
+		t.Fatalf("terminal legacy rows produced clarifications = %+v, want none", clarifications)
 	}
 }
 

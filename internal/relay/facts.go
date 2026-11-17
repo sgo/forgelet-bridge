@@ -27,8 +27,17 @@ type Fact struct {
 // project's board is one event and a project that stops being open is cleared.
 func BoardFact(project string, lanes []string, cards []Card) Fact {
 	tasks := make([]map[string]any, 0, len(cards))
+	lanes = append([]string(nil), lanes...)
+	seenLanes := map[string]bool{}
+	for _, lane := range lanes {
+		seenLanes[lane] = true
+	}
 	for _, card := range cards {
 		tasks = append(tasks, map[string]any{"name": card.Name, "lane": card.Lane})
+		if !seenLanes[card.Lane] {
+			lanes = append(lanes, card.Lane)
+			seenLanes[card.Lane] = true
+		}
 	}
 	return Fact{
 		Type: BoardFactType,

@@ -320,6 +320,16 @@ func newTestBridgeWithClarifications(t *testing.T, rooms *fakeRooms, stores map[
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	snapshots := map[string]SnapshotStore{}
+	for root, store := range clarificationStores {
+		fake, ok := store.(*fakeClarifications)
+		if ok {
+			snapshots[root] = fakeClarificationSnapshot{store: fake, root: root}
+		}
+	}
+	if len(snapshots) > 0 {
+		built.SetSnapshotSources(snapshots)
+	}
 	return built, cfg
 }
 

@@ -14,7 +14,7 @@ Feature: Retire the legacy clarification path from the bridge
     And the bridge is started
     When the fake dashboard forge-a next serves a <projection> clarification projection
     And the bridge has caught up with the forge
-    Then the bridge's status names the forge forge-a as one it <reach>
+    Then the bridge's status for the forge forge-a matches <reach>
     And the clarifications room holds exactly <notices> clarification messages
     And the bridge's last error is <error>
 

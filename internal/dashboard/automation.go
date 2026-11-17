@@ -24,7 +24,6 @@ const (
 	maxAutomationActivity       = 64
 	maxAutomationIdentities     = 512
 	maxAutomationQuestion       = 500
-	maxCompatibilityStateBytes  = 2097152
 )
 
 var automationResolutionValues = map[string]struct{}{
@@ -80,8 +79,8 @@ type AutomationResolvedApproval struct {
 	Resolution string `json:"resolution"`
 }
 
-// AutomationClarifications separates the legacy store from typed project-chat
-// clarifications while retaining one validated projection.
+// AutomationClarifications retains the legacy section only to reject pending
+// legacy work. Typed project-chat clarifications are the only authority.
 type AutomationClarifications struct {
 	Legacy *AutomationSection[AutomationClarification] `json:"legacy"`
 	Typed  *AutomationSection[AutomationClarification] `json:"typed"`
@@ -130,12 +129,12 @@ func (e UnsupportedProjectionError) Error() string {
 	return fmt.Sprintf("automation projection is unsupported (HTTP %d)", e.Status)
 }
 
-// LegacyProjectionError reports an older automation projection that predates
-// the resolved-approval resolution field.
-type LegacyProjectionError struct{}
+// LegacyClarificationError reports a projection that still carries pending
+// work in the retired bridge clarification lane.
+type LegacyClarificationError struct{}
 
-func (LegacyProjectionError) Error() string {
-	return "automation projection predates resolved-approval resolutions"
+func (LegacyClarificationError) Error() string {
+	return "automation projection carries unsupported legacy clarification work"
 }
 
 // AutomationState reads and validates the bounded projection once.
@@ -257,8 +256,8 @@ func validateClarificationRows(clarifications *AutomationClarifications) error {
 
 func validateLegacyClarificationRows(items []AutomationClarification) error {
 	for _, item := range items {
-		if item.Status == "pending" && !validLegacyClarification(item) {
-			return fmt.Errorf("invalid pending legacy clarification in automation projection")
+		if item.Status == "pending" {
+			return LegacyClarificationError{}
 		}
 	}
 	return nil
@@ -271,10 +270,6 @@ func validateTypedClarificationRows(items []AutomationClarification) error {
 		}
 	}
 	return nil
-}
-
-func validLegacyClarification(item AutomationClarification) bool {
-	return item.ID != "" && item.Role != "" && validQuestionExcerpt(item.QuestionExcerpt)
 }
 
 func validTypedClarification(item AutomationClarification) bool {
@@ -318,24 +313,12 @@ func validatePendingApprovalRows(pending []AutomationApproval) error {
 }
 
 func validateResolvedApprovalRows(resolved []AutomationResolvedApproval) error {
-	missingResolution := 0
 	for _, approval := range resolved {
-		err := validateResolvedApprovalRow(approval)
-		if errors.Is(err, errMissingResolution) {
-			missingResolution++
-			continue
-		}
-		if err != nil {
+		if err := validateResolvedApprovalRow(approval); err != nil {
 			return err
 		}
 	}
-	if missingResolution == 0 {
-		return nil
-	}
-	if missingResolution == len(resolved) {
-		return LegacyProjectionError{}
-	}
-	return fmt.Errorf("invalid resolved approval in automation projection")
+	return nil
 }
 
 func validateResolvedApprovalRow(approval AutomationResolvedApproval) error {

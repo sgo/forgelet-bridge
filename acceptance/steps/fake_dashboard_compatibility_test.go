@@ -9,7 +9,7 @@ import (
 	"github.com/unclebob/forgelet-bridge/internal/relay"
 )
 
-func TestFakeDashboardCompatibilityStateReachesTheSnapshot(t *testing.T) {
+func TestFakeDashboardLegacyStateCannotReachTheSnapshot(t *testing.T) {
 	fake := fixtures.StartFakeDashboard()
 	defer fake.Close()
 	fake.SetUnsupportedWithFullState(dashboard.State{
@@ -19,12 +19,12 @@ func TestFakeDashboardCompatibilityStateReachesTheSnapshot(t *testing.T) {
 	})
 
 	snapshot, err := (dashboard.SnapshotSource{
-		Root: "/forges/forge-a", ConfiguredURL: fake.URL(), Project: "project-a",
+		Root: "/forges/forge-a", ConfiguredURL: fake.URL(),
 	}).Snapshot(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("legacy compatibility state reached the snapshot")
 	}
-	if got := snapshot.ResolvedApprovals["/forges/forge-a/project-a/card-a"]; got != relay.ResolutionApproved {
-		t.Fatalf("resolved approval = %q, want approved", got)
+	if snapshot.ResolvedApprovals != nil || snapshot.TypedClarifications != nil {
+		t.Fatalf("snapshot = %+v, want no consumer state from the failed projection", snapshot)
 	}
 }

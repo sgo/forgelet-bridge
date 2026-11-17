@@ -7,11 +7,14 @@ import (
 
 func clarification() Clarification {
 	return Clarification{
-		Key:      "forgelet-bridge/clar-1",
-		ID:       "clar-1",
-		Project:  "forgelet-bridge",
-		Role:     "coder",
-		Question: "which lane should the refund card start in?",
+		Key:       "forgelet-bridge/clar-1",
+		ID:        "clar-1",
+		Project:   "forgelet-bridge",
+		Role:      "coder",
+		Question:  "which lane should the refund card start in?",
+		Source:    ClarificationSourceTyped,
+		Lifecycle: ClarificationOpen,
+		Attention: "unseen",
 	}
 }
 
@@ -34,9 +37,7 @@ func TestPlanClarificationsPostsNothingTheRoomAlreadyHas(t *testing.T) {
 
 func TestPlanClarificationsDoesNotPostASeenTypedClarification(t *testing.T) {
 	seen := clarification()
-	seen.Source = ClarificationSourceTyped
-	seen.Lifecycle = ClarificationOpen
-	seen.Attention = ClarificationSeen
+	seen.Attention = "seen"
 
 	if actions := PlanClarifications(operator, State{}, []Clarification{seen}, nil); len(actions) != 0 {
 		t.Errorf("actions = %+v, want no new notice for a seen typed clarification", actions)
@@ -45,7 +46,6 @@ func TestPlanClarificationsDoesNotPostASeenTypedClarification(t *testing.T) {
 
 func TestPlanClarificationsDoesNotReportATypedDesktopEnding(t *testing.T) {
 	typed := clarification()
-	typed.Source = ClarificationSourceTyped
 	state := State{Clarifications: map[string]ClarificationState{
 		typed.Key: {MessageID: "$message", Source: ClarificationSourceTyped},
 	}}
@@ -130,7 +130,7 @@ func TestPlanClarificationsMarksAnAnswerTheOperatorGaveOnThePhone(t *testing.T) 
 		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes"},
 	}}
 
-	actions := PlanClarifications(operator, state, nil, nil)
+	actions := PlanClarifications(operator, state, []Clarification{clarification()}, nil)
 
 	want := []ClarificationAction{{
 		Kind: ReactClarification, Key: "forgelet-bridge/clar-1", MessageID: "$message", Reaction: CarriedOutReaction,
@@ -145,29 +145,26 @@ func TestPlanClarificationsMarksAnAnswerOnlyOnce(t *testing.T) {
 		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReactionID: "$reaction"},
 	}}
 
-	if actions := PlanClarifications(operator, state, nil, nil); len(actions) != 0 {
+	if actions := PlanClarifications(operator, state, []Clarification{clarification()}, nil); len(actions) != 0 {
 		t.Errorf("actions = %+v, want no second mark", actions)
 	}
 }
 
-func TestPlanClarificationsReportsAClarificationTheDesktopAnswered(t *testing.T) {
+func TestPlanClarificationsLeavesATypedDesktopAnswerToReconciliation(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{
 		"forgelet-bridge/clar-1": {MessageID: "$message"},
 	}}
 
 	actions := PlanClarifications(operator, state, nil, nil)
 
-	want := []ClarificationAction{{
-		Kind: ReplyClarification, Key: "forgelet-bridge/clar-1", MessageID: "$message", Text: "Resolved on the desktop",
-	}}
-	if !reflect.DeepEqual(actions, want) {
-		t.Errorf("actions = %+v, want the desktop's answer reported %+v", actions, want)
+	if len(actions) != 0 {
+		t.Errorf("actions = %+v, want no Matrix work for a typed desktop answer", actions)
 	}
 }
 
 func TestPlanClarificationsAnswersOnceAndReportsOnce(t *testing.T) {
 	state := State{Clarifications: map[string]ClarificationState{
-		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReplyID: "$bridge-reply"},
+		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReactionID: "$bridge-reaction"},
 	}}
 
 	if actions := PlanClarifications(operator, state, []Clarification{clarification()}, nil); len(actions) != 0 {
@@ -180,7 +177,7 @@ func TestPlanClarificationsDoesNotReportAnAnswerTwice(t *testing.T) {
 	// longer waits for it. A later tick must leave the thread alone rather than
 	// report the same answer again.
 	state := State{Clarifications: map[string]ClarificationState{
-		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReplyID: "$bridge-reply"},
+		"forgelet-bridge/clar-1": {MessageID: "$message", Answer: "yes", ReactionID: "$bridge-reaction"},
 	}}
 
 	if actions := PlanClarifications(operator, state, nil, nil); len(actions) != 0 {

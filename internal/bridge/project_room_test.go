@@ -140,45 +140,44 @@ func TestProjectRoomCarriesChatToItsOwnQueue(t *testing.T) {
 	}
 }
 
-func TestProjectRoomCarriesClarifications(t *testing.T) {
+func TestFamilyClarificationReplyUsesTheOwningProjectAnswerer(t *testing.T) {
 	cfg := newTestConfig(t, "/forges/forge-a")
 	clarifications := &fakeClarifications{pending: []relay.Clarification{
 		clarificationOf("agent", "clar-1", "agent", "which stage is next?"),
 	}}
-	project := Project{
-		Name:           "agent",
-		Root:           "/forges/forge-a/projects/agent",
-		Store:          &fakeStore{},
-		Clarifications: clarifications,
-	}
 	rooms := &fakeRooms{}
-	built := projectBridge(t, cfg, rooms, fakeProjectSource{projects: []Project{project}})
-
-	if err := built.Tick(context.Background()); err != nil {
-		t.Fatalf("Tick: %v", err)
+	root := cfg.Forges[0].Root
+	built, err := New(cfg, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: &fakeApprovals{}},
+		map[string]ClarificationStore{root: clarifications},
+		map[string]BoardStore{root: &fakeBoard{}},
+		nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	message := lastMessageIn(rooms, "!project-agent-forge-a")
-	if message == nil {
-		t.Fatalf("sent = %+v, want the project clarification in its room", rooms.sentMessages())
+	typed := clarificationOf("agent", "clar-1", "agent", "which stage is next?")
+	room := Room{ClarificationsRoomID: "!clarifications-forge-a"}
+	snapshot := relay.DashboardSnapshot{TypedClarifications: []relay.Clarification{typed}}
+	if _, err := built.carryOutClarifications(context.Background(), root, clarifications, room, nil, snapshot); err != nil {
+		t.Fatal(err)
 	}
-
-	rooms.push(relay.RoomEvent{
+	messageID := built.State().Relay.Clarifications[typed.Key].MessageID
+	reply := relay.RoomEvent{
 		EventID:    "$reply",
-		RoomID:     "!project-agent-forge-a",
+		RoomID:     room.ClarificationsRoomID,
 		Sender:     operator,
 		Body:       "clean is next",
-		ThreadRoot: "$event-" + clarificationMessage(clarificationOf("agent", "clar-1", "agent", "which stage is next?")),
-	})
-	if err := built.Tick(context.Background()); err != nil {
-		t.Fatalf("second Tick: %v", err)
+		ThreadRoot: messageID,
 	}
-	if err := built.Tick(context.Background()); err != nil {
-		t.Fatalf("third Tick: %v", err)
+	if _, err := built.carryOutClarifications(
+		context.Background(), root, clarifications, room, []relay.RoomEvent{reply}, snapshot); err != nil {
+		t.Fatal(err)
 	}
-	answers := clarifications.answered()
+	answers := clarifications.typedAnswers()
 	if len(answers) != 1 || answers[0].project != "agent" ||
 		answers[0].id != "clar-1" || answers[0].text != "clean is next" {
-		t.Fatalf("answers = %+v, want the operator's reply on the project queue", answers)
+		t.Fatalf("typed answers = %+v, want the operator's reply through the owning project", answers)
 	}
 }
 

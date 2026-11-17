@@ -18,8 +18,8 @@ func TestBoardFactCarriesTheBoardsWordsUnderItsOwnKey(t *testing.T) {
 		t.Errorf("name = %v, want the project", project["name"])
 	}
 	lanes, _ := project["lanes"].([]string)
-	if len(lanes) != 2 || lanes[0] != "specifier" || lanes[1] != "coder" {
-		t.Errorf("lanes = %v, want the project's lanes", project["lanes"])
+	if len(lanes) != 3 || lanes[0] != "specifier" || lanes[1] != "coder" || lanes[2] != "done" {
+		t.Errorf("lanes = %v, want the project's lanes plus the lane its cards use", project["lanes"])
 	}
 	tasks, _ := project["tasks"].([]map[string]any)
 	if len(tasks) != 2 || tasks[0]["name"] != "card-a" || tasks[0]["lane"] != "coder" {
@@ -57,8 +57,10 @@ func TestApprovalFactNamesWhatADecisionNeedsUnderItsOwnId(t *testing.T) {
 	}
 }
 
-func TestClarificationFactAsksTheQuestionUnderItsOwnId(t *testing.T) {
-	fact := ClarificationFact(clarification())
+func TestPersistedLegacyClarificationFactStillReadsUnderItsOwnId(t *testing.T) {
+	legacy := clarification()
+	legacy.Source = ""
+	fact := ClarificationFact(legacy)
 
 	if fact.Type != ClarificationFactType || fact.Key != "clar-1" {
 		t.Fatalf("fact = %+v, want the question's own type and key", fact)
