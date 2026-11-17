@@ -339,6 +339,29 @@ func TestTypedAnswerFailureLeavesNoAcceptedRecord(t *testing.T) {
 	}
 }
 
+func TestMarkClarificationAnswerSkipsMissingOrAlreadyMarkedMessages(t *testing.T) {
+	root := "/forges/forge-a"
+	rooms := &fakeRooms{}
+	built, _ := newTestBridgeWithClarifications(t, rooms,
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ClarificationStore{root: &fakeClarifications{}}, root)
+	for name, state := range map[string]relay.ClarificationState{
+		"no message":     {},
+		"already marked": {MessageID: "$message", ReactionID: "$reaction"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			built.State().Relay.Clarifications["clar"] = state
+			if err := built.markClarificationAnswer(context.Background(), root, clarificationRoom(),
+				relay.ClarificationAction{Key: "clar"}); err != nil {
+				t.Fatal(err)
+			}
+			if marks := rooms.sentReactions(); len(marks) != 0 {
+				t.Fatalf("reactions = %+v, want no duplicate or empty-target mark", marks)
+			}
+		})
+	}
+}
+
 func TestClarificationWorkFailsVisiblyWithoutAnAnswerer(t *testing.T) {
 	root := "/forges/forge-a"
 	built, _ := newTestBridgeWithClarifications(t, &fakeRooms{},
