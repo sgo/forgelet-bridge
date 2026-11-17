@@ -81,8 +81,28 @@ never credentials.
 
 ## Verification
 
-Record the focused tests, all required stages, the composed four-Family tick,
-and the final live deploy result here after they run.
+- `code` passes all Go unit and fixture packages.
+- `clean` and `clean-final` pass with the full dashboard validation functions at
+  100% statement coverage and the highest CRAP score at the allowed ceiling of
+  6.0; `dry4go` passes.
+- `architect` passes `go vet` and the package-boundary checks.
+- `harden` kills all 10 changed Gherkin example mutations with zero survivors
+  and zero errors, including both the `superseded` resolution and its
+  no-manual-mark expectation.
+- `qa` passes property tests and all 242 executable acceptance scenarios.
+  The focused automation feature passes all five resolution endings plus the
+  shared-state, malformed-recovery and compatibility scenarios.
+- `e2e` reaches `Forgelet`, `Saibill`, `Innersource` and `Ledgerhall` in one
+  composed bridge tick, with zero owed items, no unhappy Family and no
+  projection fallback. The fixture keeps `superseded` exactly and the unknown
+  ending still fails closed.
+- `docs` passes all 15 executable documentation examples across 3 documents and
+  21 maintained sections.
+- `README.md` is unchanged because installation, configuration, quick start and
+  project status are unchanged. `docs/manual.md` now states the five bounded
+  endings and the distinct superseded reply. `ARCHITECTURE.md` records the
+  validator, snapshot and relay responsibilities. `docs/manual-contract.edn`
+  already owns the dashboard snapshot APIs and needed no new section.
 
 ## Operator acceptance
 
