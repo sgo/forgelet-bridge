@@ -28,6 +28,7 @@ Feature: Consume bounded automation state in the bridge
       | sent_back               | ⬅              |
       | automatic_spec_approval | no bridge mark |
       | auto_approved           | no bridge mark |
+      | superseded              | no bridge mark |
 
   Scenario: one projection carries approvals, clarifications and card activity
     Given the fake dashboard forge-a is available
