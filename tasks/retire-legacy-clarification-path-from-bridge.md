@@ -110,6 +110,13 @@ of approvals/activity are executable boolean scenarios; their fixed prose is
 not behavioral input. The preflight has focused unit coverage plus the live
 deployment procedure described below.
 
+`phone-clarifications.feature` is explicitly exempt from acceptance mutation:
+its surviving scenarios are boolean protocol checks whose question and answer
+text is fixed prose, not an example table. The mutable value-driven behavior is
+covered by the two Scenario Outlines in the card feature and the retained
+typed-notification outlines. This exemption is why a zero-mutation report for
+that focused boolean feature is expected.
+
 ## E2E procedure
 
 `qa/retire-legacy-clarification-path-from-bridge.md` and its script run the

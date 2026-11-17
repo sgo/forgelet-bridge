@@ -1,5 +1,6 @@
 {
   "features": {
-    "features/waiting-facts-as-state.feature": "memory"
+    "features/waiting-facts-as-state.feature": "memory",
+    "features/retire-legacy-clarification-path-from-bridge.feature": "memory"
   }
 }

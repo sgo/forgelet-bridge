@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,6 +121,25 @@ func TestTypedClarificationPreflightExitDistinguishesEveryOutcome(t *testing.T) 
 }`
 	if got := typedPreflightExit("true", writeConfig(t, config)); got != 0 {
 		t.Fatalf("success exit = %d, want 0", got)
+	}
+}
+
+func TestTypedClarificationPreflightFlagUsesTheConfiguredPath(t *testing.T) {
+	if !(typedClarificationPreflightFlag{}).IsBoolFlag() {
+		t.Fatal("typed clarification preflight is not registered as a boolean flag")
+	}
+
+	original := flag.CommandLine
+	defer func() { flag.CommandLine = original }()
+	flag.CommandLine = flag.NewFlagSet("preflight", flag.ContinueOnError)
+	configured := flag.String("config", "forgelet-bridge.json", "configuration")
+	*configured = "/tmp/bridge.json"
+	if got := configPath(); got != "/tmp/bridge.json" {
+		t.Fatalf("config path = %q, want the parsed config flag", got)
+	}
+	flag.CommandLine = flag.NewFlagSet("preflight-default", flag.ContinueOnError)
+	if got := configPath(); got != "forgelet-bridge.json" {
+		t.Fatalf("default config path = %q, want forgelet-bridge.json", got)
 	}
 }
 
