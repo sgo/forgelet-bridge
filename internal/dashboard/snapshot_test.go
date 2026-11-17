@@ -84,6 +84,7 @@ func TestSnapshotPreservesEveryAuthoritativeResolution(t *testing.T) {
 	for _, resolution := range []string{
 		relay.ResolutionApproved,
 		relay.ResolutionSentBack,
+		relay.ResolutionSuperseded,
 		relay.ResolutionAutomaticSpecApproval,
 		relay.ResolutionAutoApproved,
 	} {

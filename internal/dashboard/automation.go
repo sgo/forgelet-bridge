@@ -30,6 +30,7 @@ const (
 var automationResolutionValues = map[string]struct{}{
 	relay.ResolutionApproved:              {},
 	relay.ResolutionSentBack:              {},
+	relay.ResolutionSuperseded:            {},
 	relay.ResolutionAutomaticSpecApproval: {},
 	relay.ResolutionAutoApproved:          {},
 }

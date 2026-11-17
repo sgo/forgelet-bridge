@@ -73,6 +73,11 @@ commands and `build/acceptance/bin` output remain the contract.
   `/api/state` response bounded to 2 MiB for a 404/501 endpoint or the
   immediately preceding projection without resolution fields; bridge status
   reports affected Families in `projection_fallbacks`.
+- Resolved-approval validation admits only the five bounded endings. The
+  dashboard layer preserves the validated value, while relay presentation
+  alone decides that manual `approved` and `sent_back` carry ➡ and ⬅;
+  `automatic_spec_approval`, `auto_approved` and `superseded` remain
+  non-manual, with `superseded` keeping its distinct threaded reply.
 - Typed clarification notification state is project-qualified and distinct from
   the legacy lane. Only open-unseen rows post, open-seen rows remain
   answerable, and answered, withdrawn or absent authoritative rows clear the

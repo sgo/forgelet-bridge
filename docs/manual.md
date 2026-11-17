@@ -87,9 +87,11 @@ clarification-answer and chat endpoints are unchanged.
 
 Resolved approvals retain the exact bounded value. Manual `approved` selects
 the ➡ mark, manual `sent_back` selects ⬅, and the automatic endings
-`automatic_spec_approval` and `auto_approved` retain their exact value without a
-manual mark. Clarification questions come only from the bounded
-`question_excerpt`; blank excerpts fail the projection closed.
+`automatic_spec_approval`, `auto_approved` and `superseded` retain their exact
+value without a manual mark. A superseded ending is reported as "Superseded by
+a newer proposal"; it is never guessed into either manual action. Clarification
+questions come only from the bounded `question_excerpt`; blank excerpts fail
+the projection closed.
 
 An open typed clarification posts in the Family Clarifications room only while
 its attention is `unseen`. The notification record has a typed,

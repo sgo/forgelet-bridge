@@ -30,4 +30,8 @@
                      "FORGELET_E2E_PROJECT"
                      "FORGELET_E2E_HOST_URL"
                      "FORGELET_E2E_HOST_TOKEN_FILE"
-                     "FORGELET_E2E_SIBLING_PROJECT"]}}}
+                     "FORGELET_E2E_SIBLING_PROJECT"]}
+  "accept-superseded-automation-resolutions"
+  {:procedure "qa/accept-superseded-automation-resolutions.md"
+   :script "qa/accept-superseded-automation-resolutions.sh"
+   :required-inputs []}}}

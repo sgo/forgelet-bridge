@@ -491,6 +491,21 @@ func TestPlanApprovalsWithDeskKeepsTheReplyForAnEndingItDoesNotKnow(t *testing.T
 	}
 }
 
+func TestPlanApprovalsWithDeskReportsSupersededWithoutAManualMark(t *testing.T) {
+	desk := map[string]string{"forgelet-bridge/approval-1": ResolutionSuperseded}
+
+	actions := PlanApprovalsWithDesk(operator, posted(), nil, desk, nil, nil)
+
+	if len(actions) != 1 {
+		t.Fatalf("actions = %+v, want one superseded report", actions)
+	}
+	got := actions[0]
+	if got.Kind != ReplyApproval || got.Resolution != ResolutionSuperseded || got.Reaction != "" ||
+		got.Text != "Superseded by a newer proposal" {
+		t.Errorf("action = %+v, want the distinct superseded reply and no manual mark", got)
+	}
+}
+
 func TestPlanApprovalsWithDeskPrefersTheBridgesOwnResolution(t *testing.T) {
 	state := posted()
 	state.Approvals["forgelet-bridge/approval-1"] = ApprovalState{
