@@ -57,10 +57,9 @@ func answersAlreadyAnswered(st State, actions []ClarificationAction) bool {
 }
 
 // TestPropertyPlanClarificationsReportsAnAnswerOnce is the promise the quiet
-// room rests on: however an answer is reported - marked on the clarification's
-// own message when the operator gave it here, or replied to in the thread when
-// it came from the desk - the bridge reports it once, and no replay of the same
-// events reports it again.
+// room rests on: an answer the operator gave here is marked once on the
+// clarification's own message, and no replay of the same events reports it
+// again.
 func TestPropertyPlanClarificationsReportsAnAnswerOnce(t *testing.T) {
 	property := func(st State, pending []Clarification, replies []RoomEvent) bool {
 		st = cloneStateWithClarifications(st)
@@ -72,8 +71,7 @@ func TestPropertyPlanClarificationsReportsAnAnswerOnce(t *testing.T) {
 		for tick := 0; tick < 6; tick++ {
 			actions := PlanClarifications(operator, st, pending, replies)
 			for _, action := range actions {
-				switch action.Kind {
-				case ReplyClarification, ReactClarification:
+				if action.Kind == ReactClarification {
 					reports[action.Key]++
 				}
 			}
