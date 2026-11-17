@@ -112,14 +112,6 @@ Feature: Notify Typed Project Clarifications Through The Bridge
     Then the clarifications room holds exactly 2 clarification messages
     And the clarifications room carries typed clarifications for both project-alpha and project-beta
 
-  Scenario: legacy and typed clarifications coexist
-    Given the fake dashboard forge-a is available
-    And the bridge is configured with the forge root forge-a and the operator @operator:example.org
-    And the bridge is started
-    When the fake dashboard forge-a next serves a legacy clarification and a typed clarification together
-    And the bridge has caught up with the forge
-    Then the clarifications room holds exactly 2 clarification messages
-
   Scenario: typed notifications exclude text outside the bounded excerpt
     Given the fake dashboard forge-a is available
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org

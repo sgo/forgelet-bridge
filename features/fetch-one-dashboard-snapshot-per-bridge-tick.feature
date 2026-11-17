@@ -1,6 +1,6 @@
 Feature: Fetch one dashboard snapshot per bridge tick
 
-  # The bridge needs pending approvals, resolved approvals and clarifications
+  # The bridge needs pending approvals, resolved approvals and typed clarifications
   # from the same dashboard payload. It reads that payload once in a tick and
   # carries every consumer from the one response. The snapshot belongs to that
   # tick and that dashboard: a failed read leaves its consumers unserved until
@@ -60,8 +60,6 @@ Feature: Fetch one dashboard snapshot per bridge tick
     And the forge forge-b approval room holds the card card-<approval-expected-b> and not the card card-<approval-expected-a>
     And the forge forge-a clarifications room holds the project <clarification-expected-a> and not <clarification-expected-b>
     And the forge forge-b clarifications room holds the project <clarification-expected-b> and not <clarification-expected-a>
-    And the project room alpha carries the clarification for project-alpha
-    And the project room beta carries the clarification for project-beta
     And the fake dashboards forge-a, forge-b, project-alpha and project-beta each serve at most one state request per tick over three more ticks
 
     Examples:

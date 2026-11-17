@@ -6,7 +6,7 @@
 Feature: Waiting Facts As State
 
   # A forge's rooms carry what moves: a card appearing, a card moving on, an
-  # approval posted, a question asked. What they never carried was what is - the
+  # approval posted, a typed project question asked. What they never carried was what is - the
   # cards a board holds now, the approvals still waiting, the questions still
   # open. The desk reads that from the dashboard, and a phone cannot reach a
   # dashboard, so the bridge writes those facts into the rooms as state: one

@@ -1,11 +1,10 @@
 Feature: Consume bounded automation state in the bridge
 
   # The bridge reads one bounded automation projection per dashboard in a tick.
-  # Approvals, resolutions, clarifications and board activity all come from that
+  # Approvals, resolutions, typed clarifications and board activity all come from that
   # one response. The projection is checked before any consumer uses it, and a
   # malformed projection leaves the dependent consumers unserved until a later
-  # healthy tick rather than inventing state. An older dashboard may use the
-  # temporary bounded full-state compatibility path during controlled rollout.
+  # healthy tick rather than inventing state or using a legacy fallback.
 
   Background:
     And the bridge checks once every second
@@ -30,7 +29,7 @@ Feature: Consume bounded automation state in the bridge
       | auto_approved           | no bridge mark |
       | superseded              | no bridge mark |
 
-  Scenario: one projection carries approvals, clarifications and card activity
+  Scenario: one projection carries approvals, a typed clarification and card activity
     Given the fake dashboard forge-a is available
     And the fake dashboard forge-a first serves the pending approval for the card card-a in the project forgelet-bridge
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org
@@ -62,17 +61,16 @@ Feature: Consume bounded automation state in the bridge
     And the approvals room holds 2 approval messages
     And the clarifications room holds exactly 1 clarification messages
 
-  Scenario: an unsupported automation endpoint reports bounded compatibility
+  Scenario: an unsupported automation endpoint fails closed
     Given the fake dashboard forge-a is available
     And the fake dashboard forge-a first serves the pending approval for the card card-a in the project forgelet-bridge
     And the bridge is configured with the forge root forge-a and the operator @operator:example.org
     And the bridge is started
     And the bridge has caught up with the forge
-    When the fake dashboard forge-a does not support automation state and serves bounded compatibility state with every waiting category
+    When the fake dashboard forge-a does not support automation state
     And the bridge has caught up with the forge
-    Then the bridge's status names the forge forge-a as one it reached
-    And the bridge's status reports a projection fallback for the forge forge-a
-    And the approvals room holds 2 approval messages
-    And the clarifications room holds exactly 1 clarification messages
-    And the approval for the card card-a carries ➡
+    Then the bridge's status names the forge forge-a as one it did not reach
+    And the bridge's last error says the automation projection is unsupported
+    And the approvals room holds 1 approval messages
+    And the clarifications room holds exactly 0 clarification messages
 
