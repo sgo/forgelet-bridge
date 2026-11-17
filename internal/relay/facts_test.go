@@ -4,7 +4,12 @@ import "testing"
 
 func TestBoardFactCarriesTheBoardsWordsUnderItsOwnKey(t *testing.T) {
 	fact := BoardFact("forgelet-bridge", []string{"specifier", "coder"},
-		[]Card{{Name: "card-a", Lane: "coder"}, {Name: "card-b", Lane: "done"}})
+		[]Card{
+			{Name: "card-a", Lane: "coder"},
+			{Name: "card-a2", Lane: "coder"},
+			{Name: "card-b", Lane: "done"},
+			{Name: "card-b2", Lane: "done"},
+		})
 
 	if fact.Type != BoardFactType || fact.Key != "forgelet-bridge" {
 		t.Fatalf("fact = %+v, want the board's own type and key", fact)
@@ -22,7 +27,7 @@ func TestBoardFactCarriesTheBoardsWordsUnderItsOwnKey(t *testing.T) {
 		t.Errorf("lanes = %v, want the project's lanes plus the lane its cards use", project["lanes"])
 	}
 	tasks, _ := project["tasks"].([]map[string]any)
-	if len(tasks) != 2 || tasks[0]["name"] != "card-a" || tasks[0]["lane"] != "coder" {
+	if len(tasks) != 4 || tasks[0]["name"] != "card-a" || tasks[0]["lane"] != "coder" {
 		t.Errorf("tasks = %v, want the cards in their lanes", project["tasks"])
 	}
 }

@@ -3,8 +3,12 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -397,6 +401,127 @@ func TestSnapshotSourceReportsAnUnannouncedDashboard(t *testing.T) {
 	if _, err := source.Snapshot(context.Background()); err == nil {
 		t.Error("Snapshot accepted a dashboard that never announced itself")
 	}
+}
+
+func TestApprovalsAndClarificationsFacadesShareTheSnapshotSource(t *testing.T) {
+	type source interface {
+		Identity() (string, error)
+		Snapshot(context.Context) (relay.DashboardSnapshot, error)
+	}
+	state := testAutomationState()
+	server := automationServer(t, state, AutomationProjection)
+	defer server.Close()
+	for name, facade := range map[string]source{
+		"approvals":      Approvals{Root: "/forge", ConfiguredURL: server.URL},
+		"clarifications": Clarifications{Root: "/forge", ConfiguredURL: server.URL},
+	} {
+		t.Run(name, func(t *testing.T) {
+			identity, err := facade.Identity()
+			if err != nil || !strings.Contains(identity, server.URL) {
+				t.Fatalf("identity = %q, %v; want the announced dashboard", identity, err)
+			}
+			snapshot, err := facade.Snapshot(context.Background())
+			if err != nil || snapshot.Boards == nil {
+				t.Fatalf("snapshot = %+v, %v; want the automation projection", snapshot, err)
+			}
+		})
+	}
+}
+
+func TestApprovalsFacadeReportsEveryUnavailableDashboardAction(t *testing.T) {
+	approvals := Approvals{Root: t.TempDir()}
+	if _, err := approvals.Pending(context.Background()); err == nil {
+		t.Error("Pending accepted an unannounced dashboard")
+	}
+	if _, err := approvals.Resolved(context.Background()); err == nil {
+		t.Error("Resolved accepted an unannounced dashboard")
+	}
+	if err := approvals.Approve(context.Background(), "project", "approval"); err == nil {
+		t.Error("Approve accepted an unannounced dashboard")
+	}
+	if err := approvals.SendBack(context.Background(), "project", "approval", "feedback"); err == nil {
+		t.Error("SendBack accepted an unannounced dashboard")
+	}
+}
+
+func TestApprovalsResolvedFacadeUsesTheDashboard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(writer).Encode(State{ResolvedApprovals: []ResolvedApprovalRequest{{
+			ID: "approval", Project: "project", Resolution: relay.ResolutionApproved,
+		}}})
+	}))
+	defer server.Close()
+	resolved, err := (Approvals{Root: "/forge", ConfiguredURL: server.URL}).Resolved(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved["/forge/project/approval"]; got != relay.ResolutionApproved {
+		t.Fatalf("resolved = %q, want approved", got)
+	}
+}
+
+func TestURLRefusesAnEmptyAnnouncedAddress(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".swarmforge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(URLFile)), []byte(" \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := URL(root, ""); err == nil || !strings.Contains(err.Error(), "address is empty") {
+		t.Fatalf("URL error = %v, want the empty-address refusal", err)
+	}
+}
+
+func TestDashboardRequestReportsEncodingAndConstructionFailures(t *testing.T) {
+	api := NewAPI("http://dashboard.example")
+	if _, err := api.request(context.Background(), http.MethodPost, "/api/chat", make(chan int)); err == nil {
+		t.Error("request accepted a body that cannot be encoded")
+	}
+	if _, err := api.request(context.Background(), "bad method", "/api/state", nil); err == nil {
+		t.Error("request accepted a method that cannot build an HTTP request")
+	}
+}
+
+func TestDashboardExchangeReportsEveryTransportFailure(t *testing.T) {
+	if _, _, _, err := NewAPI("http://dashboard.example").
+		exchange(context.Background(), "bad method", "/api/state", nil, 0); err == nil {
+		t.Error("exchange accepted a request that could not be built")
+	}
+
+	transport := &API{
+		baseURL: "http://dashboard.example",
+		client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("transport unavailable")
+		})},
+	}
+	if _, _, _, err := transport.exchange(context.Background(), http.MethodGet, "/api/state", nil, 0); err == nil {
+		t.Error("exchange accepted an unavailable transport")
+	}
+
+	response := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(errorReader{})}
+	if _, err := responseBody(http.MethodGet, "/api/state", response, 0); err == nil {
+		t.Error("responseBody accepted an unreadable response")
+	}
+	response = &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader("bad gateway")),
+	}
+	if _, err := responseBody(http.MethodGet, "/api/state", response, 0); err == nil {
+		t.Error("responseBody accepted an unsuccessful response")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("read unavailable")
 }
 
 func containsUnsupported(err error) bool {

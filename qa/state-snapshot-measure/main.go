@@ -171,7 +171,7 @@ func snapshotReads(ctx context.Context, forgeURL, projectURL string) error {
 	if _, err := (dashboard.SnapshotSource{Root: "/synthetic/forge", ConfiguredURL: forgeURL}).Snapshot(ctx); err != nil {
 		return err
 	}
-	_, err := (dashboard.SnapshotSource{Root: "/synthetic/project", ConfiguredURL: projectURL, Project: "project"}).Snapshot(ctx)
+	_, err := (dashboard.SnapshotSource{Root: "/synthetic/project", ConfiguredURL: projectURL}).Snapshot(ctx)
 	return err
 }
 

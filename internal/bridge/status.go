@@ -72,5 +72,5 @@ func (b *Bridge) writeStatus(status Status) error {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-09-24T14:40:19+02:00","module_hash":"2702f76dbee25e62ac3f3e2f84533f03960ae3de77932f467d2d8043e1542c44","functions":[{"id":"func/Bridge.ReportDevice","name":"Bridge.ReportDevice","line":54,"end_line":56,"hash":"9abf9e292aafe2f10a8204dd1970ebe3416ad531653c59425a7f93968de761a4"},{"id":"func/Bridge.writeStatus","name":"Bridge.writeStatus","line":60,"end_line":69,"hash":"79a205547a958b3a5f9d1cc48f96e9549e6f42304bed9bf643585c7433bfa3dd"}]}
+// {"version":1,"tested_at":"2026-11-17T15:19:56+01:00","module_hash":"048c70fe2ac31366099fb29cbf9402034f4075de9da4219312f04bc83d7d851f","functions":[{"id":"func/Bridge.ReportDevice","name":"Bridge.ReportDevice","line":57,"end_line":59,"hash":"9abf9e292aafe2f10a8204dd1970ebe3416ad531653c59425a7f93968de761a4"},{"id":"func/Bridge.writeStatus","name":"Bridge.writeStatus","line":63,"end_line":72,"hash":"79a205547a958b3a5f9d1cc48f96e9549e6f42304bed9bf643585c7433bfa3dd"}]}
 // mutate4go-manifest-end

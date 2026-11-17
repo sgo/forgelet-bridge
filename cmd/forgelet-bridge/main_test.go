@@ -97,6 +97,32 @@ func TestTypedClarificationPreflightRefusesANonFamilyProjection(t *testing.T) {
 	}
 }
 
+func TestTypedClarificationPreflightExitDistinguishesEveryOutcome(t *testing.T) {
+	if got := typedPreflightExit("false", "missing.json"); got != 2 {
+		t.Fatalf("boolean exit = %d, want 2", got)
+	}
+	if got := typedPreflightExit("true", filepath.Join(t.TempDir(), "missing.json")); got != 1 {
+		t.Fatalf("preflight failure exit = %d, want 1", got)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-SwarmForge-Projection", dashboard.AutomationProjection)
+		_ = json.NewEncoder(writer).Encode(preflightState("family", "One"))
+	}))
+	defer server.Close()
+	root := t.TempDir()
+	config := `{
+  "homeserver_url": "https://matrix.example.org",
+  "user_id": "@bridge:example.org",
+  "access_token": "token",
+  "operator": "@operator:example.org",
+  "forges": [{"root": "` + root + `", "name": "One", "dashboard_url": "` + server.URL + `"}]
+}`
+	if got := typedPreflightExit("true", writeConfig(t, config)); got != 0 {
+		t.Fatalf("success exit = %d, want 0", got)
+	}
+}
+
 func preflightState(kind, name string) dashboard.AutomationState {
 	section := func(count int) *dashboard.AutomationSection[string] {
 		return &dashboard.AutomationSection[string]{Count: count, Items: make([]string, count)}

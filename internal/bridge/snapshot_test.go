@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -287,6 +288,28 @@ func TestProjectClarificationsLeaveNestedProjectsToTheFamily(t *testing.T) {
 	}
 	if source.callCount() != 0 {
 		t.Error("the nested project snapshot was read instead of leaving typed work to the Family")
+	}
+}
+
+func TestProjectAtTheForgeRootRequiresItsOwnAutomationSnapshot(t *testing.T) {
+	root := "/forges/forge-a"
+	project := Project{
+		Name:           "forge-a",
+		Root:           root,
+		Clarifications: &fakeClarifications{},
+	}
+	built, _ := newTestBridgeWithStores(t, &fakeRooms{},
+		map[string]ForgeStore{root: &fakeStore{}},
+		map[string]ApprovalStore{root: &fakeApprovals{}},
+		map[string]BoardStore{root: &fakeBoard{}}, root)
+	carriedOut, err := built.carryOutProjectClarifications(
+		context.Background(), root, project, Room{ClarificationsRoomID: "!project"},
+		roomEvents{}, snapshotCache{})
+	if err == nil || !strings.Contains(err.Error(), "require an automation snapshot") {
+		t.Fatalf("error = %v, want the missing snapshot refusal", err)
+	}
+	if carriedOut != 0 {
+		t.Fatalf("carried out = %d, want none without a snapshot", carriedOut)
 	}
 }
 

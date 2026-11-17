@@ -344,10 +344,29 @@ func TestClarificationWorkFailsVisiblyWithoutAnAnswerer(t *testing.T) {
 	built, _ := newTestBridgeWithClarifications(t, &fakeRooms{},
 		map[string]ForgeStore{root: &fakeStore{}},
 		map[string]ClarificationStore{}, root)
-	_, err := built.carryOutClarifications(
+	carriedOut, err := built.carryOutClarifications(
 		context.Background(), root, nil, clarificationRoom(), nil, relay.DashboardSnapshot{})
 	if err == nil || !strings.Contains(err.Error(), "no typed clarification answerer") {
 		t.Fatalf("error = %v, want the missing answerer", err)
+	}
+	if carriedOut != 0 {
+		t.Fatalf("carried out = %d, want none without an answerer", carriedOut)
+	}
+}
+
+func TestTickReportsAMissingAutomationSnapshotToTheClarificationConsumer(t *testing.T) {
+	root := "/forges/forge-a"
+	built, _ := newTestBridge(t, &fakeRooms{},
+		map[string]ForgeStore{root: &fakeStore{}}, root)
+	if err := built.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	status := statusOf(t, built)
+	if !reflect.DeepEqual(status.ClarificationFailures, []string{"forge-a"}) {
+		t.Fatalf("clarification failures = %v, want forge-a", status.ClarificationFailures)
+	}
+	if !reflect.DeepEqual(status.ReachedForges, []string{"forge-a"}) {
+		t.Fatalf("reached forges = %v, want unrelated consumers to continue", status.ReachedForges)
 	}
 }
 
@@ -397,6 +416,39 @@ func TestReconciliationDoesNotSaveWhenNothingIsStale(t *testing.T) {
 	if err := built.reconcileClarifications(
 		root, clarificationRoom(), []relay.Clarification{open}); err != nil {
 		t.Fatalf("unchanged snapshot tried to save state: %v", err)
+	}
+}
+
+func TestStaleClarificationRequiresTheSameOwnerRoomAndNoOpenRow(t *testing.T) {
+	room := clarificationRoom()
+	tests := []struct {
+		name  string
+		state relay.ClarificationState
+		open  bool
+		want  bool
+	}{
+		{name: "same room closed", state: relay.ClarificationState{
+			ForgeRoot: "/forge", RoomID: room.ClarificationsRoomID,
+		}, want: true},
+		{name: "unscoped room closed", state: relay.ClarificationState{
+			ForgeRoot: "/forge",
+		}, want: true},
+		{name: "same room open", state: relay.ClarificationState{
+			ForgeRoot: "/forge", RoomID: room.ClarificationsRoomID,
+		}, open: true},
+		{name: "other room", state: relay.ClarificationState{
+			ForgeRoot: "/forge", RoomID: "!other",
+		}},
+		{name: "other owner", state: relay.ClarificationState{
+			ForgeRoot: "/other", RoomID: room.ClarificationsRoomID,
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := staleClarification(test.state, "/forge", room, test.open); got != test.want {
+				t.Fatalf("stale = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 
