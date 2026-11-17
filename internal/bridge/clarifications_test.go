@@ -328,7 +328,7 @@ func TestTypedAnswerFailureLeavesNoAcceptedRecord(t *testing.T) {
 	built.State().Relay.Clarifications[typed.Key] = relay.ClarificationState{
 		ForgeRoot: root, RoomID: clarificationRoom().ClarificationsRoomID, MessageID: "$message",
 	}
-	err := built.answerClarification(context.Background(), root, store, relay.ClarificationAction{
+	err := built.answerClarification(context.Background(), root, store, clarificationRoom(), relay.ClarificationAction{
 		Kind: relay.AnswerClarification, Key: typed.Key, Clarification: typed, Answer: "run qa",
 	})
 	if err == nil || !strings.Contains(err.Error(), "project chat") {

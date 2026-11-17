@@ -167,7 +167,7 @@ func (b *Bridge) carryOutClarification(ctx context.Context, root string, store C
 	case relay.PostClarification:
 		return b.postClarification(ctx, root, room, action)
 	case relay.AnswerClarification:
-		return b.answerClarification(ctx, root, store, action)
+		return b.answerClarification(ctx, root, store, room, action)
 	case relay.ReactClarification:
 		return b.reactClarification(ctx, root, room, action)
 	}
@@ -216,7 +216,10 @@ func (b *Bridge) clarificationState(room Room) relay.State {
 
 // answerClarification carries the operator's answer back through the forge's
 // dashboard, which is what wakes the blocked role with it.
-func (b *Bridge) answerClarification(ctx context.Context, root string, store ClarificationStore, action relay.ClarificationAction) error {
+func (b *Bridge) answerClarification(ctx context.Context, root string, store ClarificationStore, room Room, action relay.ClarificationAction) error {
+	if b.state.Relay.Clarifications[action.Key].Answer != "" {
+		return b.markClarificationAnswer(ctx, root, room, action)
+	}
 	if err := store.AnswerTyped(
 		ctx, action.Clarification.Project, action.Clarification.ID, action.Answer); err != nil {
 		return fmt.Errorf("answer %s through project chat: %w", action.Key, err)
@@ -225,7 +228,22 @@ func (b *Bridge) answerClarification(ctx context.Context, root string, store Cla
 		state.Answer = action.Answer
 		return state
 	})
-	return nil
+	return b.markClarificationAnswer(ctx, root, room, action)
+}
+
+// markClarificationAnswer puts the bridge's single carried-out mark on the
+// notice before a later snapshot can retire the local record.
+func (b *Bridge) markClarificationAnswer(ctx context.Context, root string, room Room, action relay.ClarificationAction) error {
+	state := b.state.Relay.Clarifications[action.Key]
+	if state.MessageID == "" || state.ReactionID != "" {
+		return nil
+	}
+	return b.reactClarification(ctx, root, room, relay.ClarificationAction{
+		Kind:      relay.ReactClarification,
+		Key:       action.Key,
+		MessageID: state.MessageID,
+		Reaction:  relay.CarriedOutReaction,
+	})
 }
 
 func (b *Bridge) recordClarification(root, key string, update func(relay.ClarificationState) relay.ClarificationState) {
