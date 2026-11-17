@@ -145,9 +145,36 @@ then confirm a legacy-only or malformed Family projection creates no notice.
 
 ## Verification
 
-Pending implementation. Record exact Go, CRAP/DRY, architecture, mutation,
-property/acceptance, E2E, documentation and deploy evidence here before
-completion.
+- `code` passes all Go unit and fixture packages. The live typed-contract
+  preflight is covered for success, non-Family identity, malformed
+  configuration and both exit outcomes.
+- `clean` and `clean-final` pass. The highest CRAP score is 6.0 at the project
+  ceiling; the dashboard package measures 96.5% statement coverage and the
+  changed validation functions are fully covered. `dry4go` passes.
+- `architect` passes `go vet` and the package-boundary checks.
+- `harden` passes differential mutation over 11 changed production Go files with
+  zero survivors and zero uncovered sites. Acceptance mutation kills all 32
+  mutable cells in the card outline with zero errors. The retained boolean
+  phone-clarification feature reports zero mutations under the explicit
+  exemption recorded above.
+- `qa` passes property tests and all 252 full-suite scenario runs. This includes
+  typed lifecycle/attention, seen/answered/withdrawn reconciliation, restart
+  deduplication, project-chat replies, room history and marks, approvals,
+  activity and non-clarification behavior.
+- `e2e` passes the focused card feature, the real typed project/Family flow,
+  the live preflight for all four configured Families, and one composed
+  production-adapter tick. The tick reached `Forgelet`, `Saibill`,
+  `Innersource` and `Ledgerhall` with zero owed items. The E2E record shows
+  `project-alpha/clar-e2e` moving from `open/unseen` to `answered`, the project
+  answer queued, project wake confirmed and app attention cleared.
+- `docs` passes 15 executable examples across 3 documents and 21 maintained
+  sections.
+- `README.md` now describes typed-only authority, fail-closed legacy/malformed
+  projections and the deployment preflight. `docs/manual.md` documents lifecycle,
+  attention, typed reply routing, reconciliation, bounded status and preserved
+  history. `ARCHITECTURE.md` records the typed authority, answerer boundary,
+  removed compatibility path and deployment gate. `docs/manual-contract.edn`
+  now exercises the preflight help and legacy-clarification error API.
 
 ## Operator acceptance
 
