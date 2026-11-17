@@ -103,6 +103,12 @@ never credentials.
   endings and the distinct superseded reply. `ARCHITECTURE.md` records the
   validator, snapshot and relay responsibilities. `docs/manual-contract.edn`
   already owns the dashboard snapshot APIs and needed no new section.
+- `deploy` rebuilds the pushed tree, restarts the live adapter, verifies the
+  bridge exposes `remove-forge` and `remove-project`, and passes adapter
+  conformance. After the configured dashboard processes were loaded from the
+  current shared source layer, live ticks 24 and 25 each reached `Forgelet`,
+  `Saibill`, `Innersource` and `Ledgerhall`, with no unhappy Family, last error
+  or projection fallback and zero owed items.
 
 ## Operator acceptance
 
