@@ -12,7 +12,9 @@
   (str "Usage:\n"
        "  pack_dashboard_request.sh answer <id> <answer-file>\n"
        "                                  [--approve-route-card <proposal-id>\n"
-       "                                   | --without-route-card-action]\n"
+       "                                   | --reply-with <exact text>\n"
+       "                                   | --without-route-card-action\n"
+       "                                   | --without-quick-reply]\n"
        "  pack_dashboard_request.sh clarify <question-file>\n"
        "  pack_dashboard_request.sh clarify-chat <clarification-id> <question-file>\n"
        "                                           [--reference <clarification-id>]\n"
@@ -24,7 +26,9 @@
        "exactly one structured action with --approve-route-card. Use\n"
        "--without-route-card-action only when the response merely discusses the\n"
        "proposal and must not offer approval. Prose never selects or attaches an\n"
-       "action automatically.\n"))
+       "action automatically. An apparent `reply with ...` instruction requires\n"
+       "either --reply-with or --without-quick-reply. Only one structured action\n"
+       "may be attached.\n"))
 
 (defn usage []
   (binding [*out* *err*]
@@ -91,6 +95,10 @@
 
 (defn flag? [args key]
   (boolean (some #{key} args)))
+
+(defn ensure-single-flag! [args key]
+  (when (> (count (filter #{key} args)) 1)
+    (exit! 1 (str "Option may appear only once: " key))))
 
 (defn timestamp []
   (.format java.time.format.DateTimeFormatter/ISO_INSTANT
@@ -194,6 +202,79 @@
     (when-not (str/blank? text)
       (subs text 0 (min maximum (count text))))))
 
+(def reply-action-type "reply")
+(def answer-action-flags
+  ["--approve-route-card" "--without-route-card-action"
+   "--reply-with" "--without-quick-reply"])
+(def reply-text-max-chars 200)
+(def reply-unsafe-framing-re #"[`$<>|;&\\]")
+(def reply-control-re #"[\p{Cc}\p{Cf}]")
+(def reply-command-re
+  #"(?i)^(?:sudo\s+)?(?:rm|git|bb|sh|bash|zsh|curl|wget|gh|npm|mvn|java|node|python|ruby|perl|kill|pkill|chmod|chown|mkdir|mv|cp)\b")
+(def apparent-reply-instruction-re
+  #"(?i)\b(?:reply\s+with|reply|respond\s+with)\s+`([^`\r\n]{1,200})`")
+
+(defn quick-reply-invalid! [message]
+  (exit! 1 message))
+
+(defn safe-quick-reply-text [value]
+  (let [text (str/trim (str (or value "")))]
+    (when (str/blank? text)
+      (quick-reply-invalid! "Quick-reply text is required."))
+    (when (> (count text) reply-text-max-chars)
+      (quick-reply-invalid!
+       (str "Quick-reply text must be at most "
+            reply-text-max-chars " characters.")))
+    (when (re-find reply-control-re text)
+      (quick-reply-invalid!
+       "Quick-reply text must be one line without control characters."))
+    (when (re-find reply-unsafe-framing-re text)
+      (quick-reply-invalid! "Quick-reply text contains unsafe framing."))
+    (when (re-find reply-command-re text)
+      (quick-reply-invalid! "Quick-reply text must not be a command."))
+    (when (or (re-find absolute-path-re text)
+              (re-find chat-token-re text))
+      (quick-reply-invalid!
+       "Quick-reply text must not contain paths or credentials."))
+    text))
+
+(defn stored-quick-reply-text [value]
+  (let [text (str/trim (str (or value "")))]
+    (when (and (not (str/blank? text))
+               (<= (count text) reply-text-max-chars)
+               (not (re-find reply-control-re text))
+               (not (re-find reply-unsafe-framing-re text))
+               (not (re-find reply-command-re text))
+               (not (re-find absolute-path-re text))
+               (not (re-find chat-token-re text)))
+      text)))
+
+(defn quick-reply-label [text]
+  (action-text (str "Reply: " text) 80))
+
+(defn reply-action [text]
+  (let [text (safe-quick-reply-text text)]
+    {:type reply-action-type
+     :reply_text text
+     :label (quick-reply-label text)
+     :status "pending"}))
+
+(defn apparent-reply-instruction [text]
+  (some-> (re-find apparent-reply-instruction-re (or text ""))
+          second
+          str/trim
+          not-empty
+          (action-text 120)))
+
+(defn quick-reply-challenge! [id instruction]
+  (exit!
+   1
+   (str "Quick-reply action required before answering " id ".\n"
+        "The response appears to request the reply `" instruction "`.\n"
+        "Record it explicitly with --reply-with <exact text>.\n"
+        "If the wording is literal prose and must not offer an action, rerun with "
+        "--without-quick-reply.")))
+
 (defn proposal-status [proposal]
   (let [raw (:status proposal)
         status (cond
@@ -239,8 +320,17 @@
 
 (def max-route-candidates 20)
 
+(defn proposal-token-value [value]
+  (some-> value
+          str/trim
+          (str/replace #"[.,;!?]+$" "")
+          not-empty))
+
 (defn response-route-proposal-ids [text]
-  (vec (distinct (re-seq standalone-route-proposal-id-re (or text "")))))
+  (->> (re-seq standalone-route-proposal-id-re (or text ""))
+       (keep proposal-token-value)
+       distinct
+       vec))
 
 (defn route-proposal-descriptor [forge proposal-id proposal]
   (try
@@ -312,12 +402,69 @@
          vec)
     []))
 
+(def explicit-send-approve-invitation-re
+  #"(?i)(?<!not )(?<!never )(?<!don't )(?<!don’t )(?<!do not )\b(?:send|reply)\s+[\"“”']?\s*approve\s+(proposal-[A-Za-z0-9][A-Za-z0-9._~:-]{0,150})")
+
+(def explicit-approve-if-want-invitation-re
+  #"(?i)\bapprove\s+(proposal-[A-Za-z0-9][A-Za-z0-9._~:-]{0,150})\s*[,.!]?\s+if\s+you\s+want\b")
+
+(def reply-approve-invitation-re
+  #"(?i)(?<!not )(?<!never )(?<!don't )(?<!don’t )(?<!do not )\breply\s+approve\b")
+
+(defn explicit-approval-invitation-ids [text]
+  (let [direct (mapcat
+                (fn [pattern]
+                  (keep (comp proposal-token-value second)
+                        (re-seq pattern (or text ""))))
+                [explicit-send-approve-invitation-re
+                 explicit-approve-if-want-invitation-re])
+        paragraph (mapcat
+                   (fn [block]
+                     (when (re-find reply-approve-invitation-re block)
+                       (keep proposal-token-value
+                             (response-route-proposal-ids block))))
+                   (str/split (or text "") #"(?:\r?\n[ \t]*){2,}"))]
+    (->> (concat direct paragraph)
+         distinct
+         sort
+         vec)))
+
+(defn pending-approval-invitation-candidates [root text]
+  (let [all (pending-route-proposal-candidates root text)
+        invited (set (explicit-approval-invitation-ids text))]
+    (->> all
+         (filter #(contains? invited (:proposal_id %)))
+         vec)))
+
+(defn approval-invitation-challenge! [id candidates]
+  (let [shown (take max-route-candidates candidates)
+        choices (str/join
+                 "\n"
+                 (map (fn [{:keys [proposal_id task_name]}]
+                        (str "  --approve-route-card " proposal_id
+                             "  ; " task_name))
+                      shown))
+        omitted (- (count candidates) (count shown))]
+    (exit!
+     1
+     (str "Approval action required before answering " id ".\n"
+          "The response explicitly invites approval for "
+          (count candidates) " pending local proposal(s):\n"
+          choices
+          (when (pos? omitted)
+            (str "\n  ... and " omitted
+                 " more; reduce the response to one invited proposal."))
+          "\nAttach exactly one matching action with --approve-route-card "
+          "<proposal-id>.\n"
+          "--without-route-card-action is not allowed for an approval "
+          "invitation; rewrite genuinely discussion-only text instead."))))
+
 (defn render-request
   [{:strs [id status body response created_at updated_at role
            thread_id source proposal_id author direction kind clarification_id
            reference_id attention_state answered_at answered_by withdrawn_at seen_at
            action_type action_proposal_id action_family action_project
-           action_task_name action_label action_status]}]
+           action_task_name action_reply_text action_label action_status]}]
   (str "id: " id "\n"
        "status: " status "\n"
        (when-not (str/blank? role) (str "role: " role "\n"))
@@ -342,6 +489,8 @@
          (str "action_project: " action_project "\n"))
        (when-not (str/blank? action_task_name)
          (str "action_task_name: " action_task_name "\n"))
+       (when-not (str/blank? action_reply_text)
+         (str "action_reply_text: " action_reply_text "\n"))
        (when-not (str/blank? action_label)
          (str "action_label: " action_label "\n"))
        (when-not (str/blank? action_status)
@@ -386,9 +535,41 @@
        :label label
        :status status})))
 
+(defn stored-reply-action [headers]
+  (let [status (some-> (get headers "action_status") str/trim str/lower-case)
+        status (when (contains? #{"pending" "consumed" "unavailable"} status)
+                 status)
+        reply-text (stored-quick-reply-text (get headers "action_reply_text"))
+        label (action-text (get headers "action_label") 80)]
+    (when (and (= reply-action-type (get headers "action"))
+               status
+               reply-text
+               (= label (quick-reply-label reply-text)))
+      {:type reply-action-type
+       :reply_text reply-text
+       :label label
+       :status status})))
+
+(defn stored-action [headers]
+  (let [route-fields? (some #(not (str/blank? (str (or (get headers %) ""))))
+                            ["action_proposal_id" "action_family"
+                             "action_project" "action_task_name"])
+        reply-fields? (not (str/blank? (str (or (get headers
+                                                       "action_reply_text")
+                                                ""))))
+        mixed? (and route-fields? reply-fields?)
+        route (stored-route-action headers)
+        reply (stored-reply-action headers)]
+    (cond
+      mixed? nil
+      (and route reply) nil
+      route route
+      reply reply
+      :else nil)))
+
 (defn request-entry [path]
   (let [m (parse-kv (slurp (str path)))]
-    (let [action (stored-route-action m)
+    (let [action (stored-action m)
           clarification-id (let [value (some-> (get m "clarification_id")
                                                str/trim not-empty)]
                              (when (valid-clarification-id? value) value))
@@ -657,6 +838,7 @@
    "action_family" (:family action)
    "action_project" (:project action)
    "action_task_name" (:task_name action)
+   "action_reply_text" (:reply_text action)
    "action_label" (:label action)
    "action_status" (:status action)})
 
@@ -674,7 +856,7 @@
       (fs/delete-if-exists src))
     (println "ANSWERED:" id)))
 
-(defn backfill-route-action! [done entry text action]
+(defn backfill-action! [done entry text action]
   (let [tmp (fs/create-temp-file {:dir (fs/parent done)
                                   :prefix ".action-backfill."})
         headers (request-headers entry text (:updated_at entry) action)]
@@ -682,22 +864,39 @@
     (fs/move tmp done {:replace-existing true :atomic-move true})
     (println "ANSWERED:" (:id entry))))
 
-(defn answer-pending! [root id answer-file approve-route-card without-route-card-action]
+(defn answer-pending!
+  [root id answer-file approve-route-card without-route-card-action
+   reply-with without-quick-reply]
   (let [src (find-pending root id)
         text (str/trim (slurp (str answer-file)))
-        action (when-not (str/blank? approve-route-card)
-                 (safe-route-proposal! root approve-route-card))
-        _ (when action
-            (response-proposal-action! text (:proposal_id action)))
+        route-candidates (pending-route-proposal-candidates root text)
+        invited-candidates (pending-approval-invitation-candidates root text)
+        route-action (when-not (str/blank? approve-route-card)
+                       (safe-route-proposal! root approve-route-card))
+        reply-descriptor (when reply-with (reply-action reply-with))
+        action (or route-action reply-descriptor)
+        _ (when (seq invited-candidates)
+            (when-not (and (= 1 (count invited-candidates))
+                           route-action
+                           (= (:proposal_id (first invited-candidates))
+                              (:proposal_id route-action)))
+              (approval-invitation-challenge! id invited-candidates)))
+        _ (when route-action
+            (response-proposal-action! text (:proposal_id route-action)))
+        _ (when (and (nil? action) (not without-quick-reply))
+            (when-let [instruction (apparent-reply-instruction text)]
+              (quick-reply-challenge! id instruction)))
         candidates (when (and (nil? action)
-                              (not without-route-card-action))
-                     (pending-route-proposal-candidates root text))]
+                              (not without-route-card-action)
+                              (nil? reply-descriptor)
+                              (empty? invited-candidates))
+                     route-candidates)]
     (when (seq candidates)
       (route-action-challenge! id candidates))
     (complete-pending-request! root id src answer-file action)))
 
 (defn answer-done! [root id done answer-file approve-route-card
-                    without-route-card-action]
+                    without-route-card-action reply-with without-quick-reply]
   (let [entry (request-entry done)
         stored-response (:response entry)
         text (str/trim (slurp (str answer-file)))
@@ -706,30 +905,52 @@
       (exit! 1 (str "Request already answered with a different response: " id)))
     (cond
       (and (not (str/blank? approve-route-card)) stored-action)
-      (if (= approve-route-card (:proposal_id stored-action))
+      (if (and (= route-card-action-type (:type stored-action))
+               (= approve-route-card (:proposal_id stored-action)))
         (println "ANSWERED:" id)
         (exit! 1 (str "Request already answered with a different action: " id)))
 
       (not (str/blank? approve-route-card))
       (let [action (safe-route-proposal! root approve-route-card)]
         (response-proposal-action! stored-response (:proposal_id action))
-        (backfill-route-action! done entry stored-response action))
+        (backfill-action! done entry stored-response action))
 
-      (and without-route-card-action stored-action)
+      (and reply-with stored-action)
+      (if (and (= reply-action-type (:type stored-action))
+               (= (safe-quick-reply-text reply-with)
+                  (:reply_text stored-action)))
+        (println "ANSWERED:" id)
+        (exit! 1 (str "Request already answered with a different action: " id)))
+
+      reply-with
+      (backfill-action! done entry stored-response (reply-action reply-with))
+
+      (and without-route-card-action
+           (= route-card-action-type (:type stored-action)))
       (exit! 1 (str "Request already answered with a route-card action: " id))
+
+      (and without-quick-reply
+           (= reply-action-type (:type stored-action)))
+      (exit! 1 (str "Request already answered with a quick-reply action: " id))
 
       :else
       (println "ANSWERED:" id))))
 
 (defn answer-request!
-  [root id answer-file approve-route-card without-route-card-action]
+  [root id answer-file approve-route-card without-route-card-action
+   reply-with without-quick-reply]
   (when (str/blank? id)
     (exit! 1 "Missing request id"))
   (when-not (fs/regular-file? answer-file)
     (exit! 1 (str "Answer file not found: " answer-file)))
   (when (and (not (str/blank? approve-route-card))
+             reply-with)
+    (exit! 1 "Choose either --approve-route-card or --reply-with."))
+  (when (and (not (str/blank? approve-route-card))
              without-route-card-action)
     (exit! 1 "Choose either --approve-route-card or --without-route-card-action."))
+  (when (and reply-with without-quick-reply)
+    (exit! 1 "Choose either --reply-with or --without-quick-reply."))
   (with-request-lock
     root
     (fn []
@@ -740,11 +961,12 @@
       (cond
         (find-pending root id)
         (answer-pending! root id answer-file approve-route-card
-                         without-route-card-action)
+                         without-route-card-action reply-with without-quick-reply)
 
         (find-done-request root id)
         (answer-done! root id (find-done-request root id) answer-file
-                      approve-route-card without-route-card-action)
+                      approve-route-card without-route-card-action
+                      reply-with without-quick-reply)
 
         (find-done-clarification root id)
         (println "ANSWERED:" id)
@@ -755,12 +977,23 @@
 (defn -main [& args]
   (case (first args)
     "answer" (let [approve-flag? (flag? args "--approve-route-card")
-                   approve-id (parse-flag args "--approve-route-card")]
+                   approve-id (parse-flag args "--approve-route-card")
+                   reply-flag? (flag? args "--reply-with")
+                   reply-with (parse-flag args "--reply-with")
+                   without-quick-reply? (flag? args "--without-quick-reply")]
+               (doseq [flag answer-action-flags]
+                 (ensure-single-flag! args flag))
                (when (and approve-flag? (str/blank? (or approve-id "")))
                  (exit! 1 "Missing route-card proposal id."))
+               (when (and reply-flag?
+                          (or (nil? reply-with)
+                              (some #{reply-with} answer-action-flags)))
+                 (exit! 1 "Missing quick-reply text."))
                (answer-request! (project-root) (second args) (nth args 2 nil)
                                 approve-id
-                                (flag? args "--without-route-card-action")))
+                                (flag? args "--without-route-card-action")
+                                reply-with
+                                without-quick-reply?))
     "clarify" (clarify! (second args))
     "clarify-chat"
     (let [id (second args)
