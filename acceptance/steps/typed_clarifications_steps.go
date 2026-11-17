@@ -87,7 +87,14 @@ func bridgeStatusForForgeMatches(_ context.Context, world any, captures []string
 	if err != nil {
 		return err
 	}
-	wantReached := captures[2] == "reached"
+	var wantReached bool
+	switch captures[2] {
+	case "reached":
+		wantReached = true
+	case "did not reach":
+	default:
+		return fmt.Errorf("the bridge status match %q is not reached or did not reach", captures[2])
+	}
 	if fixtures.Contains(status.ReachedForges, captures[1]) != wantReached {
 		return fmt.Errorf("reached forges = %v, want %s %s", status.ReachedForges,
 			captures[1], map[bool]string{true: "reached", false: "not reached"}[wantReached])
