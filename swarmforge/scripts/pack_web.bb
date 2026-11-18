@@ -40,7 +40,6 @@
        "  pack_web.sh --test-heat-collapse <root>\n"
        "  pack_web.sh --test-status-pane <root> <text>\n"
        "  pack_web.sh --test-status-persist <root> <first> <second>\n"
-       "  pack_web.sh --test-answer-clarification <root> <id> <text>\n"
        "  pack_web.sh --test-create-chat-clarification <root> <id> <body-file> [reference-id]\n"
        "  pack_web.sh --test-mark-chat-clarification-seen <root> <id>\n"
        "  pack_web.sh --test-withdraw-chat-clarification <root> <id>\n"
@@ -1428,35 +1427,6 @@
                        (concat (chat-files (chat-pending-dir root))
                                (chat-files (chat-done-dir root)))))))
 
-(defn clar-pending-dir [root]
-  (fs/path root ".swarmforge" "dashboard" "clarifications" "pending"))
-
-(defn clar-done-dir [root]
-  (fs/path root ".swarmforge" "dashboard" "clarifications" "done"))
-
-(defn parse-clarification [path]
-  (let [raw (slurp (str path))
-        [header body] (str/split raw #"\n\n" 2)
-        headers (into {}
-                      (for [line (str/split-lines header)
-                            :let [[k v] (str/split line #": " 2)]
-                            :when (and k v)]
-                        [k v]))]
-    {:id (get headers "id")
-     :status (get headers "status")
-     :role (get headers "role")
-     :body (or body "")
-     :response (str/replace (get headers "response" "") #"\\n" "\n")
-     :created_at (get headers "created_at")}))
-
-(defn list-clarifications [root]
-  (state-cached
-   :clarification-scans [::clarifications (str root)]
-   #(vec (bounded-pmap dashboard-chat-workers
-                       parse-clarification
-                       (concat (chat-files (clar-pending-dir root))
-                               (chat-files (clar-done-dir root)))))))
-
 (defn chat-id []
   (str "req-" (str/replace (str (java.time.Instant/now)) #"[^0-9A-Za-z]" "")))
 
@@ -1678,21 +1648,13 @@
 (defn approval-request? [text]
   (boolean (re-find #"(?m)^Approval for .+ in .+" (or text ""))))
 
-(defn clarification-request? [text]
-  (boolean (re-find #"(?m)^Clarification for .+ from .+" (or text ""))))
-
 (defn answer-reminder [id text]
   (str "Answer with: pack_dashboard_request.sh answer " id " ./tmp/answer.txt"
        " (a reply only in this pane reaches nobody)."
        (when (approval-request? text)
          (str " This one is an approval gate, and the gate is the operator's: read the"
               " pending handoff, then reply with your assessment and a recommendation."
-              " Do not approve unless the operator says to."))
-       (when (clarification-request? text)
-         (str " This one is a clarification an agent is blocked on, and the answer is"
-              " the operator's to give: read the question, ground it in the project's"
-              " state, then reply with what you would answer and why. Do not answer it"
-              " unless the operator says to."))))
+              " Do not approve unless the operator says to."))))
 
 (defn chat-wake [id text]
   (str (if (str/includes? (or text "") "\n")
@@ -1700,12 +1662,6 @@
          (str "[" id "] " text))
        "\n"
        (answer-reminder id text)))
-
-(defn clar-wake [id role question answer]
-  (str "[" id "]\n"
-       "Clarification requested from: " role "\n"
-       "Question:\n" (str/trimr (or question "")) "\n"
-       "Answer:\n" (str/trimr (or answer ""))))
 
 (defn write-chat-request!
   ([root text]
@@ -1740,7 +1696,7 @@
      :work_in_flight (work-in-flight root)
      :chat chat
      :clarification_attention (clarification-attention chat)
-     :clarifications (list-clarifications root)}))
+     :clarifications []}))
 
 (defn tagged [project items]
   (mapv #(assoc % :project project) items))
@@ -1909,11 +1865,7 @@
                                           (tagged name (resolved-approvals (open-project-root root name)))
                                           (catch Exception _ [])))
                                       open))
-     :clarifications (vec (mapcat (fn [name]
-                                    (try
-                                      (tagged name (list-clarifications (open-project-root root name)))
-                                      (catch Exception _ [])))
-                                  open))
+     :clarifications []
      :chat (list-chat root)
      :lieutenant_status (pane-status-lines-for root "lieutenant")
      :lieutenant_activity (lieutenant-activity-snapshot root)
@@ -2258,7 +2210,7 @@
      :clarifications
      {:legacy
       (bounded-automation-section
-       (:clarifications snapshot) automation-clarification-limit
+       [] automation-clarification-limit
        automation-clarification)
       :typed
       (bounded-automation-section
@@ -2856,59 +2808,24 @@
                           (throw error))))))))]
         (json-ok-data {:request_id (:id result)})))))
 
-(defn clar-pending-file [root id]
-  (fs/path (clar-pending-dir root) (str id ".request")))
-
-(defn render-clarification [{:keys [id status role body response created_at]}]
-  (str "id: " id "\n"
-       "status: " status "\n"
-       (when-not (str/blank? role) (str "role: " role "\n"))
-       "created_at: " created_at "\n"
-       (when-not (str/blank? response)
-         (str "response: " (str/replace response #"\n" (constantly "\\n")) "\n"))
-       "\n"
-       (or body "")
-       (when-not (str/ends-with? (or body "") "\n") "\n")))
-
-(defn answer-clarification! [root id text]
-  (let [src (clar-pending-file root id)]
-    (when-not (fs/regular-file? src)
-      (throw (ex-info (str "Unknown clarification: " id) {:http-status 404})))
-    (let [entry (parse-clarification src)
-          dest (fs/path (clar-done-dir root) (str id ".request"))
-          role (:role entry)]
-      (fs/create-dirs (fs/parent dest))
-      (spit (str dest) (render-clarification (assoc entry
-                                                   :status "done"
-                                                   :response text)))
-      (fs/delete-if-exists src)
-      (inject-role! root role (clar-wake id role (:body entry) text)))))
-
 (defn clarification-route [uri]
   (let [path (first (str/split (or uri "") #"\?"))]
-    (when-let [[_ id] (re-matches #"/api/clarifications/([^/]+)/(?:answer|seen|withdraw)"
+    (when-let [[_ id] (re-matches #"/api/clarifications/([^/]+)/(?:seen|withdraw)"
                                  path)]
       (java.net.URLDecoder/decode id "UTF-8"))))
 
 (defn clarification-action [uri]
   (let [path (first (str/split (or uri "") #"\?"))]
     (when-let [[_ _ action]
-               (re-matches #"/api/clarifications/([^/]+)/(answer|seen|withdraw)"
+               (re-matches #"/api/clarifications/([^/]+)/(seen|withdraw)"
                            path)]
       action)))
 
-(defn post-clarification [root uri body]
+(defn post-clarification [root uri _body]
   (if-let [id (clarification-route uri)]
-    (let [text (or (:text (json/parse-string (or body "{}") true)) "")
-          typed (find-clarification-record root id)]
-      (case (clarification-action uri)
-        "seen" (do (mark-chat-clarification-seen! root id) (json-ok))
-        "withdraw" (do (withdraw-chat-clarification! root id) (json-ok))
-        "answer"
-        (if typed
-          (throw (ex-info "Reply to this clarification through project chat."
-                          {:http-status 409}))
-          (do (answer-clarification! root id text) (json-ok)))))
+    (case (clarification-action uri)
+      "seen" (do (mark-chat-clarification-seen! root id) (json-ok))
+      "withdraw" (do (withdraw-chat-clarification! root id) (json-ok)))
     {:status 404 :body "Not found"}))
 
 (defn pending-file [root id]
@@ -3465,8 +3382,7 @@
 (defn find-clar-root [forge id]
   (or (some (fn [name]
               (let [proot (str (forge/project-dir forge name))]
-                (when (or (fs/regular-file? (clar-pending-file proot id))
-                          (find-clarification-record proot id))
+                (when (find-clarification-record proot id)
                   proot)))
             (forge/read-open-projects forge))
       (throw (ex-info (str "Unknown clarification: " id) {:http-status 404}))))
@@ -3642,9 +3558,11 @@
         :else (throw (ex-info "Missing project" {:http-status 400}))))))
 
 (defn scoped-clar-root [root uri]
-  (if-not (forge/forge? root)
-    root
-    (find-clar-root root (clarification-route uri))))
+  (if-let [id (clarification-route uri)]
+    (if (forge/forge? root)
+      (find-clar-root root id)
+      root)
+    root))
 
 (defn handle-post [root uri body]
   (cond
@@ -4046,14 +3964,6 @@
        :health_p95_ms (percentile @health-ms 0.95)
        :metrics @metrics}))))
 
-(defn test-answer-clarification! [root id text]
-  (when (str/blank? id)
-    (exit! 1 "Missing clarification id"))
-  (test-http! (handle-request (require-root! root)
-                              {:method "POST"
-                               :uri (str "/api/clarifications/" id "/answer")
-                               :body (json/generate-string {:text (or text "")})})))
-
 (defn test-create-chat-clarification!
   [root id body-file reference-id]
   (when (str/blank? id)
@@ -4181,17 +4091,76 @@
     (fs/create-dirs (fs/parent file))
     (spit (str file) (str url "\n"))))
 
+(defn dashboard-port-file [root]
+  (fs/path root ".swarmforge" "dashboard-port"))
+
+(defn valid-dashboard-port [value]
+  (let [text (str/trim (str value))]
+    (when (re-matches #"[0-9]{1,5}" text)
+      (let [port (Long/parseLong text)]
+        (when (<= 1 port 65535)
+          (str port))))))
+
+(defn persisted-dashboard-port [root]
+  (let [file (dashboard-port-file root)]
+    (when (fs/regular-file? file)
+      (valid-dashboard-port (slurp (str file))))))
+
+(defn write-dashboard-port! [root port]
+  (let [file (dashboard-port-file root)]
+    (fs/create-dirs (fs/parent file))
+    (let [tmp (fs/create-temp-file {:dir (fs/parent file)
+                                    :prefix ".dashboard-port."})]
+      (spit (str tmp) (str port "\n"))
+      (fs/move tmp file {:replace-existing true :atomic-move true}))))
+
+(defn dashboard-port-available? [port]
+  (try
+    (let [socket (java.net.ServerSocket.)]
+      (try
+        (.setReuseAddress socket false)
+        (.bind socket (java.net.InetSocketAddress.
+                       "127.0.0.1" (Integer/parseInt (str port))))
+        true
+        (finally (.close socket))))
+    (catch Exception _ false)))
+
+(defn dashboard-port-usable? [port]
+  (or (dashboard-port-available? port)
+      (and (fs/which "lsof")
+           (not (zero? (:exit
+                        (sh "lsof" "-nP" (str "-iTCP:" port)
+                            "-sTCP:LISTEN")))))))
+
 (defn parse-port [port-str]
   (if (str/blank? port-str) 0 (Long/parseLong port-str)))
 
+(defn bind-dashboard-server! [root port]
+  (http/run-server (http-handler root)
+                   {:ip "127.0.0.1"
+                    :port port
+                    :worker-count 8
+                    :legacy-return-value? false}))
+
+(defn dashboard-server! [root port-str]
+  (if-not (str/blank? port-str)
+    (bind-dashboard-server! root (parse-port port-str))
+    (if-let [persisted (persisted-dashboard-port root)]
+      (let [port (parse-port persisted)]
+        (if (dashboard-port-usable? port)
+          (try
+            (bind-dashboard-server! root port)
+            (catch java.net.BindException _
+              (bind-dashboard-server! root 0)))
+          (bind-dashboard-server! root 0)))
+      (bind-dashboard-server! root 0))))
+
 (defn serve! [root port-str]
   (let [root (require-root! root)
-        server (http/run-server (http-handler root)
-                                {:ip "127.0.0.1"
-                                 :port (parse-port port-str)
-                                 :worker-count 8
-                                 :legacy-return-value? false})
-        url (str "http://127.0.0.1:" (http/server-port server))]
+        server (dashboard-server! root port-str)
+        port (http/server-port server)
+        url (str "http://127.0.0.1:" port)]
+    (write-dashboard-port! root port)
     (write-pack-web-pid! root)
     (write-dashboard-url! root url)
     (println url)
