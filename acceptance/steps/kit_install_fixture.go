@@ -93,6 +93,41 @@ func theKitsDoorbellHasLostTheClause(_ context.Context, world any, _ []string) e
 	return os.WriteFile(path, []byte(lost), 0o644)
 }
 
+// theKitsDoorbellHasLostItsClause removes one clause while preserving the
+// other, proving the installer rejects either missing half independently.
+func theKitsDoorbellHasLostItsClause(_ context.Context, world any, captures []string) error {
+	w := world.(*World)
+	dir, err := w.kitCopy()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "doorbell.bb")
+	shipped, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var replacements *strings.Replacer
+	switch captures[1] {
+	case "gate":
+		replacements = strings.NewReplacer(
+			"the gate is the operator's", "the gate belongs to somebody",
+			"Do not approve unless the operator says to.", "Approve it if you think it is right.",
+		)
+	case "answer":
+		replacements = strings.NewReplacer(
+			"the answer is the operator's to give", "the answer belongs to somebody",
+			"Do not answer the clarification request unless the operator says to.", "Answer the clarification request when you think it is right.",
+		)
+	default:
+		return fmt.Errorf("the step does not know the clause %q", captures[1])
+	}
+	lost := replacements.Replace(string(shipped))
+	if lost == string(shipped) {
+		return fmt.Errorf("the kit's own doorbell carries no %s clause to lose: %s", captures[1], path)
+	}
+	return os.WriteFile(path, []byte(lost), 0o644)
+}
+
 // theKitsCopyOfTheDoorbellCarriesItsExecutableBit gives the scenario a kit whose
 // doorbell is executable: the .bb the kit ships is run directly as often as the
 // wrapper is, so the installer has to carry the mode rather than guess it.

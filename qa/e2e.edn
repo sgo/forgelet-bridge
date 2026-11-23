@@ -38,4 +38,8 @@
   "retire-legacy-clarification-path-from-bridge"
   {:procedure "qa/retire-legacy-clarification-path-from-bridge.md"
    :script "qa/retire-legacy-clarification-path-from-bridge.sh"
+   :required-inputs []}
+  "restore-doorbell-clarification-clause"
+  {:procedure "qa/restore-doorbell-clarification-clause.md"
+   :script "qa/restore-doorbell-clarification-clause.sh"
    :required-inputs []}}}

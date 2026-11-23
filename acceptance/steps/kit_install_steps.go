@@ -301,6 +301,13 @@ func doorbellSelfCheckCouldNotFindTheClause(_ context.Context, world any, _ []st
 	return doorbellSelfCheckSays(world.(*World), "could not find the clause")
 }
 
+// doorbellSelfCheckCouldNotFindItsClause names the missing half, so the
+// scenario proves the gate and answer checks fail independently.
+func doorbellSelfCheckCouldNotFindItsClause(_ context.Context, world any, captures []string) error {
+	return doorbellSelfCheckSays(world.(*World),
+		"could not find the clause (the "+captures[1]+" clause)")
+}
+
 // toolsKeepTheKitsModes checks the installer carried the mode the kit's own copy
 // has: a tool the kit ships executable is executable in the forge, whatever its
 // extension suggests, and the update leaves no noise behind.

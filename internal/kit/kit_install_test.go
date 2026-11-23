@@ -450,6 +450,49 @@ func TestDoorbellSelfCheckRefusesAKitWhoseDoorbellLostTheClause(t *testing.T) {
 	}
 }
 
+// Either clause is required on its own: losing the approval contract must not
+// hide a valid clarification contract, and losing the clarification contract
+// must fail even when the approval ring is still correct.
+func TestDoorbellSelfCheckRefusesEachMissingClause(t *testing.T) {
+	cases := map[string]struct {
+		lost       string
+		replaced   string
+		clauseName string
+	}{
+		"gate": {
+			lost:       gateClauseWords,
+			replaced:   "the gate belongs to somebody: Approve it if you think it is right.",
+			clauseName: "the gate clause",
+		},
+		"answer": {
+			lost:       answerClauseWords,
+			replaced:   "the answer belongs to somebody: Answer the clarification request when you think it is right.",
+			clauseName: "the answer clause",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := fixtureForge(t)
+			scripts := t.TempDir()
+			shipped := fixtureDoorbell(true, readsThePane)
+			before, after, found := strings.Cut(shipped, tc.lost)
+			if !found {
+				t.Fatalf("the fixture doorbell carries no %s to lose", name)
+			}
+			writeScript(t, filepath.Join(scripts, "doorbell.sh"), before+tc.replaced+after)
+
+			line, ok := doorbellSelfCheck(scripts, root)
+
+			if ok {
+				t.Fatalf("a doorbell missing the %s passed its own install: %s", name, line)
+			}
+			if !strings.Contains(line, "could not find the clause ("+tc.clauseName+")") {
+				t.Errorf("the self-check does not name the missing %s clause:\n%s", name, line)
+			}
+		})
+	}
+}
+
 func TestIdlerSelfCheckPassesOnAProjectWithNothingUp(t *testing.T) {
 	cases := map[string]string{
 		"a forge between sessions":      "forge not-running no role session is up",

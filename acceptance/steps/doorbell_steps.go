@@ -244,6 +244,19 @@ func theRingSaysTheAnswerIsTheOperatorsToGive(_ context.Context, world any, _ []
 	return theRingSays(world.(*World), answerClause, answerRefusal)
 }
 
+// theRingCarriesTheOperatorClause reads the one clause selected by the
+// value-driven example, so the same scenario proves both bridge-written forms.
+func theRingCarriesTheOperatorClause(_ context.Context, world any, captures []string) error {
+	switch captures[1] {
+	case "approval":
+		return theRingSaysTheGateIsTheOperators(context.Background(), world, nil)
+	case "clarification":
+		return theRingSaysTheAnswerIsTheOperatorsToGive(context.Background(), world, nil)
+	default:
+		return fmt.Errorf("the step does not know the request kind %q", captures[1])
+	}
+}
+
 // theRingCarriesNeitherClause checks a request that is neither an approval nor a
 // clarification carries neither clause, so the words mean what they say.
 func theRingCarriesNeitherClause(_ context.Context, world any, _ []string) error {
@@ -267,7 +280,7 @@ func theRingSays(w *World, wants ...string) error {
 		return err
 	}
 	for _, want := range wants {
-		if !strings.Contains(text, want) {
+		if !strings.Contains(squashed(text), squashed(want)) {
 			return fmt.Errorf("the ring does not say %q:\n%s", want, text)
 		}
 	}

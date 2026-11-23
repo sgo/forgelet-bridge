@@ -99,6 +99,19 @@ func theForgeHoldsTheClarificationTheBridgeWrote(_ context.Context, world any, c
 	return w.dashboardTakesRequest(clarificationMessageStart(captures[1]) + captures[2])
 }
 
+// theForgeHoldsTheBridgeWrittenRequest seeds either first-line shape the bridge
+// writes, selected by the scenario's value-driven example.
+func theForgeHoldsTheBridgeWrittenRequest(ctx context.Context, world any, captures []string) error {
+	switch captures[1] {
+	case "approval":
+		return theForgeHoldsTheApprovalTheBridgeWrote(ctx, world, []string{"", "refund-card", "forgelet-bridge"})
+	case "clarification":
+		return theForgeHoldsTheClarificationTheBridgeWrote(ctx, world, []string{"", "forgelet-bridge", "coder"})
+	default:
+		return fmt.Errorf("the step does not know the bridge-written request %q", captures[1])
+	}
+}
+
 // theDashboardTypedTheRequestLongAgo types a request into the pane and then
 // scrolls it out of sight, the way a request the role answered hours ago has
 // left the visible screen while the pane's scrollback still proves it arrived.

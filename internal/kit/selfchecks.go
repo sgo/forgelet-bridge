@@ -305,8 +305,8 @@ func doorbellClauseRead(scripts string) (string, bool) {
 		out, _ := run(filepath.Join(scripts, "doorbell.sh"), "print-ring", gate.request)
 		for _, word := range gate.words {
 			if !strings.Contains(out, word) {
-				return fmt.Sprintf("self-check failed doorbell: ran %q and could not find the clause: the ring it would type for %s never says %q",
-					command, gate.subject, word), false
+				return fmt.Sprintf("self-check failed doorbell: ran %q and could not find the clause (%s): the ring it would type for %s never says %q",
+					command, gate.name, gate.subject, word), false
 			}
 		}
 		found = append(found, fmt.Sprintf("it rang %s and found %s (%s)",
