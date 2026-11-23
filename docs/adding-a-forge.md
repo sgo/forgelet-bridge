@@ -129,6 +129,11 @@ fails on the page instead of looking quiet. A forge composed but not yet started
 has no pane, no board row and no inbox to read, and installs all the same, each
 check saying what it could not prove so a later run can prove it.
 
+The doorbell check also requests both notification shapes directly. An approval
+ring must say the decision is the operator's, and a clarification ring must say
+the answer is the operator's to give. Losing either clause fails the install,
+including on a forge that has been composed but not yet started.
+
 It ships tools, not policy: which proposals need asking is the forge's own
 lieutenant prompt, so the gate a forge gets is the gate its prompt asks for, and
 the report says which policy it found and left alone. Running it again is safe.

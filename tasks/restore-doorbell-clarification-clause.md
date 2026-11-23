@@ -80,8 +80,31 @@ through bridge kit installation and can then be started and registered normally.
 
 ## Verification
 
-To be recorded from the focused tests, required bridge gates, pushed revision and
-disposable Family composition.
+The canonical doorbell again emits the clarification operator-answer clause
+while preserving the approval operator-gate clause. The same runtime sync had
+also removed the existing role-health clarification wait; that previously
+covered behavior was restored so the required QA suite could pass.
+
+- Focused Go tests passed for `internal/doorbell`, `internal/kit` and
+  `cmd/install-kit`.
+- The focused Gherkin outline passed all four examples: both ring shapes and
+  independent loss of either installer-checked clause.
+- `code`, `clean`, `architect`, `harden`, `clean-final` and `qa` passed on the
+  implementation tree. The full QA run passed 258 scenario runs; mutation killed
+  every selected Go mutant and all four Gherkin example mutations.
+- The disposable `get-swarm-forge lieutenant` E2E used a `git archive HEAD`
+  snapshot rather than a live checkout, set
+  `SWARMFORGE_LIEUTENANT_AGENT=claude`, and did not set
+  `SWARMFORGE_SKIP_BRIDGE`. It installed the kit, passed the approval and
+  clarification self-checks, and reached the composition success message at
+  bridge commit `43d4559` and tree `46f7daa`.
+- A failed first E2E attempt was retained for diagnosis, then moved to Trash.
+  The passing E2E run removed only its verified scratch and snapshot paths.
+- Documentation: `README.md` now tells installers that fresh Family composition
+  carries both doorbell clauses; `docs/manual.md` documents the public
+  `install-kit` behavior; `docs/adding-a-forge.md` documents both ring checks.
+  `ARCHITECTURE.md` did not change because this repair restores the existing
+  kit boundary and adds no package or ownership decision.
 
 ## Operator acceptance
 

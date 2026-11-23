@@ -53,7 +53,7 @@
   {:id "manual-install"
    :document "docs/manual.md"
    :heading "## Installation and quick start"
-   :apis ["scripts/build.sh" "build/acceptance/bin/forgelet-bridge"]}
+   :apis ["scripts/build.sh" "scripts/matrix-bridge.sh" "cmd/install-kit" "build/acceptance/bin/forgelet-bridge"]}
   {:id "manual-operation"
    :document "docs/manual.md"
    :heading "## Bridge operation"

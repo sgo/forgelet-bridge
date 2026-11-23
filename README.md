@@ -31,6 +31,11 @@ make build
 `scripts/stage-gate.sh` writes the evidence for each gate under
 `build/stages/`.
 
+Fresh Family composition installs the bridge's canonical forge kit with
+`get-swarm-forge lieutenant`. The installer keeps both operator clauses in the
+doorbell ring - the approval gate and the clarification answer - and fails rather
+than accepting a doorbell that has lost either one.
+
 The first slice is the encrypted chat channel. For every configured forge root
 the bridge creates a Matrix space (named after the forge) and an encrypted chat
 room (`Chat`), an encrypted approvals room (`Approvals`), an encrypted activity

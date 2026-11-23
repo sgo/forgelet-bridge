@@ -16,6 +16,13 @@ and run the bridge from the checkout:
 The build output remains under `build/acceptance/bin`. A configuration can be
 checked without starting the Matrix connection by adding `--validate`.
 
+Fresh Family composition runs the built `cmd/install-kit` command through
+`scripts/matrix-bridge.sh install-kit`. Its doorbell self-check requests the ring
+it would type for both an approval and a clarification and requires the
+operator-gate and operator-answer clauses in the corresponding rings. A
+doorbell that loses either clause fails installation; the installer does not
+skip or weaken that check for a forge that has not been started.
+
 ## Bridge operation
 
 The `cmd/forgelet-bridge` process reads one JSON configuration, connects to the
